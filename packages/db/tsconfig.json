@@ -1,0 +1,6 @@
+{
+  "extends": "@it3k/config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  }
+}
