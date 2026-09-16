@@ -41,6 +41,7 @@
     "postinstall": "varlock codegen --path ./apps/web/ && varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/"
   },
   "dependencies": {
+    "it3k": ".",
     "zod": "catalog:"
   },
   "devDependencies": {
