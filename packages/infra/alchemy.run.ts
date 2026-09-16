@@ -61,6 +61,7 @@ export const server = Cloudflare.Worker("server", {
   dev: {
     port: 3000,
   },
+  domain:"it3k-api.creasy.club"
 });
 
 export type ServerEnv = Cloudflare.InferEnv<typeof server>;
@@ -86,6 +87,7 @@ export default Alchemy.Stack(
       dev: {
         port: 3001,
       },
+      domain: "it3k.creasy.club",
     });
 
     return {
