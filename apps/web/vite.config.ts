@@ -7,6 +7,10 @@ export default defineConfig({
   server: {
     port: 3001,
   },
+  define: {
+    // Stops evlog drains from probing `nitro/runtime-config`, which workerd can't load in dev.
+    __EVLOG_CONFIG__: "{}",
+  },
   resolve: {
     tsconfigPaths: true,
   },
