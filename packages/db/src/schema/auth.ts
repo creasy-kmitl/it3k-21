@@ -1,20 +1,31 @@
 import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
-export const user = sqliteTable("user", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  emailVerified: integer("email_verified", { mode: "boolean" }).default(false).notNull(),
-  image: text("image"),
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
-});
+import { department } from "./department";
+
+export const user = sqliteTable(
+  "user",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    email: text("email").notNull().unique(),
+    emailVerified: integer("email_verified", { mode: "boolean" }).default(false).notNull(),
+    image: text("image"),
+    role: text("role").default("staff").notNull(),
+    banned: integer("banned", { mode: "boolean" }).default(false),
+    banReason: text("ban_reason"),
+    banExpires: integer("ban_expires", { mode: "timestamp_ms" }),
+    departmentId: text("department_id").references(() => department.id, { onDelete: "set null" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [index("user_departmentId_idx").on(table.departmentId)],
+);
 
 export const session = sqliteTable(
   "session",
@@ -30,6 +41,7 @@ export const session = sqliteTable(
       .notNull(),
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
+    impersonatedBy: text("impersonated_by"),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),

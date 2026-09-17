@@ -24,6 +24,7 @@
         "@it3k/auth": "workspace:*",
         "@it3k/db": "workspace:*",
         "better-auth": "catalog:",
+        "drizzle-orm": "^1.0.0-rc.4",
         "evlog": "catalog:",
         "hono": "^4.13.7",
         "varlock": "catalog:",
@@ -42,6 +43,7 @@
       "name": "web",
       "dependencies": {
         "@icons-pack/react-simple-icons": "^13.15.1",
+        "@it3k/auth": "workspace:*",
         "@it3k/ui": "workspace:*",
         "@tailwindcss/vite": "^4.3.3",
         "@tanstack/react-form": "^1.33.5",

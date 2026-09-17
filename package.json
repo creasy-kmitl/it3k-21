@@ -35,6 +35,7 @@
     "staged": "vp staged",
     "hooks:setup": "vp config",
     "db:generate": "vp run --filter @it3k/db db:generate",
+    "db:local": "bun run --cwd packages/db db:local",
     "deploy": "vp run --filter @it3k/infra deploy",
     "destroy": "vp run --filter @it3k/infra destroy",
     "env:generate": "varlock codegen --path ./apps/web/ && varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/",

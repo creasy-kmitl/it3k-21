@@ -3,6 +3,7 @@ import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from "@tanst
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
 import Header from "../components/header";
+import NotFound from "../components/not-found";
 import { getOrigin } from "../functions/get-origin";
 
 import appCss from "../index.css?url";
@@ -61,6 +62,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
   },
 
   component: RootDocument,
+  notFoundComponent: NotFound,
 });
 
 function RootDocument() {

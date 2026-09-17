@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import { env } from "./env.server";
+import { departments } from "./routes/departments";
 import { createAuth } from "./services";
 
 initLogger({
@@ -29,13 +30,15 @@ app.use(
   "/*",
   cors({
     origin: env.CORS_ORIGIN,
-    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   }),
 );
 
 app.on(["POST", "GET"], "/api/auth/*", async (c) => (await createAuth()).handler(c.req.raw));
+
+app.route("/api/departments", departments);
 
 app.get("/", (c) => {
   return c.text("OK");

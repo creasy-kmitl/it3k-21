@@ -12,6 +12,7 @@
     "@it3k/auth": "workspace:*",
     "@it3k/db": "workspace:*",
     "better-auth": "catalog:",
+    "drizzle-orm": "^1.0.0-rc.4",
     "evlog": "catalog:",
     "hono": "^4.13.7",
     "varlock": "catalog:",

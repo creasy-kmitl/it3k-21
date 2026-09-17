@@ -56,6 +56,8 @@ export const server = Cloudflare.Worker("server", {
     CORS_ORIGIN: Config.string("CORS_ORIGIN"),
     BETTER_AUTH_SECRET: Config.redacted("BETTER_AUTH_SECRET"),
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
+    GOOGLE_CLIENT_ID: Config.string("GOOGLE_CLIENT_ID"),
+    GOOGLE_SECRET_ID: Config.redacted("GOOGLE_SECRET_ID"),
     ...observabilityBindings,
   },
   dev: {
