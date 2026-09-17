@@ -80,8 +80,9 @@ export const server = Cloudflare.Worker("server", {
   env: {
     DB: db,
     // The web worker is created after this one, so its URL can't be referenced
-    // here without a cycle — deriving both from the stage breaks it.
-    CORS_ORIGIN: hostnames ? `https://${hostnames.web}` : Config.string("CORS_ORIGIN"),
+    // here without a cycle — deriving both from the stage breaks it. Without a
+    // stage there is no public hostname yet, so point at the local dev port.
+    CORS_ORIGIN: hostnames ? `https://${hostnames.web}` : "http://localhost:3001",
     BETTER_AUTH_SECRET: Config.redacted("BETTER_AUTH_SECRET"),
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
     GOOGLE_CLIENT_ID: Config.string("GOOGLE_CLIENT_ID"),
