@@ -1,4 +1,8 @@
 {
   "extends": "@it3k/config/tsconfig.base.json",
-  "include": ["alchemy.run.ts"]
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["alchemy.run.ts", "repo.ts", "stacks/**/*.ts"]
 }

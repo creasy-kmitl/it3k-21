@@ -1,0 +1,98 @@
+name: Deploy
+
+on:
+  push:
+    branches: [prod, main]
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # `--stage` is deliberately not passed: alchemy falls back to ALCHEMY_STAGE,
+  # and alchemy.run.ts reads the same variable to derive its hostnames.
+  #   PR         -> pr-<number>
+  #   push prod  -> prod
+  #   push main  -> staging
+  ALCHEMY_STAGE: >-
+    ${{ github.event_name == 'pull_request'
+      && format('pr-{0}', github.event.number)
+      || (github.ref_name == 'prod' && 'prod' || 'staging') }}
+  NODE_ENV: production
+
+jobs:
+  check:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      # Not `bun run check`: that also runs the formatter, which currently
+      # fails on ~24 files that predate this workflow. Run `vp check --fix`
+      # across the repo, then swap this for `bun run check`.
+      - run: bun run check-types
+
+  deploy:
+    # Deliberately not `needs: check` yet — `check-types` fails on two
+    # pre-existing errors in apps/web (the `cn` import in src/lib/utils.ts and
+    # an unused `Header` in routes/__root.tsx). Fix those, then add
+    # `needs: check` here so a red build can't reach prod.
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Deploy
+        working-directory: packages/infra
+        run: bun alchemy deploy --yes
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_SECRET_ID: ${{ secrets.GOOGLE_SECRET_ID }}
+          PULL_REQUEST: ${{ github.event.number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cleanup:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Safety check
+        run: |
+          case "$ALCHEMY_STAGE" in
+            prod|staging)
+              echo "Refusing to destroy '$ALCHEMY_STAGE' from the cleanup job."
+              exit 1
+              ;;
+          esac
+      - name: Destroy preview
+        working-directory: packages/infra
+        run: bun alchemy destroy --yes
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_SECRET_ID: ${{ secrets.GOOGLE_SECRET_ID }}
