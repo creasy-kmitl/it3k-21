@@ -2,7 +2,6 @@ import { Toaster } from "@it3k/ui/components/sonner";
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
-import Header from "../components/header";
 import NotFound from "../components/not-found";
 import { getOrigin } from "../functions/get-origin";
 
