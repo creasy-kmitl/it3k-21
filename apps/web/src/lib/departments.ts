@@ -28,9 +28,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const departmentsApi = {
-  list: () => request<Department[]>("/"),
+  list: () => request<Department[]>(""),
   create: (input: DepartmentInput) =>
-    request<Department>("/", { method: "POST", body: JSON.stringify(input) }),
+    request<Department>("", { method: "POST", body: JSON.stringify(input) }),
   update: (id: string, input: Partial<DepartmentInput>) =>
     request<Department>(`/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   remove: (id: string) => request<void>(`/${id}`, { method: "DELETE" }),
