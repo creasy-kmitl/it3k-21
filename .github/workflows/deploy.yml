@@ -62,6 +62,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          OAUTH_PROXY_SECRET: ${{ secrets.OAUTH_PROXY_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_SECRET_ID: ${{ secrets.GOOGLE_SECRET_ID }}
           PULL_REQUEST: ${{ github.event.number }}
@@ -116,5 +117,6 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          OAUTH_PROXY_SECRET: ${{ secrets.OAUTH_PROXY_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_SECRET_ID: ${{ secrets.GOOGLE_SECRET_ID }}
