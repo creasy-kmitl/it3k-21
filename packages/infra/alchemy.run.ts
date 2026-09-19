@@ -17,11 +17,19 @@ import { OWNER, REPOSITORY, ZONE } from "./repo.ts";
  *   pr-42   -> it3k-pr-42.creasy.club / it3k-api-pr-42.creasy.club
  *
  * Read synchronously from `ALCHEMY_STAGE` because `domain` is a plain prop,
- * not an Input. CI sets that variable instead of passing `--stage`. Local
- * deploys leave it unset and stay on workers.dev, so a laptop can never take
- * over a real hostname (and `live_$USER` isn't a legal hostname anyway).
+ * not an Input. CI sets that variable instead of passing `--stage`.
+ *
+ * Gated on `GITHUB_ACTIONS` as well, so only CI can ever claim one of these.
+ * An unset `ALCHEMY_STAGE` is too weak a guard on its own: a stray export or
+ * a sourced `.env` is enough for a laptop to attach `it3k.creasy.club` to its
+ * own `live_$USER` worker. That is not hypothetical — it is how prod's
+ * hostnames ended up held by `live_suwizx`, and Cloudflare refuses to move a
+ * hostname from one Worker to another (`WorkerProvider.ts` raises a hard
+ * `Effect.die`), so recovering means deploying the squatting stage again with
+ * no hostname. Local deploys stay on workers.dev.
  */
 const hostnames = (() => {
+  if (!process.env.GITHUB_ACTIONS) return undefined;
   const stage = process.env.ALCHEMY_STAGE;
   if (!stage) return undefined;
   if (stage === "prod") return { web: `it3k.${ZONE}`, api: `it3k-api.${ZONE}` };
@@ -127,7 +135,11 @@ export const server = Cloudflare.Worker("server", {
   dev: {
     port: 3000,
   },
-  domain: hostnames?.api,
+  // `?? null` matters: alchemy reads `domain: undefined` as "don't manage
+  // custom domains" and leaves whatever is attached in place, while `null`
+  // explicitly detaches. Without it a stage that once held a hostname keeps
+  // it forever — which is how `live_suwizx` is still squatting on prod's.
+  domain: hostnames?.api ?? null,
 });
 
 export type ServerEnv = Cloudflare.InferEnv<typeof server>;
@@ -157,7 +169,7 @@ export default Alchemy.Stack(
       dev: {
         port: 3001,
       },
-      domain: hostnames?.web,
+      domain: hostnames?.web ?? null,
     });
 
     // Keeping the logical id stable means each push edits the same comment
