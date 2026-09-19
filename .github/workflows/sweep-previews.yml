@@ -1,0 +1,103 @@
+name: Sweep previews
+
+# Backstop for `deploy.yml`'s `cleanup` job. That job is the only thing that
+# tears a preview stage down, and it fires exactly once -- on `pull_request:
+# closed`. Every way it can miss (the run fails after its retries, the event
+# is dropped, the workflow file was broken on that commit, someone cancels it)
+# leaks two Workers, a D1 database and an Axiom token with nothing left to
+# notice. This walks alchemy's state store instead of trusting the event, so
+# a stage is destroyed on the next run no matter why cleanup never happened.
+#
+# NOTE: `schedule` only fires for the copy of this file on the repository's
+# default branch -- `prod` here, not `main`. It stays dormant until merged
+# there; `workflow_dispatch` works from any branch in the meantime.
+
+on:
+  schedule:
+    # 03:17 UTC daily. Off the hour because GitHub queues (and drops) runs
+    # scheduled on it, and a sweep that silently never ran is the failure
+    # mode this file exists to prevent.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  # Never let two sweeps race over the same stage's state.
+  group: sweep-previews
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+
+      - name: Destroy stages whose PR is no longer open
+        working-directory: packages/infra
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_SECRET_ID: ${{ secrets.GOOGLE_SECRET_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # State is the source of truth, not the Workers list: a stage owns a
+          # D1 database and an Axiom token too, and one can outlive its Workers.
+          #   it3k/pr-42/  ->  pr-42
+          # `|| true` because grep exits 1 on no match, which is the *healthy*
+          # case here and must not fail the job.
+          stages=$(bun alchemy state ls it3k --no-input \
+            | grep -oE '^it3k/pr-[0-9]+/' \
+            | sed 's#^it3k/##; s#/$##' \
+            || true)
+
+          if [ -z "$stages" ]; then
+            echo "No preview stages in state. Nothing to sweep."
+            exit 0
+          fi
+
+          # Matching only `pr-<digits>` is what keeps `prod`, `staging` and
+          # everyone's `live_*`/`dev_*` laptop stages out of reach -- they can
+          # never be named by this loop, so there is no destructive path to them.
+          failed=0
+          for stage in $stages; do
+            number="${stage#pr-}"
+            state=$(gh pr view "$number" --json state --jq .state 2>/dev/null || echo UNKNOWN)
+
+            case "$state" in
+              OPEN)
+                echo "$stage: PR #$number is open, keeping."
+                ;;
+              UNKNOWN)
+                # A deleted PR or a transient API error read the same from
+                # here. Never guess in favour of deleting -- leave it for the
+                # next run, which is 24h away and costs nothing.
+                echo "::warning::$stage: could not read PR #$number, skipping."
+                failed=1
+                ;;
+              *)
+                echo "::notice::$stage: PR #$number is $state, destroying."
+                if ALCHEMY_STAGE="$stage" bun alchemy destroy --yes --no-input; then
+                  echo "$stage: destroyed."
+                else
+                  # Keep sweeping the other stages; one bad stage should not
+                  # strand the rest for another day.
+                  echo "::error::$stage: destroy failed."
+                  failed=1
+                fi
+                ;;
+            esac
+          done
+
+          exit "$failed"
