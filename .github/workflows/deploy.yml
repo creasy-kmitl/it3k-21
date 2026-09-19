@@ -74,6 +74,14 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          # `refs/pull/<n>/merge` is what checkout picks by default on a
+          # `pull_request` event, and GitHub deletes that ref when the PR
+          # closes -- which is this job's own trigger. The race is real and
+          # a lost one leaks the stage's workers with nothing to retry it.
+          # `refs/pull/<n>/head` is kept forever, even after the branch is
+          # deleted, so the job can always reach the code it must destroy.
+          ref: refs/pull/${{ github.event.number }}/head
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
@@ -88,7 +96,21 @@ jobs:
           esac
       - name: Destroy preview
         working-directory: packages/infra
-        run: bun alchemy destroy --yes
+        # Retried because a half-destroyed stage is worse than a failed one:
+        # alchemy has already torn down part of the graph, and nothing
+        # re-runs this job on its own. `destroy` is idempotent over state, so
+        # a second pass picks up whatever the first left behind. Anything
+        # still standing after three tries is left to `sweep-previews.yml`.
+        run: |
+          for attempt in 1 2 3; do
+            if bun alchemy destroy --yes --no-input; then
+              exit 0
+            fi
+            echo "::warning::destroy attempt $attempt for '$ALCHEMY_STAGE' failed"
+            sleep $((attempt * 30))
+          done
+          echo "::error::could not destroy '$ALCHEMY_STAGE'; the nightly sweep will retry"
+          exit 1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
