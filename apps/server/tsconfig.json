@@ -2,6 +2,11 @@
   "extends": "@it3k/config/tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
+    // cloudflare-env.d.ts imports ServerEnv from @it3k/infra/alchemy.run, which
+    // pulls infra's source into this program — and that source imports
+    // `./repo.ts` by extension. infra's own tsconfig allows it; we need the
+    // same flag here or tsc fails with TS5097 on a file we don't own.
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": ["./src/*"]
     },

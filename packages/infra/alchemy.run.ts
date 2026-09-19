@@ -36,15 +36,45 @@ export const db = Cloudflare.D1.Database("database", {
   migrations: "../../packages/db/src/migrations",
 });
 
+/**
+ * Axiom's Personal plan caps the whole org at three datasets, so a dataset
+ * per stage does not fit: staging tried to create `it3k-staging-logs` while
+ * the pr-1 preview still held a slot, and Axiom answered 400. Stages now
+ * share two datasets split by tier, which leaves a slot spare no matter how
+ * many previews are open at once:
+ *
+ *   prod           -> it3k-prod-logs
+ *   staging, pr-*  -> it3k-nonprod-logs
+ *
+ * Stages pooled into one dataset stay separable at query time through the
+ * `environment` field on every event — see the DEPLOY_ENV binding below.
+ */
 export const observability = Effect.gen(function* () {
   const { stage } = yield* Alchemy.Stack;
-  const datasetName = `it3k-${stage}-logs`;
+  const tier = stage === "prod" ? "prod" : "nonprod";
+  const datasetName = `it3k-${tier}-logs`;
 
   const dataset = yield* Axiom.Dataset("logs", {
     name: datasetName,
     kind: "axiom:events:v1",
-    description: "it3k application logs",
-  });
+    description: `it3k application logs (${tier})`,
+  }).pipe(
+    // The provider marks ownership by stamping the creating stage into the
+    // dataset's description, so the second stage to reach a shared dataset
+    // reads it as someone else's and refuses it. Every stage in a tier is a
+    // legitimate owner here, so let them take it over in turn.
+    Alchemy.AdoptPolicy.adopt(),
+    // `alchemy destroy` on a closed PR must not take staging's logs with it.
+    // Both datasets are meant to outlive every stage that writes to them.
+    //
+    // Caveat: retain also applies to the old generation of a replacement, so
+    // a stage whose state still holds a per-stage dataset orphans it on the
+    // rename instead of deleting it. Clear those out in the Axiom UI once.
+    Alchemy.RemovalPolicy.retain(),
+  );
+  // Scoped per stage, not per tier: a token is cheap, is not subject to the
+  // dataset limit, and its secret is only readable at creation — so a closed
+  // PR can revoke its own without stranding the stages that share the dataset.
   const ingest = yield* Axiom.ApiToken("logs-ingest", {
     name: `it3k-${stage}-logs-ingest`,
     datasetCapabilities: {
@@ -60,6 +90,10 @@ export const observability = Effect.gen(function* () {
       AXIOM_API_KEY: ingest.token,
       AXIOM_DATASET: dataset.name,
       AXIOM_EDGE_URL: dataset.edgeDeploymentUrl,
+      // Lands on every event as evlog's `environment`. The dataset narrows a
+      // query to a tier; this narrows it to a single stage (`staging` vs
+      // `pr-42`), which the dataset name no longer encodes.
+      DEPLOY_ENV: stage,
     },
   };
 });
@@ -70,6 +104,7 @@ export const observabilityBindings = {
   AXIOM_API_KEY: observabilityEnv.pipe(Effect.map(({ AXIOM_API_KEY }) => AXIOM_API_KEY)),
   AXIOM_DATASET: observabilityEnv.pipe(Effect.map(({ AXIOM_DATASET }) => AXIOM_DATASET)),
   AXIOM_EDGE_URL: observabilityEnv.pipe(Effect.map(({ AXIOM_EDGE_URL }) => AXIOM_EDGE_URL)),
+  DEPLOY_ENV: observabilityEnv.pipe(Effect.map(({ DEPLOY_ENV }) => DEPLOY_ENV)),
 };
 
 export const server = Cloudflare.Worker("server", {
@@ -80,8 +115,9 @@ export const server = Cloudflare.Worker("server", {
   env: {
     DB: db,
     // The web worker is created after this one, so its URL can't be referenced
-    // here without a cycle — deriving both from the stage breaks it.
-    CORS_ORIGIN: hostnames ? `https://${hostnames.web}` : Config.string("CORS_ORIGIN"),
+    // here without a cycle — deriving both from the stage breaks it. Without a
+    // stage there is no public hostname yet, so point at the local dev port.
+    CORS_ORIGIN: hostnames ? `https://${hostnames.web}` : "http://localhost:3001",
     BETTER_AUTH_SECRET: Config.redacted("BETTER_AUTH_SECRET"),
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
     GOOGLE_CLIENT_ID: Config.string("GOOGLE_CLIENT_ID"),
@@ -113,6 +149,10 @@ export default Alchemy.Stack(
       env: {
         ...observabilityBindings,
         VITE_SERVER_URL: serverWorker.url.as<string>(),
+        // apps/web types its env from `vite/client`, not the worker bindings,
+        // so the stage reaches it the same way the API URL does: only
+        // `VITE_`-prefixed keys are inlined into `import.meta.env`.
+        VITE_DEPLOY_ENV: observabilityBindings.DEPLOY_ENV,
       },
       dev: {
         port: 3001,
