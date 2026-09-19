@@ -40,6 +40,28 @@ const hostnames = (() => {
   return { web: `it3k-${slug}.${ZONE}`, api: `it3k-api-${slug}.${ZONE}` };
 })();
 
+/**
+ * Google matches OAuth redirect URIs byte for byte -- no wildcards, no regex
+ * -- so a preview's hostname, which only exists while its PR is open, can
+ * never be registered. Better Auth's `oAuthProxy` closes that gap: the
+ * preview sends Google to a stage that *is* registered, and that stage hands
+ * the profile back encrypted without touching its own database.
+ *
+ * Staging relays rather than prod, so no preview traffic ever reaches prod.
+ *
+ * Only `pr-*` proxies. prod, staging and localhost each own a registered
+ * redirect URI and point `AUTH_PROXY_URL` at themselves, which makes the
+ * plugin a no-op -- the three environments developers actually compare run
+ * byte-for-byte the same sign-in path. Three URIs to register, once:
+ *
+ *   https://it3k-api.creasy.club/api/auth/callback/google
+ *   https://it3k-api-staging.creasy.club/api/auth/callback/google
+ *   http://localhost:3000/api/auth/callback/google
+ */
+const AUTH_RELAY_URL = `https://it3k-api-staging.${ZONE}`;
+const isPreviewStage = process.env.ALCHEMY_STAGE?.startsWith("pr-") ?? false;
+const isAuthRelay = process.env.ALCHEMY_STAGE === "staging";
+
 export const db = Cloudflare.D1.Database("database", {
   migrations: "../../packages/db/src/migrations",
 });
@@ -130,6 +152,19 @@ export const server = Cloudflare.Worker("server", {
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
     GOOGLE_CLIENT_ID: Config.string("GOOGLE_CLIENT_ID"),
     GOOGLE_SECRET_ID: Config.redacted("GOOGLE_SECRET_ID"),
+    // Equal to BETTER_AUTH_URL unless this is a preview, and the plugin
+    // skips proxying entirely when the two match.
+    AUTH_PROXY_URL: isPreviewStage ? AUTH_RELAY_URL : Cloudflare.Worker.URL,
+    // Shared across stages by design, so it is kept apart from
+    // BETTER_AUTH_SECRET: a leaked relay key must not be able to sign a
+    // session cookie that prod will accept.
+    OAUTH_PROXY_SECRET: Config.redacted("OAUTH_PROXY_SECRET"),
+    // Only the relay redirects a browser back to a preview, so only the relay
+    // trusts those hostnames. Every other stage keeps the narrow list it has
+    // today. Better Auth accepts the wildcard here that Google refuses.
+    AUTH_PREVIEW_ORIGINS: isAuthRelay
+      ? `https://it3k-pr-*.${ZONE},https://it3k-api-pr-*.${ZONE}`
+      : "",
     ...observabilityBindings,
   },
   dev: {
