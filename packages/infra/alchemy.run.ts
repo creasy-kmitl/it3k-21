@@ -135,7 +135,11 @@ export const server = Cloudflare.Worker("server", {
   dev: {
     port: 3000,
   },
-  domain: hostnames?.api,
+  // `?? null` matters: alchemy reads `domain: undefined` as "don't manage
+  // custom domains" and leaves whatever is attached in place, while `null`
+  // explicitly detaches. Without it a stage that once held a hostname keeps
+  // it forever — which is how `live_suwizx` is still squatting on prod's.
+  domain: hostnames?.api ?? null,
 });
 
 export type ServerEnv = Cloudflare.InferEnv<typeof server>;
@@ -165,7 +169,7 @@ export default Alchemy.Stack(
       dev: {
         port: 3001,
       },
-      domain: hostnames?.web,
+      domain: hostnames?.web ?? null,
     });
 
     // Keeping the logical id stable means each push edits the same comment
