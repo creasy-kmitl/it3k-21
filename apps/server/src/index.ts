@@ -10,7 +10,9 @@ import { departments } from "./routes/departments";
 import { createAuth } from "./services";
 
 initLogger({
-  env: { service: "it3k-server" },
+  // Stages share a dataset per tier, so the stage name is what separates
+  // `staging` from `pr-42` in Axiom. Bound by alchemy.run.ts.
+  env: { service: "it3k-server", environment: env.DEPLOY_ENV },
 });
 
 const identifyUser = createAuthMiddleware((await createAuth()) as BetterAuthInstance, {
