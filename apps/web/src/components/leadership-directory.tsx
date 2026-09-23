@@ -50,12 +50,15 @@ type Props = {
   renderActions?: (seat: LeadershipSummary) => ReactNode;
   /** Shown in the toolbar when the server says the caller may add seats. */
   createAction?: ReactNode;
+  /** Shown between the toolbar and the list, e.g. the create/edit form. */
+  panel?: ReactNode;
 };
 
 export default function LeadershipDirectory({
   api = leadershipApi,
   renderActions,
   createAction,
+  panel,
 }: Props) {
   const [search, setSearch] = useState("");
   const [departmentId, setDepartmentId] = useState<string>();
@@ -133,6 +136,8 @@ export default function LeadershipDirectory({
         </select>
         {roster.data?.canCreate && createAction}
       </div>
+
+      {panel}
 
       {roster.isPending ? (
         <div role="status" className="flex flex-col gap-2">

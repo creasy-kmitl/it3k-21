@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import LeadershipDirectory from "@/components/leadership-directory";
+import LeadershipManager from "@/components/leadership-manager";
 
 export const Route = createFileRoute("/_auth/head")({
-  component: LeadershipDirectory,
+  component: LeadershipManager,
 });
