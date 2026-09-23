@@ -10,15 +10,14 @@ export const ac = createAccessControl(statement);
 
 export const staff = ac.newRole({});
 
-export const head = ac.newRole({
-  user: ["list", "get"],
-});
+// Heads and viceheads get no Better Auth grants: `user: ["list"]` would open
+// /api/auth/admin/list-users, every account's email included. What they need
+// from the roster (names of unattached accounts) comes from
+// /api/leadership/users, and roster rights depend on the department as well
+// as the role, so they live in the server's leadership policy.
+export const head = ac.newRole({});
 
-// Same Better Auth grants as head. Leadership-roster rights depend on the
-// department as well as the role, so they live in the server's leadership policy.
-export const vicehead = ac.newRole({
-  user: ["list", "get"],
-});
+export const vicehead = ac.newRole({});
 
 export const admin = ac.newRole({
   ...adminAc.statements,
