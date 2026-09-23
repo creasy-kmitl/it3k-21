@@ -499,6 +499,24 @@ describe("PATCH /:id", () => {
     });
   });
 
+  test("a seat reattached mid-request is not edited by its previous holder", async () => {
+    await t.seedUser("art-new", { role: "head", department: "Art" });
+    // The ownership check passes, then the seat changes hands before the write.
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("UPDATE leadership SET user_id = 'art-new' WHERE id = ?", [artHeadSeat]);
+    };
+    const { res } = await send("art-head", "PATCH", `/${artHeadSeat}`, {
+      nickname: "hijack",
+      phone: "0999999999",
+      socials: [{ platform: "line", value: "hijack" }],
+    });
+    expect(res.status).toBe(409);
+    const row = await stored(artHeadSeat);
+    expect(row).toMatchObject({ userId: "art-new", nickname: null, phone: "0800000000" });
+    expect(await socialsOf(artHeadSeat)).toEqual([{ platform: "line", value: "old" }]);
+  });
+
   test("they cannot edit another seat; staff cannot edit at all", async () => {
     expect((await send("art-head", "PATCH", `/${prSeat}`, { nickname: "x" })).res.status).toBe(403);
     expect((await send("staff", "PATCH", `/${prSeat}`, { nickname: "x" })).res.status).toBe(403);

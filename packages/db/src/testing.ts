@@ -76,14 +76,21 @@ function toBinding(value: unknown): SQLQueryBindings {
   return value as SQLQueryBindings;
 }
 
+/** Lets a test act between a route's reads and its batched writes. */
+export type TestDbHooks = { beforeBatch?: () => void };
+
 class SqliteD1 implements D1Database {
-  constructor(readonly sqlite: Sqlite) {}
+  constructor(
+    readonly sqlite: Sqlite,
+    private readonly hooks: TestDbHooks = {},
+  ) {}
 
   prepare(query: string): SqliteD1Statement {
     return new SqliteD1Statement(this.sqlite, query);
   }
 
   async batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]> {
+    this.hooks.beforeBatch?.();
     // D1 runs a batch as one implicit transaction: all statements or none.
     const run = this.sqlite.transaction(() =>
       statements.map((statement): D1Result<T> => {
@@ -141,5 +148,6 @@ export function createTestDb() {
   // D1 always enforces foreign keys; plain SQLite needs it switched on.
   sqlite.run("PRAGMA foreign_keys = ON");
   applyMigrations(sqlite);
-  return { db: createDb({ DB: new SqliteD1(sqlite) }), sqlite };
+  const hooks: TestDbHooks = {};
+  return { db: createDb({ DB: new SqliteD1(sqlite, hooks) }), sqlite, hooks };
 }

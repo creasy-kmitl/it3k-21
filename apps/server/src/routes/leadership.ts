@@ -9,7 +9,7 @@ import {
   leadershipContactReveal,
   leadershipSocial,
 } from "@it3k/db/schema/leadership";
-import { type SQL, type SQLWrapper, and, eq, isNull, sql } from "drizzle-orm";
+import { type SQL, type SQLWrapper, and, eq, exists, isNull, sql } from "drizzle-orm";
 import type { AuditableLogger } from "evlog";
 import { type Context, Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -423,17 +423,43 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
         }
       }
       const { socials: items, ...fields } = input;
+      // Re-checked inside the batch: a seat reattached after the ownership check
+      // above must not be written by the account that used to hold it.
+      const stillAllowed = isManager(actor)
+        ? eq(leadership.id, id)
+        : and(eq(leadership.id, id), eq(leadership.userId, actor.id));
+      let updated: { id: string }[];
       try {
         // One batch: D1 applies the update and the social replacement together or not at all.
-        await db.batch([
+        [updated] = await db.batch([
           db
             .update(leadership)
             .set({ ...fields, updatedAt: new Date() })
-            .where(eq(leadership.id, id)),
+            .where(stillAllowed)
+            .returning({ id: leadership.id }),
           ...(items
             ? [
-                db.delete(leadershipSocial).where(eq(leadershipSocial.leadershipId, id)),
-                ...insertSocials(db, id, items),
+                db
+                  .delete(leadershipSocial)
+                  .where(
+                    and(
+                      eq(leadershipSocial.leadershipId, id),
+                      exists(db.select({ id: leadership.id }).from(leadership).where(stillAllowed)),
+                    ),
+                  ),
+                ...items.map((item) =>
+                  db.insert(leadershipSocial).select(
+                    db
+                      .select({
+                        id: sql<string>`${crypto.randomUUID()}`.as("id"),
+                        leadershipId: leadership.id,
+                        platform: sql<string>`${item.platform}`.as("platform"),
+                        value: sql<string>`${item.value}`.as("value"),
+                      })
+                      .from(leadership)
+                      .where(stillAllowed),
+                  ),
+                ),
               ]
             : []),
         ]);
@@ -441,6 +467,14 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
         const conflict = conflictMessage(error);
         if (conflict) return c.json({ message: conflict }, 409);
         throw error;
+      }
+      if (updated.length === 0) {
+        return isManager(actor)
+          ? c.json({ message: "Leader not found" }, 404)
+          : c.json(
+              { message: "This seat changed while you were editing; reload and try again" },
+              409,
+            );
       }
       const summary = await findSummary(db, id, actor);
       if (!summary) {

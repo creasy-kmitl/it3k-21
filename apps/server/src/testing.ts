@@ -10,7 +10,7 @@ const TEST_USER_HEADER = "x-test-user";
 const TEST_IMPERSONATOR_HEADER = "x-test-impersonated-by";
 
 export function createTestContext() {
-  const { db, sqlite } = createTestDb();
+  const { db, sqlite, hooks } = createTestDb();
 
   const deps: RouteDeps = {
     getSession: async (headers) => {
@@ -57,7 +57,7 @@ export function createTestContext() {
     };
   }
 
-  return { db, sqlite, deps, departmentId, seedUser, as };
+  return { db, sqlite, hooks, deps, departmentId, seedUser, as };
 }
 
 /** Parsed JSON body, typed loosely enough for `toEqual` assertions. */
