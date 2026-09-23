@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 
 import { ApiError, type LeadershipContact } from "@/lib/leadership";
 import { fakeApi, summary } from "@/test/query";
@@ -73,6 +73,20 @@ describe("LeadershipContactButton", () => {
     expect((await view.findByRole("alertdialog")).textContent).toContain(WARNING);
     expect(view.queryByText("081-234-5678")).toBeNull();
     expect(calls).toHaveLength(1);
+  });
+
+  test("a reveal that answers after the dialog closed is thrown away", async () => {
+    let answer: (contact: LeadershipContact) => void = () => {};
+    const { view, open } = setup(() => new Promise((resolve) => (answer = resolve)));
+    open();
+    fireEvent.click(await view.findByRole("button", { name: "ยืนยัน" }));
+    fireEvent.click(view.getByRole("button", { name: "ยกเลิก" }));
+    await waitFor(() => expect(view.queryByRole("alertdialog")).toBeNull());
+    await act(async () => answer(contact));
+    expect(view.queryByText("081-234-5678")).toBeNull();
+    open();
+    expect((await view.findByRole("alertdialog")).textContent).toContain(WARNING);
+    expect(view.queryByText("081-234-5678")).toBeNull();
   });
 
   test("a failed audit shows an error and no details", async () => {

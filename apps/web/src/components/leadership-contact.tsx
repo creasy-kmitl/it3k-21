@@ -11,7 +11,7 @@ import {
 import { Button } from "@it3k/ui/components/button";
 import { Spinner } from "@it3k/ui/components/spinner";
 import { Contact } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
   type LeadershipApi,
@@ -58,18 +58,26 @@ export default function LeadershipContactButton({
 }) {
   const [open, setOpen] = useState(false);
   const [stage, setStage] = useState<Stage>({ name: "confirm" });
+  // Bumped on every close, so an answer to an earlier dialog is dropped
+  // instead of showing details without a fresh confirmation.
+  const session = useRef(0);
 
   function onOpenChange(next: boolean) {
     setOpen(next);
-    if (!next) setStage({ name: "confirm" });
+    if (!next) {
+      session.current++;
+      setStage({ name: "confirm" });
+    }
   }
 
   async function reveal() {
+    const current = session.current;
     setStage({ name: "loading" });
     try {
-      setStage({ name: "shown", contact: await api.reveal(seat.id) });
+      const contact = await api.reveal(seat.id);
+      if (session.current === current) setStage({ name: "shown", contact });
     } catch {
-      setStage({ name: "failed" });
+      if (session.current === current) setStage({ name: "failed" });
     }
   }
 
