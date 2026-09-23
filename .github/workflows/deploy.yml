@@ -56,8 +56,34 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Deploy
         working-directory: packages/infra
-        run: bun alchemy deploy --yes
+        # `--yes` also makes alchemy bootstrap a brand-new, empty state store
+        # whenever its probe can't reach the existing one -- which is how
+        # every stage's state was lost on 2026-09-19. With empty state a
+        # long-lived stage redeploys from scratch: a fresh D1 next to the
+        # live one, then a hostname collision. So `staging` and `prod` must
+        # already be in state before we deploy them. `state ls` runs without
+        # `--yes`, so in CI it fails instead of bootstrapping.
+        #
+        # To rebuild a stage on purpose, set the repo variable
+        # ALLOW_FRESH_STAGE to its name for one run, then delete it.
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            # A stage with no state exits 1 ("path does not exist"), same as an
+            # unreachable store. Both mean "not in state", and both are blocked.
+            listing=$(bun alchemy state ls "it3k/$ALCHEMY_STAGE" --no-input 2>&1) || true
+            if ! grep -q "^it3k/$ALCHEMY_STAGE/" <<<"$listing"; then
+              if [ "${ALLOW_FRESH_STAGE:-}" = "$ALCHEMY_STAGE" ]; then
+                echo "::warning::'$ALCHEMY_STAGE' has no state; deploying it fresh (ALLOW_FRESH_STAGE)."
+              else
+                echo "::error::'$ALCHEMY_STAGE' has no state in the store. Refusing to deploy a second copy of it. See the comment on this step."
+                exit 1
+              fi
+            fi
+          fi
+          bun alchemy deploy --yes
         env:
+          ALLOW_FRESH_STAGE: ${{ vars.ALLOW_FRESH_STAGE }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
