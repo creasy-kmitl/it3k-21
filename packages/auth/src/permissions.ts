@@ -14,13 +14,19 @@ export const head = ac.newRole({
   user: ["list", "get"],
 });
 
+// Same Better Auth grants as head. Leadership-roster rights depend on the
+// department as well as the role, so they live in the server's leadership policy.
+export const vicehead = ac.newRole({
+  user: ["list", "get"],
+});
+
 export const admin = ac.newRole({
   ...adminAc.statements,
   // Departments are managed by admins only.
   department: ["create", "read", "update", "delete", "assign"],
 });
 
-export const roles = { staff, head, admin };
+export const roles = { staff, head, vicehead, admin };
 
 export type Role = keyof typeof roles;
 export const ROLES = Object.keys(roles) as Role[];
