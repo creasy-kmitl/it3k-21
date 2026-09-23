@@ -63,9 +63,7 @@ class SqliteD1Statement implements D1PreparedStatement {
 
   raw<T = unknown[]>(options: { columnNames: true }): Promise<[string[], ...T[]]>;
   raw<T = unknown[]>(options?: { columnNames?: false }): Promise<T[]>;
-  async raw<T = unknown[]>(options?: {
-    columnNames?: boolean;
-  }): Promise<T[] | [string[], ...T[]]> {
+  async raw<T = unknown[]>(options?: { columnNames?: boolean }): Promise<T[] | [string[], ...T[]]> {
     const statement = this.statement();
     const rows = statement.values(...this.params) as T[];
     return options?.columnNames ? [statement.columnNames, ...rows] : rows;

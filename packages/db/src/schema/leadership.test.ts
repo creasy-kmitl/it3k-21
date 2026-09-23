@@ -49,7 +49,9 @@ describe("leadership", () => {
       .insert(leadership)
       .values({ departmentId: art.id, role: "head", name: "A" })
       .returning();
-    expect(row?.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(row?.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
     expect(row?.userId).toBeNull();
     expect(row?.phone).toBeNull();
   });
@@ -75,7 +77,10 @@ describe("leadership", () => {
       { departmentId: pr.id, role: "head", name: "C" },
     ]);
     await expect(
-      t.db.insert(leadership).values({ departmentId: pr.id, role: "vicehead", name: "D", userId }).run(),
+      t.db
+        .insert(leadership)
+        .values({ departmentId: pr.id, role: "vicehead", name: "D", userId })
+        .run(),
     ).rejects.toThrow();
   });
 
