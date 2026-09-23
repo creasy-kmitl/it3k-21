@@ -60,10 +60,32 @@ describe("POST /:id/reveal", () => {
       {
         actorUserId: "staff",
         actorDepartmentCode: null,
+        impersonatedBy: null,
         targetLeadershipId: seatId,
         targetDepartmentId: await t.departmentId("Tech/Live"),
       },
     ]);
+  });
+
+  test("records the admin behind an impersonated session", async () => {
+    const init = t.as("staff", { method: "POST", json: { confirmed: true } });
+    const headers = new Headers(init.headers);
+    headers.set("x-test-impersonated-by", "admin-1");
+    const res = await app.request(`/${seatId}/reveal`, { ...init, headers });
+    expect(res.status).toBe(200);
+    expect(events[0]).toMatchObject({ actorUserId: "staff", impersonatedBy: "admin-1" });
+  });
+
+  test("rejects non-JSON bodies, so a cross-site form post cannot reveal", async () => {
+    const headers = new Headers(t.as("staff").headers);
+    headers.set("content-type", "text/plain");
+    const res = await app.request(`/${seatId}/reveal`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ confirmed: true }),
+    });
+    expect(res.status).toBe(400);
+    expect(events).toEqual([]);
   });
 
   test("the audit event carries no contact data or email", async () => {
@@ -128,6 +150,7 @@ describe("recordContactReveal", () => {
   const event: ContactRevealAudit = {
     actorUserId: "u1",
     actorDepartmentCode: "tech-live",
+    impersonatedBy: "admin-1",
     targetLeadershipId: "seat-1",
     targetDepartmentId: "dept-1",
   };
@@ -140,7 +163,7 @@ describe("recordContactReveal", () => {
     const set = (context: unknown) => void calls.push(["set", context]);
     recordContactReveal({ audit, set }, event);
     expect(calls).toEqual([
-      ["set", { leadership: { actorDepartmentCode: "tech-live" } }],
+      ["set", { leadership: { actorDepartmentCode: "tech-live", impersonatedBy: "admin-1" } }],
       [
         "audit",
         {

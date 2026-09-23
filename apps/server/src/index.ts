@@ -43,9 +43,10 @@ app.use(
 app.on(["POST", "GET"], "/api/auth/*", async (c) => (await createAuth()).handler(c.req.raw));
 
 const deps: RouteDeps = {
-  getUserId: async (headers) => {
+  getSession: async (headers) => {
     const session = await (await createAuth()).api.getSession({ headers });
-    return session?.user.id ?? null;
+    if (!session) return null;
+    return { userId: session.user.id, impersonatedBy: session.session.impersonatedBy ?? null };
   },
   getDb,
 };

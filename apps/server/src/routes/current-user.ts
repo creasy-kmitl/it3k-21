@@ -6,13 +6,20 @@ import { createMiddleware } from "hono/factory";
 
 /** Seams injected by index.ts in production and by tests in Bun. */
 export type RouteDeps = {
-  /** Resolves the session cookie to a user id, or null when signed out. */
-  getUserId: (headers: Headers) => Promise<string | null>;
+  /** Resolves the session cookie, or null when signed out. */
+  getSession: (headers: Headers) => Promise<SessionIdentity | null>;
   getDb: () => Database;
+};
+
+export type SessionIdentity = {
+  userId: string;
+  /** Set when an admin is impersonating `userId` (Better Auth admin plugin). */
+  impersonatedBy: string | null;
 };
 
 export type CurrentUser = {
   id: string;
+  impersonatedBy: string | null;
   name: string;
   role: string | null;
   departmentId: string | null;
@@ -36,8 +43,8 @@ function isBanned(row: { banned: boolean | null; banExpires: Date | null }) {
  */
 export function requireUser(deps: RouteDeps) {
   return createMiddleware<CurrentUserEnv>(async (c, next) => {
-    const userId = await deps.getUserId(c.req.raw.headers);
-    if (!userId) {
+    const session = await deps.getSession(c.req.raw.headers);
+    if (!session) {
       return c.json({ message: "Unauthorized" }, 401);
     }
     const db = deps.getDb();
@@ -53,7 +60,7 @@ export function requireUser(deps: RouteDeps) {
       })
       .from(user)
       .leftJoin(department, eq(department.id, user.departmentId))
-      .where(eq(user.id, userId));
+      .where(eq(user.id, session.userId));
     if (!row) {
       return c.json({ message: "Unauthorized" }, 401);
     }
@@ -63,6 +70,7 @@ export function requireUser(deps: RouteDeps) {
     c.set("db", db);
     c.set("user", {
       id: row.id,
+      impersonatedBy: session.impersonatedBy,
       name: row.name,
       role: row.role,
       departmentId: row.departmentId,

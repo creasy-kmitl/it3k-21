@@ -7,12 +7,17 @@ import { eq } from "drizzle-orm";
 import type { RouteDeps } from "./routes/current-user";
 
 const TEST_USER_HEADER = "x-test-user";
+const TEST_IMPERSONATOR_HEADER = "x-test-impersonated-by";
 
 export function createTestContext() {
   const { db, sqlite } = createTestDb();
 
   const deps: RouteDeps = {
-    getUserId: async (headers) => headers.get(TEST_USER_HEADER),
+    getSession: async (headers) => {
+      const userId = headers.get(TEST_USER_HEADER);
+      if (!userId) return null;
+      return { userId, impersonatedBy: headers.get(TEST_IMPERSONATOR_HEADER) };
+    },
     getDb: () => db,
   };
 

@@ -31,6 +31,8 @@ const MAX_QUERY_CODE_POINTS = 64;
 export type ContactRevealAudit = {
   actorUserId: string;
   actorDepartmentCode: CurrentUser["departmentCode"];
+  /** The admin acting as `actorUserId`, if the session is impersonated. */
+  impersonatedBy: string | null;
   targetLeadershipId: string;
   targetDepartmentId: string;
 };
@@ -59,7 +61,12 @@ export function recordContactReveal(
   if (!log) {
     throw new Error("Request logger is not available");
   }
-  log.set({ leadership: { actorDepartmentCode: event.actorDepartmentCode } });
+  log.set({
+    leadership: {
+      actorDepartmentCode: event.actorDepartmentCode,
+      impersonatedBy: event.impersonatedBy,
+    },
+  });
   log.audit({
     action: "leadership.contact.revealed",
     actor: { type: "user", id: event.actorUserId },
@@ -454,6 +461,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
         await deps.audit(c, {
           actorUserId: actor.id,
           actorDepartmentCode: actor.departmentCode,
+          impersonatedBy: actor.impersonatedBy,
           targetLeadershipId: id,
           targetDepartmentId: seat.departmentId,
         });
