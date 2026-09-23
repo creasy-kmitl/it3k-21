@@ -8,8 +8,9 @@ export const Route = createFileRoute("/_auth")({
   beforeLoad: async () => {
     const session = await authClient.getSession();
     if (!session.data) {
+      // Explain why before sending them to sign in; the 401 page links to /login.
       throw redirect({
-        to: "/login",
+        to: "/unauthorized",
       });
     }
     return { session };
