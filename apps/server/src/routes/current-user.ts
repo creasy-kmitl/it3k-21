@@ -74,13 +74,19 @@ export function requireUser(deps: RouteDeps) {
 }
 
 /** Drizzle wraps driver errors; the SQLite message is on the cause chain. */
-export function constraintError(error: unknown): "unique" | "foreign-key" | null {
+export function constraintMessage(error: unknown): string | null {
   let current: unknown = error;
   for (let depth = 0; current && depth < 5; depth++) {
     const message = current instanceof Error ? current.message : String(current);
-    if (message.includes("UNIQUE constraint failed")) return "unique";
-    if (message.includes("FOREIGN KEY constraint failed")) return "foreign-key";
+    if (/(UNIQUE|FOREIGN KEY) constraint failed/.test(message)) return message;
     current = current instanceof Error ? current.cause : null;
   }
+  return null;
+}
+
+export function constraintError(error: unknown): "unique" | "foreign-key" | null {
+  const message = constraintMessage(error);
+  if (message?.includes("UNIQUE constraint failed")) return "unique";
+  if (message?.includes("FOREIGN KEY constraint failed")) return "foreign-key";
   return null;
 }

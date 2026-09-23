@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { leadership, leadershipSocial } from "@it3k/db/schema/index";
+import { eq } from "drizzle-orm";
 
 import { createTestContext, readJson } from "../testing";
 import { createLeadershipRoutes } from "./leadership";
@@ -291,4 +292,322 @@ describe("GET /departments", () => {
     expect(body).toHaveLength(16);
     expect(body[0]).toEqual({ id: expect.any(String), name: "สวัสดิการ" });
   });
+});
+
+async function send(userId: string | null, method: string, path: string, json?: unknown) {
+  const res = await app.request(path, t.as(userId, { method, json }));
+  return { res, body: res.status === 204 ? null : await readJson(res) };
+}
+
+async function socialsOf(id: string) {
+  const rows = await t.db
+    .select({ platform: leadershipSocial.platform, value: leadershipSocial.value })
+    .from(leadershipSocial)
+    .where(eq(leadershipSocial.leadershipId, id));
+  return rows.sort((a, b) => a.platform.localeCompare(b.platform));
+}
+
+async function stored(id: string) {
+  const [row] = await t.db.select().from(leadership).where(eq(leadership.id, id));
+  return row;
+}
+
+describe("POST /", () => {
+  const input = async (overrides: Record<string, unknown> = {}) => ({
+    departmentId: await t.departmentId("Art"),
+    role: "head",
+    name: "New Head",
+    socials: [],
+    ...overrides,
+  });
+
+  for (const manager of ["admin", "tech-head", "reg-vice"]) {
+    test(`${manager} creates a seat`, async () => {
+      await t.seedUser("reg-vice", { role: "vicehead", department: "ทะเบียน" });
+      const { res, body } = await send(
+        manager,
+        "POST",
+        "/",
+        await input({
+          nickname: "นิว",
+          phone: "081-234-5678",
+          socials: [
+            { platform: "line", value: "new.head" },
+            { platform: "instagram", value: "https://instagram.com/new.head" },
+          ],
+        }),
+      );
+      expect(res.status).toBe(201);
+      expect(body).toMatchObject({
+        departmentName: "Art",
+        role: "head",
+        name: "New Head",
+        nickname: "นิว",
+        displayName: "นิว New Head",
+        canEdit: true,
+        canDelete: true,
+      });
+      expect(JSON.stringify(body)).not.toContain("081-234-5678");
+      const id = String(body?.id);
+      expect((await stored(id))?.phone).toBe("081-234-5678");
+      expect(await socialsOf(id)).toEqual([
+        { platform: "instagram", value: "https://instagram.com/new.head" },
+        { platform: "line", value: "new.head" },
+      ]);
+    });
+  }
+
+  test("other leaders and staff cannot create", async () => {
+    for (const who of ["art-head", "staff"]) {
+      const { res } = await send(who, "POST", "/", await input());
+      expect(res.status).toBe(403);
+    }
+    expect(await t.db.select().from(leadership)).toEqual([]);
+  });
+
+  test("stores blank phone and nickname as null", async () => {
+    const { res, body } = await send(
+      "admin",
+      "POST",
+      "/",
+      await input({ phone: "  ", nickname: "" }),
+    );
+    expect(res.status).toBe(201);
+    const row = await stored(String(body?.id));
+    expect(row?.phone).toBeNull();
+    expect(row?.nickname).toBeNull();
+  });
+
+  test("an occupied seat is a 409", async () => {
+    await seat({ department: "Art", role: "head", name: "Taken" });
+    const { res, body } = await send("admin", "POST", "/", await input());
+    expect(res.status).toBe(409);
+    expect(body).toEqual({ message: expect.any(String) });
+  });
+
+  test("an account can only hold one seat", async () => {
+    await seat({ department: "Art", role: "head", name: "Taken", userId: "art-head" });
+    const { res } = await send(
+      "admin",
+      "POST",
+      "/",
+      await input({ role: "vicehead", userId: "art-head" }),
+    );
+    expect(res.status).toBe(409);
+  });
+
+  test("attaching requires the account to belong to the seat's department", async () => {
+    const { res, body } = await send("admin", "POST", "/", await input({ userId: "tech-head" }));
+    expect(res.status).toBe(400);
+    expect(body).toMatchObject({ message: expect.any(String) });
+    const ok = await send("admin", "POST", "/", await input({ userId: "art-head" }));
+    expect(ok.res.status).toBe(201);
+    expect(ok.body).toMatchObject({ userId: "art-head", name: "Arthit" });
+  });
+
+  test("unknown department or account is a 404", async () => {
+    let { res } = await send("admin", "POST", "/", await input({ departmentId: "missing" }));
+    expect(res.status).toBe(404);
+    ({ res } = await send("admin", "POST", "/", await input({ userId: "missing" })));
+    expect(res.status).toBe(404);
+  });
+
+  test("rejects malformed input", async () => {
+    const bad = [
+      { name: "" },
+      { name: "x".repeat(101) },
+      { nickname: "x".repeat(41) },
+      { phone: "call me" },
+      { role: "boss" },
+      { id: crypto.randomUUID() },
+      { extra: true },
+      { socials: [{ platform: "myspace", value: "x" }] },
+      { socials: [{ platform: "line", value: "" }] },
+      {
+        socials: [
+          { platform: "line", value: "a" },
+          { platform: "line", value: "b" },
+        ],
+      },
+      { socials: [{ platform: "other", value: "javascript:alert(1)" }] },
+      { socials: [{ platform: "other", value: "http://insecure.example" }] },
+      { socials: [{ platform: "line", value: "x", extra: 1 }] },
+      {
+        socials: ["facebook", "instagram", "line", "discord", "other", "other"].map(
+          (platform, i) => ({
+            platform,
+            value: `v${i}`,
+          }),
+        ),
+      },
+    ];
+    for (const overrides of bad) {
+      const { res } = await send("admin", "POST", "/", await input(overrides));
+      expect({ overrides, status: res.status }).toEqual({ overrides, status: 400 });
+    }
+    const { res } = await send("admin", "POST", "/", "not json");
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("PATCH /:id", () => {
+  let artHeadSeat: string;
+  let prSeat: string;
+
+  beforeEach(async () => {
+    artHeadSeat = await seat({
+      department: "Art",
+      role: "head",
+      name: "A",
+      userId: "art-head",
+      phone: "0800000000",
+    });
+    await t.db
+      .insert(leadershipSocial)
+      .values({ leadershipId: artHeadSeat, platform: "line", value: "old" });
+    prSeat = await seat({ department: "PR", role: "head", name: "P" });
+  });
+
+  test("a leader outside the manager departments edits their own contact fields", async () => {
+    const { res, body } = await send("art-head", "PATCH", `/${artHeadSeat}`, {
+      nickname: "อาร์ต",
+      phone: "",
+      socials: [{ platform: "discord", value: "arthit#1" }],
+    });
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ displayName: "อาร์ต Arthit", canEdit: true, canDelete: false });
+    expect((await stored(artHeadSeat))?.phone).toBeNull();
+    expect(await socialsOf(artHeadSeat)).toEqual([{ platform: "discord", value: "arthit#1" }]);
+  });
+
+  test("they cannot move, rename, re-role or re-attach their seat", async () => {
+    const forged = [
+      { departmentId: await t.departmentId("PR") },
+      { role: "vicehead" },
+      { userId: null },
+      { userId: "staff" },
+      { name: "Renamed" },
+    ];
+    for (const json of forged) {
+      const { res } = await send("art-head", "PATCH", `/${artHeadSeat}`, json);
+      expect({ json, status: res.status }).toEqual({ json, status: 403 });
+    }
+    expect(await stored(artHeadSeat)).toMatchObject({
+      role: "head",
+      userId: "art-head",
+      name: "A",
+    });
+  });
+
+  test("they cannot edit another seat; staff cannot edit at all", async () => {
+    expect((await send("art-head", "PATCH", `/${prSeat}`, { nickname: "x" })).res.status).toBe(403);
+    expect((await send("staff", "PATCH", `/${prSeat}`, { nickname: "x" })).res.status).toBe(403);
+  });
+
+  test("an attached staff account still cannot edit (role is required)", async () => {
+    await t.seedUser("pr-staff", { department: "PR" });
+    await t.db.update(leadership).set({ userId: "pr-staff" }).where(eq(leadership.id, prSeat));
+    expect((await send("pr-staff", "PATCH", `/${prSeat}`, { nickname: "x" })).res.status).toBe(403);
+  });
+
+  test("managers edit every field and detach accounts", async () => {
+    const { res, body } = await send("tech-head", "PATCH", `/${artHeadSeat}`, {
+      role: "vicehead",
+      userId: null,
+      name: "Detached",
+    });
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      role: "vicehead",
+      userId: null,
+      name: "Detached",
+      displayName: "Detached",
+    });
+    // Omitted socials are left alone.
+    expect(await socialsOf(artHeadSeat)).toEqual([{ platform: "line", value: "old" }]);
+  });
+
+  test("moving an attached seat to another department is refused", async () => {
+    const { res } = await send("admin", "PATCH", `/${artHeadSeat}`, {
+      departmentId: await t.departmentId("PR"),
+      role: "vicehead",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("a failed update leaves socials untouched", async () => {
+    // Taking PR's occupied head seat fails, and the social replacement with it.
+    await t.db.update(leadership).set({ userId: null }).where(eq(leadership.id, artHeadSeat));
+    const { res } = await send("admin", "PATCH", `/${artHeadSeat}`, {
+      departmentId: await t.departmentId("PR"),
+      socials: [{ platform: "facebook", value: "new" }],
+    });
+    expect(res.status).toBe(409);
+    expect(await socialsOf(artHeadSeat)).toEqual([{ platform: "line", value: "old" }]);
+  });
+
+  test("unknown seat is a 404; empty body is a 400", async () => {
+    expect(
+      (await send("admin", "PATCH", `/${crypto.randomUUID()}`, { nickname: "x" })).res.status,
+    ).toBe(404);
+    expect((await send("admin", "PATCH", `/${prSeat}`, {})).res.status).toBe(400);
+  });
+});
+
+describe("DELETE /:id", () => {
+  test("managers delete a seat and its socials", async () => {
+    const id = await seat({ department: "Art", role: "head", name: "A" });
+    await t.db.insert(leadershipSocial).values({ leadershipId: id, platform: "line", value: "x" });
+    const { res } = await send("admin", "DELETE", `/${id}`);
+    expect(res.status).toBe(204);
+    expect(await stored(id)).toBeUndefined();
+    expect(await socialsOf(id)).toEqual([]);
+  });
+
+  test("leaders cannot delete even their own seat", async () => {
+    const id = await seat({ department: "Art", role: "head", name: "A", userId: "art-head" });
+    expect((await send("art-head", "DELETE", `/${id}`)).res.status).toBe(403);
+    expect((await send("staff", "DELETE", `/${id}`)).res.status).toBe(403);
+    expect(await stored(id)).toBeDefined();
+  });
+
+  test("unknown seat is a 404", async () => {
+    expect((await send("admin", "DELETE", `/${crypto.randomUUID()}`)).res.status).toBe(404);
+  });
+});
+
+describe("GET /users", () => {
+  test("managers search unattached accounts by name, optionally by department", async () => {
+    await t.seedUser("art-2", { department: "Art", name: "Arthur" });
+    await seat({ department: "Art", role: "head", name: "A", userId: "art-head" });
+    const art = await t.departmentId("Art");
+    let { res, body } = await send("tech-head", "GET", `/users?q=ar&departmentId=${art}`);
+    expect(res.status).toBe(200);
+    // art-head is already attached, so only Arthur remains.
+    expect(body).toEqual({ items: [{ id: "art-2", name: "Arthur" }], hasMore: false });
+    ({ body } = await send("admin", "GET", "/users?q=somchai"));
+    expect(body).toEqual({ items: [{ id: "tech-head", name: "Somchai Jaidee" }], hasMore: false });
+    expect(JSON.stringify(body)).not.toContain("@");
+  });
+
+  test("escapes wildcards", async () => {
+    const { body } = await send("admin", "GET", "/users?q=%25");
+    expect(body).toEqual({ items: [], hasMore: false });
+  });
+
+  test("other leaders and staff are forbidden", async () => {
+    for (const who of ["art-head", "staff"]) {
+      expect((await send(who, "GET", "/users?q=a")).res.status).toBe(403);
+    }
+  });
+});
+
+test("social values reject control characters", async () => {
+  const { res } = await send("admin", "POST", "/", {
+    departmentId: await t.departmentId("Art"),
+    role: "head",
+    name: "X",
+    socials: [{ platform: "line", value: "a\u0007b" }],
+  });
+  expect(res.status).toBe(400);
 });

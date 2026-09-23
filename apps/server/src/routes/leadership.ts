@@ -1,12 +1,25 @@
 import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
 import { department } from "@it3k/db/schema/department";
-import { type LeadershipRole, leadership } from "@it3k/db/schema/leadership";
-import { type SQL, type SQLWrapper, and, eq, sql } from "drizzle-orm";
+import {
+  LEADERSHIP_ROLES,
+  type LeadershipRole,
+  SOCIAL_PLATFORMS,
+  leadership,
+  leadershipSocial,
+} from "@it3k/db/schema/leadership";
+import { type SQL, type SQLWrapper, and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { createMiddleware } from "hono/factory";
 import { z } from "zod";
 
-import { type CurrentUser, type CurrentUserEnv, type RouteDeps, requireUser } from "./current-user";
+import {
+  type CurrentUser,
+  type CurrentUserEnv,
+  type RouteDeps,
+  constraintMessage,
+  requireUser,
+} from "./current-user";
 import { allowed, isManager } from "./leadership-policy";
 import { validate } from "./validation";
 
@@ -32,22 +45,99 @@ export type LeadershipSummary = {
   canDelete: boolean;
 };
 
+// Seeded department ids are hex and Better Auth user ids are random strings,
+// so neither is validated as a UUID; seat ids are.
 const departmentId = z.string().min(1).max(64);
+const userId = z.string().min(1).max(64);
+
+const searchText = z
+  .string()
+  .trim()
+  // Count code points, not UTF-16 units, so Thai and emoji are treated alike.
+  .refine((q) => [...q].length <= MAX_QUERY_CODE_POINTS, {
+    message: `Search is limited to ${MAX_QUERY_CODE_POINTS} characters`,
+  });
+const page = z.coerce.number().int().min(1).max(1000).default(1);
 
 const listQuery = z.strictObject({
-  q: z
-    .string()
-    .trim()
-    // Count code points, not UTF-16 units, so Thai and emoji are treated alike.
-    .refine((q) => [...q].length <= MAX_QUERY_CODE_POINTS, {
-      message: `Search is limited to ${MAX_QUERY_CODE_POINTS} characters`,
-    })
-    .optional(),
+  q: searchText.optional(),
   departmentId: departmentId.optional(),
-  page: z.coerce.number().int().min(1).max(1000).default(1),
+  page,
+});
+
+const userQuery = z.strictObject({
+  q: searchText.optional(),
+  departmentId: departmentId.optional(),
+  page,
 });
 
 const idParam = z.strictObject({ id: z.uuid() });
+
+/** Trimmed optional text where blank means "none". */
+const optionalText = (max: number, pattern?: RegExp) => {
+  let text = z.string().trim().max(max);
+  if (pattern) text = text.regex(pattern);
+  return text
+    .transform((value) => value || null)
+    .nullable()
+    .optional();
+};
+
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+
+const socialValue = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .refine(
+    (value) => ![...value].some((char) => char.charCodeAt(0) < 0x20 || char === "\x7f"),
+    "Control characters are not allowed",
+  )
+  // Handles are plain text; anything with a scheme must be an https link so
+  // the directory never renders javascript:, data: or plain-http links.
+  .refine((value) => {
+    if (!URL_SCHEME.test(value)) return true;
+    try {
+      return new URL(value).protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Links must use https");
+
+const socials = z
+  .array(z.strictObject({ platform: z.enum(SOCIAL_PLATFORMS), value: socialValue }))
+  .max(SOCIAL_PLATFORMS.length)
+  .refine(
+    (items) => new Set(items.map((item) => item.platform)).size === items.length,
+    "Each platform may only be listed once",
+  );
+
+const seatFields = {
+  departmentId,
+  role: z.enum(LEADERSHIP_ROLES),
+  name: z.string().trim().min(1).max(100),
+  nickname: optionalText(40),
+  phone: optionalText(30, /^[0-9+\-() ]*$/),
+  userId: userId.nullable().optional(),
+};
+
+const createInput = z.strictObject({ ...seatFields, socials: socials.default([]) });
+
+const updateInput = z
+  .strictObject({
+    departmentId: seatFields.departmentId.optional(),
+    role: seatFields.role.optional(),
+    name: seatFields.name.optional(),
+    nickname: seatFields.nickname,
+    phone: seatFields.phone,
+    userId: seatFields.userId,
+    socials: socials.optional(),
+  })
+  .refine((input) => Object.keys(input).length > 0, "Nothing to update");
+
+/** What a leader who is not a manager may change on their own seat. */
+const SELF_EDITABLE = new Set(["nickname", "phone", "socials"]);
 
 /** Escapes LIKE wildcards so user input only ever matches literally. */
 export function escapeLike(value: string) {
@@ -56,6 +146,14 @@ export function escapeLike(value: string) {
 
 function contains(column: SQLWrapper, pattern: string): SQL {
   return sql`${column} LIKE ${pattern} ESCAPE '\\'`;
+}
+
+function containsAny(columns: SQLWrapper[], text: string): SQL {
+  const pattern = `%${escapeLike(text)}%`;
+  return sql`(${sql.join(
+    columns.map((column) => contains(column, pattern)),
+    sql` OR `,
+  )})`;
 }
 
 function selectSummaries(db: Database) {
@@ -95,6 +193,60 @@ function toSummary(row: SummaryRow, actor: CurrentUser): LeadershipSummary {
   };
 }
 
+async function findSummary(db: Database, id: string, actor: CurrentUser) {
+  const [row] = await selectSummaries(db).where(eq(leadership.id, id));
+  return row ? toSummary(row, actor) : null;
+}
+
+type Problem = { message: string; status: 400 | 404 };
+
+/** A seat's department must exist, and an attached account must belong to it. */
+async function checkPlacement(
+  db: Database,
+  departmentId: string,
+  userId: string | null,
+): Promise<Problem | null> {
+  const [target] = await db
+    .select({ id: department.id })
+    .from(department)
+    .where(eq(department.id, departmentId));
+  if (!target) {
+    return { message: "Department not found", status: 404 };
+  }
+  if (userId === null) return null;
+  const [account] = await db
+    .select({ departmentId: user.departmentId })
+    .from(user)
+    .where(eq(user.id, userId));
+  if (!account) {
+    return { message: "Account not found", status: 404 };
+  }
+  if (account.departmentId !== departmentId) {
+    return { message: "The account must belong to this seat's department", status: 400 };
+  }
+  return null;
+}
+
+function conflictMessage(error: unknown) {
+  const message = constraintMessage(error);
+  if (!message?.includes("UNIQUE")) return null;
+  if (message.includes("leadership.user_id")) return "This account already holds a seat";
+  return "This department already has someone in that role";
+}
+
+function insertSocials(db: Database, leadershipId: string, items: z.infer<typeof socials>) {
+  return items.length > 0
+    ? [db.insert(leadershipSocial).values(items.map((item) => ({ leadershipId, ...item })))]
+    : [];
+}
+
+const managerOnly = createMiddleware<CurrentUserEnv>(async (c, next) => {
+  if (!isManager(c.var.user)) {
+    return c.json({ message: "Forbidden" }, 403);
+  }
+  await next();
+});
+
 export const createLeadershipRoutes = (deps: LeadershipDeps) =>
   new Hono<CurrentUserEnv>()
     .use(requireUser(deps))
@@ -106,13 +258,8 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
         filters.push(eq(leadership.departmentId, departmentId));
       }
       if (q) {
-        const pattern = `%${escapeLike(q)}%`;
-        const columns = [leadership.name, leadership.nickname, user.name, department.name];
         filters.push(
-          sql`(${sql.join(
-            columns.map((column) => contains(column, pattern)),
-            sql` OR `,
-          )})`,
+          containsAny([leadership.name, leadership.nickname, user.name, department.name], q),
         );
       }
       const rows = await selectSummaries(c.var.db)
@@ -140,13 +287,120 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       return c.json(rows, 200);
     })
 
+    .get("/users", managerOnly, validate("query", userQuery), async (c) => {
+      const { q, departmentId, page } = c.req.valid("query");
+      // Accounts that do not hold a seat yet; never selects email.
+      const filters: SQL[] = [isNull(leadership.id)];
+      if (departmentId) filters.push(eq(user.departmentId, departmentId));
+      if (q) filters.push(containsAny([user.name], q));
+      const rows = await c.var.db
+        .select({ id: user.id, name: user.name })
+        .from(user)
+        .leftJoin(leadership, eq(leadership.userId, user.id))
+        .where(and(...filters))
+        .orderBy(user.name, user.id)
+        .limit(PAGE_SIZE + 1)
+        .offset((page - 1) * PAGE_SIZE);
+      return c.json({ items: rows.slice(0, PAGE_SIZE), hasMore: rows.length > PAGE_SIZE }, 200);
+    })
+
     .get("/:id", validate("param", idParam), async (c) => {
       const { id } = c.req.valid("param");
-      const [row] = await selectSummaries(c.var.db).where(eq(leadership.id, id));
-      if (!row) {
+      const summary = await findSummary(c.var.db, id, c.var.user);
+      if (!summary) {
         return c.json({ message: "Leader not found" }, 404);
       }
-      return c.json(toSummary(row, c.var.user), 200);
+      return c.json(summary, 200);
+    })
+
+    .post("/", managerOnly, validate("json", createInput), async (c) => {
+      const { socials: items, ...fields } = c.req.valid("json");
+      const db = c.var.db;
+      const problem = await checkPlacement(db, fields.departmentId, fields.userId ?? null);
+      if (problem) {
+        return c.json({ message: problem.message }, problem.status);
+      }
+      const id = crypto.randomUUID();
+      try {
+        await db.batch([
+          db.insert(leadership).values({ id, ...fields }),
+          ...insertSocials(db, id, items),
+        ]);
+      } catch (error) {
+        const conflict = conflictMessage(error);
+        if (conflict) return c.json({ message: conflict }, 409);
+        throw error;
+      }
+      const summary = await findSummary(db, id, c.var.user);
+      if (!summary) throw new Error("Created seat is missing");
+      return c.json(summary, 201);
+    })
+
+    .patch("/:id", validate("param", idParam), validate("json", updateInput), async (c) => {
+      const { id } = c.req.valid("param");
+      const input = c.req.valid("json");
+      const db = c.var.db;
+      const actor = c.var.user;
+      const [current] = await db
+        .select({ departmentId: leadership.departmentId, userId: leadership.userId })
+        .from(leadership)
+        .where(eq(leadership.id, id));
+      if (!current) {
+        return c.json({ message: "Leader not found" }, 404);
+      }
+      if (!allowed(actor, "update", current)) {
+        return c.json({ message: "Forbidden" }, 403);
+      }
+      if (!isManager(actor) && Object.keys(input).some((key) => !SELF_EDITABLE.has(key))) {
+        return c.json({ message: "You can only change your nickname, phone and socials" }, 403);
+      }
+      if (input.departmentId !== undefined || input.userId !== undefined) {
+        const problem = await checkPlacement(
+          db,
+          input.departmentId ?? current.departmentId,
+          input.userId === undefined ? current.userId : input.userId,
+        );
+        if (problem) {
+          return c.json({ message: problem.message }, problem.status);
+        }
+      }
+      const { socials: items, ...fields } = input;
+      try {
+        // One batch: D1 applies the update and the social replacement together or not at all.
+        await db.batch([
+          db
+            .update(leadership)
+            .set({ ...fields, updatedAt: new Date() })
+            .where(eq(leadership.id, id)),
+          ...(items
+            ? [
+                db.delete(leadershipSocial).where(eq(leadershipSocial.leadershipId, id)),
+                ...insertSocials(db, id, items),
+              ]
+            : []),
+        ]);
+      } catch (error) {
+        const conflict = conflictMessage(error);
+        if (conflict) return c.json({ message: conflict }, 409);
+        throw error;
+      }
+      const summary = await findSummary(db, id, actor);
+      if (!summary) {
+        return c.json({ message: "Leader not found" }, 404);
+      }
+      return c.json(summary, 200);
+    })
+
+    .delete("/:id", managerOnly, validate("param", idParam), async (c) => {
+      const { id } = c.req.valid("param");
+      const deleted = await c.var.db
+        .delete(leadership)
+        .where(eq(leadership.id, id))
+        .returning({ id: leadership.id });
+      if (deleted.length === 0) {
+        return c.json({ message: "Leader not found" }, 404);
+      }
+      return c.body(null, 204);
     });
 
 export type LeadershipRoutes = ReturnType<typeof createLeadershipRoutes>;
