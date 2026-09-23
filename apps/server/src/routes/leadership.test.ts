@@ -3,11 +3,11 @@ import { leadership, leadershipSocial } from "@it3k/db/schema/index";
 import { eq } from "drizzle-orm";
 
 import { createTestContext, readJson } from "../testing";
-import { createLeadershipRoutes } from "./leadership";
+import { type ContactRevealAudit, createLeadershipRoutes } from "./leadership";
 
 let t: ReturnType<typeof createTestContext>;
 let app: ReturnType<typeof createLeadershipRoutes>;
-const audit = { events: [] as unknown[] };
+const audit = { events: [] as ContactRevealAudit[] };
 
 type Summary = {
   id: string;
@@ -56,7 +56,7 @@ beforeEach(async () => {
   audit.events = [];
   app = createLeadershipRoutes({
     ...t.deps,
-    audit: async (event) => void audit.events.push(event),
+    audit: async (_c, event) => void audit.events.push(event),
   });
   await t.seedUser("admin", { role: "admin" });
   await t.seedUser("tech-head", { role: "head", department: "Tech/Live", name: "Somchai Jaidee" });

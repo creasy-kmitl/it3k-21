@@ -8,6 +8,7 @@ import { cors } from "hono/cors";
 import { env } from "./env.server";
 import type { RouteDeps } from "./routes/current-user";
 import { createDepartmentRoutes } from "./routes/departments";
+import { createLeadershipRoutes, recordContactReveal } from "./routes/leadership";
 import { createAuth, getDb } from "./services";
 
 initLogger({
@@ -50,6 +51,13 @@ const deps: RouteDeps = {
 };
 
 app.route("/api/departments", createDepartmentRoutes(deps));
+app.route(
+  "/api/leadership",
+  createLeadershipRoutes({
+    ...deps,
+    audit: async (c, event) => recordContactReveal(c.var.log, event),
+  }),
+);
 
 app.get("/", (c) => {
   return c.text("OK");

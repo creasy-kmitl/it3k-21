@@ -9,7 +9,8 @@ import {
   leadershipSocial,
 } from "@it3k/db/schema/leadership";
 import { type SQL, type SQLWrapper, and, eq, isNull, sql } from "drizzle-orm";
-import { Hono } from "hono";
+import type { AuditableLogger } from "evlog";
+import { type Context, Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import { z } from "zod";
 
@@ -26,10 +27,50 @@ import { validate } from "./validation";
 export const PAGE_SIZE = 20;
 const MAX_QUERY_CODE_POINTS = 64;
 
-export type LeadershipAuditEvent = Record<string, unknown>;
-export type LeadershipDeps = RouteDeps & {
-  audit: (event: LeadershipAuditEvent) => Promise<void>;
+/** Who looked up whose contact details. Deliberately carries no contact data. */
+export type ContactRevealAudit = {
+  actorUserId: string;
+  actorDepartmentCode: CurrentUser["departmentCode"];
+  targetLeadershipId: string;
+  targetDepartmentId: string;
 };
+
+// `log` is set by the evlog middleware that index.ts mounts in front of every
+// route; it is absent when the routes run on their own in tests.
+type LeadershipEnv = {
+  Variables: CurrentUserEnv["Variables"] & { log?: AuditableLogger };
+};
+
+export type LeadershipDeps = RouteDeps & {
+  /** Must throw if the event cannot be recorded; the reveal then fails closed. */
+  audit: (c: Context<LeadershipEnv>, event: ContactRevealAudit) => Promise<void>;
+};
+
+/**
+ * Records a reveal as an evlog audit on the request's wide event. Audits are
+ * force-kept past sampling and shipped by the Axiom drain when the request
+ * ends -- delivery is asynchronous, so this confirms the event was recorded,
+ * not that Axiom has ingested it.
+ */
+export function recordContactReveal(
+  log: Pick<AuditableLogger, "audit" | "set"> | undefined,
+  event: ContactRevealAudit,
+) {
+  if (!log) {
+    throw new Error("Request logger is not available");
+  }
+  log.set({ leadership: { actorDepartmentCode: event.actorDepartmentCode } });
+  log.audit({
+    action: "leadership.contact.revealed",
+    actor: { type: "user", id: event.actorUserId },
+    target: {
+      type: "leadership",
+      id: event.targetLeadershipId,
+      departmentId: event.targetDepartmentId,
+    },
+    outcome: "success",
+  });
+}
 
 /** Public view of a seat. Contact details are only returned by `/:id/reveal`. */
 export type LeadershipSummary = {
@@ -136,6 +177,10 @@ const updateInput = z
   })
   .refine((input) => Object.keys(input).length > 0, "Nothing to update");
 
+// The client shows a warning dialog first; this only proves the caller
+// accepted it. Authentication and the audit are what actually gate access.
+const revealInput = z.strictObject({ confirmed: z.literal(true) });
+
 /** What a leader who is not a manager may change on their own seat. */
 const SELF_EDITABLE = new Set(["nickname", "phone", "socials"]);
 
@@ -240,7 +285,7 @@ function insertSocials(db: Database, leadershipId: string, items: z.infer<typeof
     : [];
 }
 
-const managerOnly = createMiddleware<CurrentUserEnv>(async (c, next) => {
+const managerOnly = createMiddleware<LeadershipEnv>(async (c, next) => {
   if (!isManager(c.var.user)) {
     return c.json({ message: "Forbidden" }, 403);
   }
@@ -248,7 +293,7 @@ const managerOnly = createMiddleware<CurrentUserEnv>(async (c, next) => {
 });
 
 export const createLeadershipRoutes = (deps: LeadershipDeps) =>
-  new Hono<CurrentUserEnv>()
+  new Hono<LeadershipEnv>()
     .use(requireUser(deps))
 
     .get("/", validate("query", listQuery), async (c) => {
@@ -389,6 +434,41 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
         return c.json({ message: "Leader not found" }, 404);
       }
       return c.json(summary, 200);
+    })
+
+    .post("/:id/reveal", validate("param", idParam), validate("json", revealInput), async (c) => {
+      const { id } = c.req.valid("param");
+      const db = c.var.db;
+      const actor = c.var.user;
+      const [seat] = await db
+        .select({ departmentId: leadership.departmentId, phone: leadership.phone })
+        .from(leadership)
+        .where(eq(leadership.id, id));
+      if (!seat) {
+        return c.json({ message: "Leader not found" }, 404);
+      }
+      if (!allowed(actor, "reveal", { userId: null })) {
+        return c.json({ message: "Forbidden" }, 403);
+      }
+      try {
+        await deps.audit(c, {
+          actorUserId: actor.id,
+          actorDepartmentCode: actor.departmentCode,
+          targetLeadershipId: id,
+          targetDepartmentId: seat.departmentId,
+        });
+      } catch {
+        // Without a record of who asked, the details stay hidden.
+        c.var.log?.set({ leadership: { revealAuditFailed: true } });
+        return c.json({ message: "Contact details are unavailable right now" }, 503);
+      }
+      const socials = await db
+        .select({ platform: leadershipSocial.platform, value: leadershipSocial.value })
+        .from(leadershipSocial)
+        .where(eq(leadershipSocial.leadershipId, id))
+        .orderBy(leadershipSocial.platform);
+      c.header("Cache-Control", "private, no-store");
+      return c.json({ phone: seat.phone, socials }, 200);
     })
 
     .delete("/:id", managerOnly, validate("param", idParam), async (c) => {
