@@ -1,6 +1,6 @@
 import { can } from "@it3k/auth/permissions";
 import { DEPARTMENT_CODES, department, leadership, user } from "@it3k/db/schema/index";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, ne, notExists } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -19,6 +19,8 @@ const departmentInput = z.object({
 });
 
 const codeInput = z.strictObject({ code: z.enum(DEPARTMENT_CODES).nullable() });
+
+const HOLDS_SEAT = "This account holds a head/vicehead seat; detach it from the seat first";
 
 function isUniqueViolation(error: unknown) {
   return constraintError(error) === "unique";
@@ -184,13 +186,23 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
       if (!target) {
         return c.json({ message: "Department not found" }, 404);
       }
+      const userId = c.req.param("userId");
+      // A seat's account must stay in the seat's department. Checked in the
+      // UPDATE itself so a seat attached meanwhile is still honoured.
+      const seatElsewhere = db
+        .select({ id: leadership.id })
+        .from(leadership)
+        .where(and(eq(leadership.userId, userId), ne(leadership.departmentId, target.id)));
       const [row] = await db
         .update(user)
         .set({ departmentId: target.id })
-        .where(eq(user.id, c.req.param("userId")))
+        .where(and(eq(user.id, userId), notExists(seatElsewhere)))
         .returning({ id: user.id, departmentId: user.departmentId });
       if (!row) {
-        return c.json({ message: "User not found" }, 404);
+        const [found] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId));
+        return found
+          ? c.json({ message: HOLDS_SEAT }, 409)
+          : c.json({ message: "User not found" }, 404);
       }
       return c.json(row);
     })
@@ -200,13 +212,22 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
         return c.json({ message: "Forbidden" }, 403);
       }
       const db = c.var.db;
+      const userId = c.req.param("userId");
+      const member = and(eq(user.id, userId), eq(user.departmentId, c.req.param("id")));
+      const seat = db
+        .select({ id: leadership.id })
+        .from(leadership)
+        .where(eq(leadership.userId, userId));
       const [row] = await db
         .update(user)
         .set({ departmentId: null })
-        .where(and(eq(user.id, c.req.param("userId")), eq(user.departmentId, c.req.param("id"))))
+        .where(and(member, notExists(seat)))
         .returning({ id: user.id });
       if (!row) {
-        return c.json({ message: "Member not found" }, 404);
+        const [found] = await db.select({ id: user.id }).from(user).where(member);
+        return found
+          ? c.json({ message: HOLDS_SEAT }, 409)
+          : c.json({ message: "Member not found" }, 404);
       }
       return c.body(null, 204);
     });

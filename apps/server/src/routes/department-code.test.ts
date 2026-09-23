@@ -129,3 +129,47 @@ describe("cross-site form posts", () => {
     expect(res.status).toBe(201);
   });
 });
+
+describe("department membership vs. seats", () => {
+  beforeEach(async () => {
+    await t.seedUser("art-lead", { role: "head", department: "Art" });
+    await t.db.insert(leadership).values({
+      departmentId: await t.departmentId("Art"),
+      role: "head",
+      name: "A",
+      userId: "art-lead",
+    });
+  });
+
+  const departmentOf = async (id: string) =>
+    (await t.db.select().from(user).where(eq(user.id, id)))[0]?.departmentId;
+
+  test("an account holding a seat cannot be moved to another department", async () => {
+    const pr = await t.departmentId("PR");
+    const res = await app.request(`/${pr}/members/art-lead`, t.as("admin", { method: "PUT" }));
+    expect(res.status).toBe(409);
+    expect(await readJson(res)).toEqual({ message: expect.any(String) });
+    expect(await departmentOf("art-lead")).toBe(await t.departmentId("Art"));
+  });
+
+  test("or removed from its department", async () => {
+    const art = await t.departmentId("Art");
+    const res = await app.request(`/${art}/members/art-lead`, t.as("admin", { method: "DELETE" }));
+    expect(res.status).toBe(409);
+    expect(await departmentOf("art-lead")).toBe(art);
+  });
+
+  test("re-assigning to the seat's own department is fine", async () => {
+    const art = await t.departmentId("Art");
+    const res = await app.request(`/${art}/members/art-lead`, t.as("admin", { method: "PUT" }));
+    expect(res.status).toBe(200);
+  });
+
+  test("after detaching the seat the move goes through", async () => {
+    await t.db.update(leadership).set({ userId: null }).where(eq(leadership.userId, "art-lead"));
+    const pr = await t.departmentId("PR");
+    const res = await app.request(`/${pr}/members/art-lead`, t.as("admin", { method: "PUT" }));
+    expect(res.status).toBe(200);
+    expect(await departmentOf("art-lead")).toBe(pr);
+  });
+});
