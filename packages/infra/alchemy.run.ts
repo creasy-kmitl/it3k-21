@@ -175,6 +175,12 @@ export const server = Cloudflare.Worker("server", {
   // explicitly detaches. Without it a stage that once held a hostname keeps
   // it forever — which is how `live_suwizx` is still squatting on prod's.
   domain: hostnames?.api ?? null,
+  // A stage with a hostname is served there and only there: its workers.dev
+  // URL (and every per-version preview URL) would be a second way in that
+  // skips whatever the zone enforces. `url` resolves to the custom domain,
+  // so BETTER_AUTH_URL and VITE_SERVER_URL are unaffected. Local deploys
+  // have no hostname, so workers.dev stays their only address.
+  workersDev: !hostnames,
 });
 
 export type ServerEnv = Cloudflare.InferEnv<typeof server>;
@@ -205,6 +211,8 @@ export default Alchemy.Stack(
         port: 3001,
       },
       domain: hostnames?.web ?? null,
+      // See `workersDev` on the server worker.
+      workersDev: !hostnames,
     });
 
     // Keeping the logical id stable means each push edits the same comment
