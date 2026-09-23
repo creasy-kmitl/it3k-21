@@ -6,6 +6,7 @@ import {
   type LeadershipRole,
   SOCIAL_PLATFORMS,
   leadership,
+  leadershipContactReveal,
   leadershipSocial,
 } from "@it3k/db/schema/leadership";
 import { type SQL, type SQLWrapper, and, eq, isNull, sql } from "drizzle-orm";
@@ -45,7 +46,10 @@ type LeadershipEnv = {
 };
 
 export type LeadershipDeps = RouteDeps & {
-  /** Must throw if the event cannot be recorded; the reveal then fails closed. */
+  /**
+   * Mirrors a reveal to the observability pipeline (Axiom). The durable record
+   * is the D1 row the route writes first, so a failure here does not block.
+   */
   audit: (c: Context<LeadershipEnv>, event: ContactRevealAudit) => Promise<void>;
 };
 
@@ -459,18 +463,30 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       if (!allowed(actor, "reveal", { userId: null })) {
         return c.json({ message: "Forbidden" }, 403);
       }
+      const event: ContactRevealAudit = {
+        actorUserId: actor.id,
+        actorDepartmentCode: actor.departmentCode,
+        impersonatedBy: actor.impersonatedBy,
+        targetLeadershipId: id,
+        targetDepartmentId: seat.departmentId,
+      };
       try {
-        await deps.audit(c, {
-          actorUserId: actor.id,
-          actorDepartmentCode: actor.departmentCode,
-          impersonatedBy: actor.impersonatedBy,
-          targetLeadershipId: id,
-          targetDepartmentId: seat.departmentId,
+        // The record of who asked is committed before any detail leaves.
+        await db.insert(leadershipContactReveal).values({
+          actorUserId: event.actorUserId,
+          actorDepartmentCode: event.actorDepartmentCode,
+          impersonatedBy: event.impersonatedBy,
+          leadershipId: event.targetLeadershipId,
+          departmentId: event.targetDepartmentId,
         });
       } catch {
-        // Without a record of who asked, the details stay hidden.
         c.var.log?.set({ leadership: { revealAuditFailed: true } });
         return c.json({ message: "Contact details are unavailable right now" }, 503);
+      }
+      try {
+        await deps.audit(c, event);
+      } catch {
+        c.var.log?.set({ leadership: { revealMirrorFailed: true } });
       }
       const socials = await db
         .select({ platform: leadershipSocial.platform, value: leadershipSocial.value })

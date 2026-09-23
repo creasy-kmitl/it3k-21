@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 
 import { createTestDb } from "../testing";
-import { department, leadership, leadershipSocial, user } from "./index";
+import { department, leadership, leadershipContactReveal, leadershipSocial, user } from "./index";
 
 let t: ReturnType<typeof createTestDb>;
 
@@ -124,5 +124,31 @@ describe("leadership", () => {
     const art = await seedDepartment("Art");
     await t.db.insert(leadership).values({ departmentId: art.id, role: "head", name: "A" });
     await expect(t.db.delete(department).where(eq(department.id, art.id)).run()).rejects.toThrow();
+  });
+});
+
+describe("leadership contact reveal audit", () => {
+  test("keeps rows after the seat and the account are gone", async () => {
+    const art = await seedDepartment("Art");
+    const userId = await seedUser("u1");
+    const [seatRow] = await t.db
+      .insert(leadership)
+      .values({ departmentId: art.id, role: "head", name: "A" })
+      .returning();
+    const [row] = await t.db
+      .insert(leadershipContactReveal)
+      .values({
+        actorUserId: userId,
+        actorDepartmentCode: null,
+        impersonatedBy: null,
+        leadershipId: seatRow!.id,
+        departmentId: art.id,
+      })
+      .returning();
+    expect(row?.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(row?.createdAt).toBeInstanceOf(Date);
+    await t.db.delete(leadership).where(eq(leadership.id, seatRow!.id));
+    await t.db.delete(user).where(eq(user.id, userId));
+    expect(await t.db.select().from(leadershipContactReveal)).toHaveLength(1);
   });
 });

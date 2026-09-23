@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { leadership, leadershipSocial } from "@it3k/db/schema/index";
+import { leadership, leadershipContactReveal, leadershipSocial } from "@it3k/db/schema/index";
 
 import { createTestContext, readJson } from "../testing";
 import { type ContactRevealAudit, createLeadershipRoutes, recordContactReveal } from "./leadership";
@@ -104,14 +104,38 @@ describe("POST /:id/reveal", () => {
     expect(events[2]?.actorDepartmentCode).toBe("tech-live");
   });
 
-  test("fails closed when the audit cannot be recorded", async () => {
-    auditFails = true;
+  test("stores a durable audit row in D1 before answering", async () => {
+    await reveal("staff");
+    const rows = await t.db.select().from(leadershipContactReveal);
+    expect(rows).toEqual([
+      {
+        id: expect.any(String),
+        actorUserId: "staff",
+        actorDepartmentCode: null,
+        impersonatedBy: null,
+        leadershipId: seatId,
+        departmentId: await t.departmentId("Tech/Live"),
+        createdAt: expect.any(Date),
+      },
+    ]);
+  });
+
+  test("fails closed when the D1 audit row cannot be written", async () => {
+    t.sqlite.run("DROP TABLE leadership_contact_reveal");
     const res = await reveal("staff");
     expect(res.status).toBe(503);
     const text = await res.text();
     expect(text).not.toContain("0812345678");
     expect(text).not.toContain("th.line");
     expect(JSON.parse(text)).toEqual({ message: expect.any(String) });
+    expect(events).toEqual([]);
+  });
+
+  test("still answers when only the Axiom mirror fails, since D1 holds the record", async () => {
+    auditFails = true;
+    const res = await reveal("staff");
+    expect(res.status).toBe(200);
+    expect(await t.db.select().from(leadershipContactReveal)).toHaveLength(1);
   });
 
   test("requires explicit confirmation", async () => {

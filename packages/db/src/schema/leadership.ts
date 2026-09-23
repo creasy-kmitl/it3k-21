@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 import { user } from "./auth";
 import { department } from "./department";
@@ -65,5 +65,30 @@ export const leadershipSocial = sqliteTable(
       "leadership_social_platform_check",
       sql`${table.platform} IN (${inList(SOCIAL_PLATFORMS)})`,
     ),
+  ],
+);
+
+// Append-only record of who viewed which seat's contact details. Written before
+// the details are returned. Deliberately no foreign keys: audit rows must
+// outlive the seat, the account and the department they mention.
+export const leadershipContactReveal = sqliteTable(
+  "leadership_contact_reveal",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    actorUserId: text("actor_user_id").notNull(),
+    actorDepartmentCode: text("actor_department_code"),
+    // The admin behind an impersonated session, if any.
+    impersonatedBy: text("impersonated_by"),
+    leadershipId: text("leadership_id").notNull(),
+    departmentId: text("department_id").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [
+    index("leadership_contact_reveal_actor_idx").on(table.actorUserId, table.createdAt),
+    index("leadership_contact_reveal_seat_idx").on(table.leadershipId, table.createdAt),
   ],
 );
