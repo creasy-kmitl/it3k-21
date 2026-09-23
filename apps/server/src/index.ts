@@ -6,8 +6,9 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import { env } from "./env.server";
-import { departments } from "./routes/departments";
-import { createAuth } from "./services";
+import type { RouteDeps } from "./routes/current-user";
+import { createDepartmentRoutes } from "./routes/departments";
+import { createAuth, getDb } from "./services";
 
 initLogger({
   // Stages share a dataset per tier, so the stage name is what separates
@@ -40,7 +41,15 @@ app.use(
 
 app.on(["POST", "GET"], "/api/auth/*", async (c) => (await createAuth()).handler(c.req.raw));
 
-app.route("/api/departments", departments);
+const deps: RouteDeps = {
+  getUserId: async (headers) => {
+    const session = await (await createAuth()).api.getSession({ headers });
+    return session?.user.id ?? null;
+  },
+  getDb,
+};
+
+app.route("/api/departments", createDepartmentRoutes(deps));
 
 app.get("/", (c) => {
   return c.text("OK");
