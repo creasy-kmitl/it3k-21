@@ -4,7 +4,13 @@ import { and, count, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
-import { type CurrentUserEnv, type RouteDeps, constraintError, requireUser } from "./current-user";
+import {
+  type CurrentUserEnv,
+  type RouteDeps,
+  constraintError,
+  requireJsonPosts,
+  requireUser,
+} from "./current-user";
 import { validate } from "./validation";
 
 const departmentInput = z.object({
@@ -20,6 +26,7 @@ function isUniqueViolation(error: unknown) {
 
 export const createDepartmentRoutes = (deps: RouteDeps) =>
   new Hono<CurrentUserEnv>()
+    .use(requireJsonPosts)
     .use(requireUser(deps))
 
     .get("/", async (c) => {

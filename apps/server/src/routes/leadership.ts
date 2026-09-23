@@ -19,6 +19,7 @@ import {
   type CurrentUserEnv,
   type RouteDeps,
   constraintMessage,
+  requireJsonPosts,
   requireUser,
 } from "./current-user";
 import { allowed, isManager } from "./leadership-policy";
@@ -301,6 +302,7 @@ const managerOnly = createMiddleware<LeadershipEnv>(async (c, next) => {
 
 export const createLeadershipRoutes = (deps: LeadershipDeps) =>
   new Hono<LeadershipEnv>()
+    .use(requireJsonPosts)
     .use(requireUser(deps))
 
     .get("/", validate("query", listQuery), async (c) => {

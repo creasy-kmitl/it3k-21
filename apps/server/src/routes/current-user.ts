@@ -31,6 +31,21 @@ export type CurrentUserEnv = {
   Variables: { user: CurrentUser; db: Database };
 };
 
+/**
+ * CSRF guard. Session cookies are SameSite=None, so a page on another site
+ * can make the browser send them. Of the methods these routes accept, only
+ * POST can be sent cross-site without a CORS preflight -- and only with a
+ * form-like content type -- so every POST must declare JSON. PATCH, PUT and
+ * DELETE always preflight, which CORS_ORIGIN then restricts.
+ */
+export const requireJsonPosts = createMiddleware(async (c, next) => {
+  const type = c.req.header("content-type") ?? "";
+  if (c.req.method === "POST" && !/^application\/json\b/i.test(type)) {
+    return c.json({ message: "Content-Type must be application/json" }, 415);
+  }
+  await next();
+});
+
 function isBanned(row: { banned: boolean | null; banExpires: Date | null }) {
   if (!row.banned) return false;
   return row.banExpires === null || row.banExpires.getTime() > Date.now();

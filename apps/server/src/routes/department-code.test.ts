@@ -105,3 +105,27 @@ describe("DELETE /:id", () => {
     expect(res.status).toBe(204);
   });
 });
+
+describe("cross-site form posts", () => {
+  test("a text/plain POST is refused before anything is created", async () => {
+    for (const contentType of ["text/plain", "application/x-www-form-urlencoded", null]) {
+      const headers = new Headers(t.as("admin").headers);
+      headers.set("origin", "https://evil.example");
+      if (contentType) headers.set("content-type", contentType);
+      else headers.delete("content-type");
+      const res = await app.request("/", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ name: "Evil" }),
+      });
+      expect(res.status).toBe(415);
+    }
+    const list = (await (await app.request("/", t.as("admin"))).json()) as { name: string }[];
+    expect(list.some((d) => d.name === "Evil")).toBe(false);
+  });
+
+  test("JSON posts still work", async () => {
+    const res = await app.request("/", t.as("admin", { method: "POST", json: { name: "New" } }));
+    expect(res.status).toBe(201);
+  });
+});

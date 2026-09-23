@@ -84,7 +84,7 @@ describe("POST /:id/reveal", () => {
       headers,
       body: JSON.stringify({ confirmed: true }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(415);
     expect(events).toEqual([]);
   });
 
