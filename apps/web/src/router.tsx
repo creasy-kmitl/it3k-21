@@ -13,7 +13,7 @@ export const getRouter = () => {
     routeTree,
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,
-    context: {},
+    context: { queryClient },
     defaultPendingComponent: () => <Loader />,
     defaultNotFoundComponent: NotFound,
     Wrap: ({ children }) => (
