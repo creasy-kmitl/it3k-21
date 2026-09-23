@@ -1,1 +1,6 @@
 env = false
+
+[test]
+# jsdom globals must exist before react-dom loads, which Bun does ahead of a
+# test file's own imports. Only globals Bun lacks are added (see the file).
+preload = ["./apps/web/src/test/dom.ts"]

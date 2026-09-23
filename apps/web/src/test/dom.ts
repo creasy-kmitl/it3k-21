@@ -1,5 +1,5 @@
-// Test-only: gives `bun test` a jsdom window. Import this first in component
-// tests -- Testing Library binds `screen` to `document.body` when it loads.
+// Test-only: gives `bun test` a jsdom window. Preloaded from the root
+// bunfig.toml so the DOM exists before react-dom and Testing Library load.
 import { JSDOM } from "jsdom";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
