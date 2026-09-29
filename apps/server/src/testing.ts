@@ -4,7 +4,7 @@ import { type LeadershipRole, department, leadership, user } from "@it3k/db/sche
 import { createTestDb } from "@it3k/db/testing";
 import { eq } from "drizzle-orm";
 
-import type { RouteDeps } from "./routes/current-user";
+import type { RouteDeps } from "./middleware/current-user";
 
 const TEST_USER_HEADER = "x-test-user";
 const TEST_IMPERSONATOR_HEADER = "x-test-impersonated-by";

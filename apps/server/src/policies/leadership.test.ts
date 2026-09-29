@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { type Action, type Actor, allowed, canGrantAdmin, isManager } from "./leadership-policy";
+import { type Action, type Actor, allowed, canGrantAdmin, isManager } from "./leadership";
 
 const actor = (overrides: Partial<Actor> = {}): Actor => ({
   id: "me",

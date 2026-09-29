@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import { env } from "./env.server";
-import type { RouteDeps } from "./routes/current-user";
+import type { RouteDeps } from "./middleware/current-user";
 import { createDepartmentRoutes } from "./routes/departments";
 import { createUserRoutes } from "./routes/users";
 import { createLeadershipRoutes, recordContactReveal } from "./routes/leadership";

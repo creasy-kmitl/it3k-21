@@ -18,8 +18,8 @@ import {
   constraintError,
   requireJsonPosts,
   requireUser,
-} from "./current-user";
-import { validate } from "./validation";
+} from "../../middleware/current-user";
+import { validate } from "../../middleware/validation";
 
 const departmentInput = z.object({
   name: z.string().trim().min(1).max(100),

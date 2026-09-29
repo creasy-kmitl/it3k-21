@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { leadership, leadershipContactReveal, leadershipSocial } from "@it3k/db/schema/index";
 
-import { createTestContext, readJson } from "../testing";
-import { type ContactRevealAudit, createLeadershipRoutes, recordContactReveal } from "./leadership";
+import { createTestContext, readJson } from "../../testing";
+import { type ContactRevealAudit, createLeadershipRoutes, recordContactReveal } from ".";
 
 let t: ReturnType<typeof createTestContext>;
 let app: ReturnType<typeof createLeadershipRoutes>;

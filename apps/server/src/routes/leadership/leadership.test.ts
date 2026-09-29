@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { leadership, leadershipSocial, user } from "@it3k/db/schema/index";
 import { eq } from "drizzle-orm";
 
-import { createTestContext, readJson } from "../testing";
-import { type ContactRevealAudit, createLeadershipRoutes } from "./leadership";
+import { createTestContext, readJson } from "../../testing";
+import { type ContactRevealAudit, createLeadershipRoutes } from ".";
 
 let t: ReturnType<typeof createTestContext>;
 let app: ReturnType<typeof createLeadershipRoutes>;

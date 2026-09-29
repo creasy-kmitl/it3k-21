@@ -16,10 +16,10 @@ import {
   requireJsonPosts,
   requireMember,
   requireUser,
-} from "./current-user";
-import { PAGE_SIZE, containsAny, userQuery } from "./leadership";
-import { canGrantAdmin, isManager } from "./leadership-policy";
-import { validate } from "./validation";
+} from "../../middleware/current-user";
+import { PAGE_SIZE, containsAny, userQuery } from "../leadership";
+import { canGrantAdmin, isManager } from "../../policies/leadership";
+import { validate } from "../../middleware/validation";
 
 const idParam = z.strictObject({ id: z.string().min(1) });
 

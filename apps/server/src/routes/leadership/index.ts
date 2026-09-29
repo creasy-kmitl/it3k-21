@@ -23,9 +23,9 @@ import {
   requireJsonPosts,
   requireMember,
   requireUser,
-} from "./current-user";
-import { allowed, isManager } from "./leadership-policy";
-import { validate } from "./validation";
+} from "../../middleware/current-user";
+import { allowed, isManager } from "../../policies/leadership";
+import { validate } from "../../middleware/validation";
 
 export const PAGE_SIZE = 20;
 const MAX_QUERY_CODE_POINTS = 64;
