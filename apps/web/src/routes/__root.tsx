@@ -4,6 +4,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
+import { NavigationProgress } from "../components/navigation-progress";
 import NotFound from "../components/not-found";
 import { getOrigin } from "../functions/get-origin";
 
@@ -82,6 +83,7 @@ function RootDocument() {
         <HeadContent />
       </head>
       <body>
+        <NavigationProgress />
         {/* min-h, not h: pages taller than the screen must grow the layout, not overflow it. */}
         <div className="flex min-h-svh text-foreground bg-background">
           {/*<Header />*/}
