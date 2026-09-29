@@ -1,6 +1,6 @@
 import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
-import { department } from "@it3k/db/schema/department";
+import { department, departmentAppearance } from "@it3k/db/schema/department";
 import {
   LEADERSHIP_ROLES,
   type LeadershipRole,
@@ -339,10 +339,15 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
 
     .get("/departments", async (c) => {
       const rows = await c.var.db
-        .select({ id: department.id, name: department.name })
+        .select({
+          id: department.id,
+          name: department.name,
+          icon: department.icon,
+          color: department.color,
+        })
         .from(department)
         .orderBy(department.createdAt, department.name);
-      return c.json(rows, 200);
+      return c.json(rows.map(departmentAppearance), 200);
     })
 
     .get("/users", managerOnly, validate("query", userQuery), async (c) => {

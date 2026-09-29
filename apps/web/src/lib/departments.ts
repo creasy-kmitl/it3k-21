@@ -1,9 +1,13 @@
+import type { DepartmentColorKey, DepartmentIconKey } from "@/components/department-icon";
+
 import { ENV } from "../env.public";
 
 export type Department = {
   id: string;
   name: string;
   description: string | null;
+  icon: DepartmentIconKey;
+  color: DepartmentColorKey;
   createdAt: string;
   updatedAt: string;
   memberCount: number;
@@ -12,6 +16,8 @@ export type Department = {
 export type DepartmentInput = {
   name: string;
   description?: string | null;
+  icon?: DepartmentIconKey;
+  color?: DepartmentColorKey;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

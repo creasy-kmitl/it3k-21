@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { leadership, user } from "@it3k/db/schema/index";
+import { department, leadership, user } from "@it3k/db/schema/index";
 import { eq } from "drizzle-orm";
 
 import { createTestContext, readJson } from "../testing";
@@ -171,5 +171,51 @@ describe("department membership vs. seats", () => {
     const res = await app.request(`/${pr}/members/art-lead`, t.as("admin", { method: "PUT" }));
     expect(res.status).toBe(200);
     expect(await departmentOf("art-lead")).toBe(pr);
+  });
+});
+
+describe("department icon and color", () => {
+  test("seeded departments start with their own icon and color", async () => {
+    const res = await app.request("/", t.as("admin"));
+    const body = (await res.json()) as { name: string; icon: string; color: string }[];
+    expect(body.find((d) => d.name === "Art")).toMatchObject({ icon: "palette", color: "rose" });
+    expect(new Set(body.map((d) => d.color)).size).toBe(body.length);
+  });
+
+  test("admin changes them; unknown values are rejected", async () => {
+    const art = await t.departmentId("Art");
+    let res = await app.request(
+      `/${art}`,
+      t.as("admin", { method: "PATCH", json: { icon: "camera", color: "sky" } }),
+    );
+    expect(res.status).toBe(200);
+    expect(await readJson(res)).toMatchObject({ name: "Art", icon: "camera", color: "sky" });
+
+    res = await app.request(
+      `/${art}`,
+      t.as("admin", { method: "PATCH", json: { icon: "skull", color: "chartreuse" } }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  test("unset departments use the built-in look; a renamed one falls back to generic", async () => {
+    const art = await t.departmentId("Art");
+    const [stored] = await t.db
+      .select({ icon: department.icon, color: department.color })
+      .from(department)
+      .where(eq(department.id, art));
+    expect(stored).toEqual({ icon: null, color: null });
+
+    const res = await app.request(
+      `/${art}`,
+      t.as("admin", { method: "PATCH", json: { name: "Art & Design" } }),
+    );
+    expect(await readJson(res)).toMatchObject({ icon: "folder", color: "slate" });
+  });
+
+  test("new departments default to a folder in slate", async () => {
+    const res = await app.request("/", t.as("admin", { method: "POST", json: { name: "New" } }));
+    expect(res.status).toBe(201);
+    expect(await readJson(res)).toMatchObject({ icon: "folder", color: "slate" });
   });
 });

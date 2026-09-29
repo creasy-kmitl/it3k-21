@@ -1,5 +1,13 @@
 import { can } from "@it3k/auth/permissions";
-import { DEPARTMENT_CODES, department, leadership, user } from "@it3k/db/schema/index";
+import {
+  DEPARTMENT_CODES,
+  DEPARTMENT_COLORS,
+  DEPARTMENT_ICONS,
+  department,
+  departmentAppearance,
+  leadership,
+  user,
+} from "@it3k/db/schema/index";
 import { and, count, eq, ne, notExists } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -16,6 +24,8 @@ import { validate } from "./validation";
 const departmentInput = z.object({
   name: z.string().trim().min(1).max(100),
   description: z.string().trim().max(500).nullish(),
+  icon: z.enum(DEPARTMENT_ICONS).optional(),
+  color: z.enum(DEPARTMENT_COLORS).optional(),
 });
 
 const codeInput = z.strictObject({ code: z.enum(DEPARTMENT_CODES).nullable() });
@@ -42,6 +52,8 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
           name: department.name,
           description: department.description,
           code: department.code,
+          icon: department.icon,
+          color: department.color,
           createdAt: department.createdAt,
           updatedAt: department.updatedAt,
           memberCount: count(user.id),
@@ -50,7 +62,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
         .leftJoin(user, eq(user.departmentId, department.id))
         .groupBy(department.id)
         .orderBy(department.createdAt, department.name);
-      return c.json(rows);
+      return c.json(rows.map(departmentAppearance));
     })
 
     .get("/:id", async (c) => {
@@ -70,7 +82,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
       if (!row) {
         return c.json({ message: "Department not found" }, 404);
       }
-      return c.json(row);
+      return c.json(departmentAppearance(row));
     })
 
     .post("/", async (c) => {
@@ -84,7 +96,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
       const db = c.var.db;
       try {
         const [row] = await db.insert(department).values(parsed.data).returning();
-        return c.json(row, 201);
+        return c.json(departmentAppearance(row!), 201);
       } catch (error) {
         if (isUniqueViolation(error)) {
           return c.json({ message: "Department name already exists" }, 409);
@@ -112,7 +124,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
         if (!row) {
           return c.json({ message: "Department not found" }, 404);
         }
-        return c.json(row);
+        return c.json(departmentAppearance(row));
       } catch (error) {
         if (isUniqueViolation(error)) {
           return c.json({ message: "Department name already exists" }, 409);

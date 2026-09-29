@@ -288,9 +288,14 @@ describe("GET /departments", () => {
   test("lists departments for any signed-in user", async () => {
     const res = await app.request("/departments", t.as("staff"));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { id: string; name: string }[];
+    const body = (await res.json()) as { id: string; name: string; icon: string; color: string }[];
     expect(body).toHaveLength(16);
-    expect(body[0]).toEqual({ id: expect.any(String), name: "สวัสดิการ" });
+    expect(body[0]).toEqual({
+      id: expect.any(String),
+      name: "สวัสดิการ",
+      icon: "heart-handshake",
+      color: "pink",
+    });
   });
 });
 
