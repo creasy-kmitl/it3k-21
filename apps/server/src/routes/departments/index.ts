@@ -96,7 +96,8 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
       const db = c.var.db;
       try {
         const [row] = await db.insert(department).values(parsed.data).returning();
-        return c.json(departmentAppearance(row!), 201);
+        if (!row) throw new Error("Department insert returned no row");
+        return c.json(departmentAppearance(row), 201);
       } catch (error) {
         if (isUniqueViolation(error)) {
           return c.json({ message: "Department name already exists" }, 409);

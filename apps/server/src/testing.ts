@@ -2,6 +2,8 @@
 // the Better Auth session so routes can be exercised with Hono#request.
 import { type LeadershipRole, department, leadership, user } from "@it3k/db/schema/index";
 import { createTestDb } from "@it3k/db/testing";
+
+export { defined } from "@it3k/db/testing";
 import { eq } from "drizzle-orm";
 
 import type { RouteDeps } from "./middleware/current-user";

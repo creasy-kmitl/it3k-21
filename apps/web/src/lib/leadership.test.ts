@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { defined } from "@/test/query";
+
 import { ApiError, createLeadershipApi } from "./leadership";
 
 type Call = { url: string; method: string; body: string | null; credentials?: RequestCredentials };
@@ -46,7 +48,7 @@ describe("leadership client", () => {
     const page = await api.list({ q: "ชาย", page: 2 });
     expect(page.items[0]?.displayName).toBe("A");
     expect(calls).toHaveLength(1);
-    const url = new URL(calls[0]!.url);
+    const url = new URL(defined(calls[0], "request").url);
     expect(url.pathname).toBe("/api/leadership");
     expect(url.searchParams.get("q")).toBe("ชาย");
     expect(url.searchParams.get("page")).toBe("2");
@@ -56,7 +58,7 @@ describe("leadership client", () => {
   test("omits empty filters from the query string", async () => {
     const { calls, api } = stub(200, { items: [], page: 1, hasMore: false, canCreate: false });
     await api.list({ q: "", departmentId: undefined, page: 1 });
-    expect(new URL(calls[0]!.url).search).toBe("?page=1");
+    expect(new URL(defined(calls[0], "request").url).search).toBe("?page=1");
   });
 
   test("reveal posts the confirmation", async () => {

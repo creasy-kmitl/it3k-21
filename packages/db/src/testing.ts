@@ -77,6 +77,12 @@ function toBinding(value: unknown): SQLQueryBindings {
 }
 
 /** Lets a test act between a route's reads and its batched writes. */
+/** Narrows a value a test expects to exist, failing loudly when it does not. */
+export function defined<T>(value: T | null | undefined, what = "value"): T {
+  if (value === null || value === undefined) throw new Error(`Expected ${what} to exist`);
+  return value;
+}
+
 export type TestDbHooks = { beforeBatch?: () => void };
 
 class SqliteD1 implements D1Database {

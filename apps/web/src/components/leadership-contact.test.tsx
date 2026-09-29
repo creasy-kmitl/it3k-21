@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 
 import { ApiError, type LeadershipContact } from "@/lib/leadership";
-import { fakeApi, summary } from "@/test/query";
+import { defined, fakeApi, summary } from "@/test/query";
 
 import LeadershipContactButton from "./leadership-contact";
 
@@ -117,7 +117,7 @@ describe("LeadershipContactButton", () => {
     );
     fireEvent.click(view.getByRole("button", { name: /ช่องทางติดต่อ/ }));
     fireEvent.click(await view.findByRole("button", { name: "ยืนยัน" }));
-    const badge = (await view.findByText("Art")).closest("[data-slot=badge]")!;
+    const badge = defined((await view.findByText("Art")).closest("[data-slot=badge]"), "badge");
     expect(badge.className).toContain("bg-rose-500/15");
     expect(badge.querySelector("svg.lucide-palette")).not.toBeNull();
   });

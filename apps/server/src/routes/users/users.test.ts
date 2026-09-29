@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { leadership, leadershipSocial, user } from "@it3k/db/schema/index";
 import { eq } from "drizzle-orm";
 
-import { createTestContext, readJson } from "../../testing";
+import { createTestContext, defined, readJson } from "../../testing";
 import { createLeadershipRoutes } from "../leadership";
 import { createUserRoutes } from ".";
 
@@ -89,7 +89,7 @@ describe("PUT /:id/assignment", () => {
   });
 
   test("makes someone an athlete, leaving their department and seat", async () => {
-    const seat = (await seatOf("reg-vice"))!;
+    const seat = defined(await seatOf("reg-vice"), "reg-vice's seat");
     const { res, body } = await assign("admin", "reg-vice", { kind: "athlete" });
     expect(res.status).toBe(200);
     expect(body).toMatchObject({ role: "athlete", department: null, seatRole: null });
@@ -107,7 +107,7 @@ describe("PUT /:id/assignment", () => {
 
   test("taking an occupied seat replaces its holder and clears their contact", async () => {
     const reg = await t.departmentId("ทะเบียน");
-    const seat = (await seatOf("reg-vice"))!;
+    const seat = defined(await seatOf("reg-vice"), "reg-vice's seat");
     await t.db.update(leadership).set({ phone: "0812345678" }).where(eq(leadership.id, seat.id));
     await t.db
       .insert(leadershipSocial)
@@ -126,7 +126,7 @@ describe("PUT /:id/assignment", () => {
   });
 
   test("leaving a seat deletes it", async () => {
-    const seat = (await seatOf("reg-vice"))!;
+    const seat = defined(await seatOf("reg-vice"), "reg-vice's seat");
     const art = await t.departmentId("Art");
     await assign("admin", "reg-vice", { kind: "staff", departmentId: art });
     expect(await t.db.select().from(leadership).where(eq(leadership.id, seat.id))).toEqual([]);
@@ -139,7 +139,7 @@ describe("PUT /:id/assignment", () => {
 
   test("re-assigning the same seat keeps it and its contact", async () => {
     const reg = await t.departmentId("ทะเบียน");
-    const seat = (await seatOf("reg-vice"))!;
+    const seat = defined(await seatOf("reg-vice"), "reg-vice's seat");
     await t.db.update(leadership).set({ phone: "0812345678" }).where(eq(leadership.id, seat.id));
     await assign("admin", "reg-vice", { kind: "vicehead", departmentId: reg });
     expect(await seatOf("reg-vice")).toMatchObject({ id: seat.id, phone: "0812345678" });

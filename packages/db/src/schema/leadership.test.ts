@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 
-import { createTestDb } from "../testing";
+import { createTestDb, defined } from "../testing";
 import { department, leadership, leadershipContactReveal, leadershipSocial, user } from "./index";
 
 let t: ReturnType<typeof createTestDb>;
@@ -102,7 +102,10 @@ describe("leadership", () => {
       .values({ departmentId: art.id, role: "head", name: "A", userId })
       .returning();
     await t.db.delete(user).where(eq(user.id, userId));
-    const [after] = await t.db.select().from(leadership).where(eq(leadership.id, row!.id));
+    const [after] = await t.db
+      .select()
+      .from(leadership)
+      .where(eq(leadership.id, defined(row, "seat").id));
     expect(after?.userId).toBeNull();
   });
 
@@ -113,10 +116,10 @@ describe("leadership", () => {
       .values({ departmentId: art.id, role: "head", name: "A" })
       .returning();
     await t.db.insert(leadershipSocial).values([
-      { leadershipId: row!.id, platform: "line", value: "a.line" },
-      { leadershipId: row!.id, platform: "instagram", value: "a.ig" },
+      { leadershipId: defined(row, "seat").id, platform: "line", value: "a.line" },
+      { leadershipId: defined(row, "seat").id, platform: "instagram", value: "a.ig" },
     ]);
-    await t.db.delete(leadership).where(eq(leadership.id, row!.id));
+    await t.db.delete(leadership).where(eq(leadership.id, defined(row, "seat").id));
     expect(await t.db.select().from(leadershipSocial)).toEqual([]);
   });
 
@@ -141,13 +144,13 @@ describe("leadership contact reveal audit", () => {
         actorUserId: userId,
         actorDepartmentCode: null,
         impersonatedBy: null,
-        leadershipId: seatRow!.id,
+        leadershipId: defined(seatRow, "seat").id,
         departmentId: art.id,
       })
       .returning();
     expect(row?.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(row?.createdAt).toBeInstanceOf(Date);
-    await t.db.delete(leadership).where(eq(leadership.id, seatRow!.id));
+    await t.db.delete(leadership).where(eq(leadership.id, defined(seatRow, "seat").id));
     await t.db.delete(user).where(eq(user.id, userId));
     expect(await t.db.select().from(leadershipContactReveal)).toHaveLength(1);
   });

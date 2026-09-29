@@ -48,12 +48,12 @@ export function NavUser() {
   );
   const badges = me && (
     <span className="flex flex-wrap items-center gap-1">
-      {me.role === "admin" && <RoleBadge role="admin" />}
+      {me.role === "admin" && <RoleBadge kind="admin" />}
       {me.seatRole ? (
-        <RoleBadge role={me.seatRole} department={me.department} />
+        <RoleBadge kind={me.seatRole} department={me.department} />
       ) : (
         <>
-          {me.role !== "admin" && <RoleBadge role={me.role} />}
+          {me.role !== "admin" && <RoleBadge kind={me.role} />}
           {me.department && <DepartmentBadge department={me.department} />}
         </>
       )}

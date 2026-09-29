@@ -9,6 +9,12 @@ import { ApiProvider, type Apis } from "@/lib/api-context";
 import type { LeadershipApi, LeadershipPage, LeadershipSummary } from "@/lib/leadership";
 import type { UsersApi } from "@/lib/users";
 
+/** Narrows a value a test expects to exist, failing loudly when it does not. */
+export function defined<T>(value: T | null | undefined, what = "value"): T {
+  if (value === null || value === undefined) throw new Error(`Expected ${what} to exist`);
+  return value;
+}
+
 export function renderWithQuery(ui: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },

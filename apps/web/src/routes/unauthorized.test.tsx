@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent } from "@testing-library/react";
 
+import { defined } from "@/test/query";
 import { renderAtRoot } from "@/test/router";
 
 import { Route } from "./unauthorized";
 
-const Unauthorized = Route.options.component!;
+const Unauthorized = defined(Route.options.component, "route component");
 
 afterEach(cleanup);
 

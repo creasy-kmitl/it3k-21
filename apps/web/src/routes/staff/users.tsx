@@ -208,12 +208,12 @@ function UsersPage() {
 function AccountBadges({ account }: { account: Account }) {
   return (
     <span className="flex flex-wrap items-center gap-1">
-      {account.role === "admin" && <RoleBadge role="admin" />}
+      {account.role === "admin" && <RoleBadge kind="admin" />}
       {account.seatRole ? (
-        <RoleBadge role={account.seatRole} department={account.department} />
+        <RoleBadge kind={account.seatRole} department={account.department} />
       ) : (
         <>
-          {account.role !== "admin" && <RoleBadge role={account.role} />}
+          {account.role !== "admin" && <RoleBadge kind={account.role} />}
           {account.department && <DepartmentBadge department={account.department} />}
         </>
       )}

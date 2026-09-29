@@ -117,8 +117,8 @@ describe("GET /", () => {
       name: "Somchai Jaidee",
       displayName: "ชาย Somchai Jaidee",
     });
-    expect(byDept["Art"]).toMatchObject({ name: "Stored", displayName: "โอ๊ต Stored" });
-    expect(byDept["PR"]).toMatchObject({ name: "Plain", displayName: "Plain" });
+    expect(byDept.Art).toMatchObject({ name: "Stored", displayName: "โอ๊ต Stored" });
+    expect(byDept.PR).toMatchObject({ name: "Plain", displayName: "Plain" });
   });
 
   test("never exposes phone, socials or account email", async () => {

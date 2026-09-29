@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 
 import { ApiError, type ListQuery } from "@/lib/leadership";
-import { choose, fakeApi, page, renderWithQuery, summary } from "@/test/query";
+import { choose, defined, fakeApi, page, renderWithQuery, summary } from "@/test/query";
 
 import LeadershipDirectory from "./leadership-directory";
 
@@ -53,8 +53,8 @@ describe("LeadershipDirectory", () => {
     expect(within(art).queryByRole("table")).toBeNull();
     const cards = within(art).getByRole("list", { name: "Art" }).querySelectorAll("li");
     expect(cards).toHaveLength(2);
-    expect(cards[0]!.querySelector("svg.lucide-crown")).not.toBeNull();
-    expect(cards[1]!.querySelector("svg.lucide-shield-user")).not.toBeNull();
+    expect(defined(cards[0]).querySelector("svg.lucide-crown")).not.toBeNull();
+    expect(defined(cards[1]).querySelector("svg.lucide-shield-user")).not.toBeNull();
   });
 
   test("shows the directory icon and title", async () => {
@@ -94,7 +94,7 @@ describe("LeadershipDirectory", () => {
 
   test("debounces search and asks the server, resetting to page 1", async () => {
     const { calls, view } = setup(async (query) =>
-      page(query.q ? [roster[2]!] : roster, { page: query.page, hasMore: !query.q }),
+      page(query.q ? [defined(roster[2])] : roster, { page: query.page, hasMore: !query.q }),
     );
     await view.findByRole("region", { name: "Art" });
     fireEvent.click(view.getByRole("button", { name: "หน้าถัดไป" }));

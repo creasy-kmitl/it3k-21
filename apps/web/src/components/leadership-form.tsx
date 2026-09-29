@@ -51,7 +51,9 @@ export type FormMode =
   | { kind: "edit"; seat: LeadershipSummary; selfOnly: boolean };
 
 type Platform = LeadershipContact["socials"][number]["platform"];
-const PLATFORMS: { value: Platform; label: string }[] = [
+type PlatformOption = { value: Platform; label: string };
+// Typed non-empty, so the first option always exists.
+const PLATFORMS: [PlatformOption, ...PlatformOption[]] = [
   { value: "facebook", label: "Facebook" },
   { value: "instagram", label: "Instagram" },
   { value: "line", label: "LINE" },
@@ -422,7 +424,7 @@ export default function LeadershipForm({ mode, api = leadershipApi, onDone, onCa
                           className="self-start"
                           onClick={() => {
                             const used = new Set(socials.state.value.map((s) => s.platform));
-                            const next = PLATFORMS.find((p) => !used.has(p.value)) ?? PLATFORMS[0]!;
+                            const next = PLATFORMS.find((p) => !used.has(p.value)) ?? PLATFORMS[0];
                             socials.pushValue({ platform: next.value, value: "" });
                           }}
                         >

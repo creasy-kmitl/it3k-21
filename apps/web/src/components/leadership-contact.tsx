@@ -144,7 +144,7 @@ export default function LeadershipContactButton({
                   render={<div />}
                   className="flex flex-wrap items-center gap-2"
                 >
-                  <RoleBadge role={seat.role} />
+                  <RoleBadge kind={seat.role} />
                   <DepartmentBadge
                     department={
                       department ?? { name: seat.departmentName, icon: "folder", color: "slate" }

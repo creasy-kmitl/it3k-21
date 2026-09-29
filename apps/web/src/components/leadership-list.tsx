@@ -15,12 +15,12 @@ const ROLE_ICONS: Record<LeadershipSummary["role"], LucideIcon> = {
   vicehead: ShieldUser,
 };
 
-export function RoleBadge({ role }: { role: LeadershipSummary["role"] }) {
-  const Icon = ROLE_ICONS[role];
+export function RoleBadge({ kind }: { kind: LeadershipSummary["role"] }) {
+  const Icon = ROLE_ICONS[kind];
   return (
-    <Badge variant={role === "head" ? "default" : "secondary"}>
+    <Badge variant={kind === "head" ? "default" : "secondary"}>
       <Icon data-icon="inline-start" aria-hidden />
-      {ROLE_LABELS[role]}
+      {ROLE_LABELS[kind]}
     </Badge>
   );
 }
@@ -42,7 +42,7 @@ export default function LeadershipList({ departmentName, seats, renderActions }:
             <CardHeader>
               <CardTitle>{seat.displayName}</CardTitle>
               <CardDescription>
-                <RoleBadge role={seat.role} />
+                <RoleBadge kind={seat.role} />
               </CardDescription>
               <CardAction className="flex gap-1">{renderActions(seat)}</CardAction>
             </CardHeader>

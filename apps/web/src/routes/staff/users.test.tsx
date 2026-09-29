@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 
 import type { Account, Assignment, UsersApi } from "@/lib/users";
-import { choose, fakeApi, page, renderRoute, summary } from "@/test/query";
+import { choose, defined, fakeApi, page, renderRoute, summary } from "@/test/query";
 
 import { Route } from "./users";
 
@@ -36,7 +36,7 @@ function setup(items: Account[], canGrantAdmin = false) {
     list: async () => ({ items, page: 1, hasMore: false, canGrantAdmin }),
     assign: async (id, json) => {
       assigned.push([id, json]);
-      return items[0]!;
+      return defined(items[0], "account");
     },
     setAdmin: unexpected("setAdmin"),
   };

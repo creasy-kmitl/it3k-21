@@ -35,13 +35,13 @@ export const ROLE_BADGES: Record<
  * that department's color.
  */
 export function RoleBadge({
-  role,
+  kind,
   department,
 }: {
-  role: Role | SeatRole;
+  kind: Role | SeatRole;
   department?: { name: string; color: DepartmentColorKey } | null;
 }) {
-  const { label, icon: Icon, variant } = ROLE_BADGES[role];
+  const { label, icon: Icon, variant } = ROLE_BADGES[kind];
   return (
     <Badge
       variant={variant}

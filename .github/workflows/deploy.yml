@@ -33,6 +33,7 @@ jobs:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
       - run: bun run lint
+      - run: bun run lint:biome
       # Not `bun run check`: that also runs the formatter, which currently
       # fails on ~24 files that predate this workflow. Run `vp check --fix`
       # across the repo, then swap this for `bun run check`.

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { leadership, leadershipContactReveal, leadershipSocial } from "@it3k/db/schema/index";
 
-import { createTestContext, readJson } from "../../testing";
+import { createTestContext, defined, readJson } from "../../testing";
 import { type ContactRevealAudit, createLeadershipRoutes, recordContactReveal } from ".";
 
 let t: ReturnType<typeof createTestContext>;
@@ -34,7 +34,7 @@ beforeEach(async () => {
       phone: "0812345678",
     })
     .returning();
-  seatId = row!.id;
+  seatId = defined(row, "seeded seat").id;
   await t.db.insert(leadershipSocial).values([
     { leadershipId: seatId, platform: "line", value: "th.line" },
     { leadershipId: seatId, platform: "instagram", value: "https://instagram.com/th" },
@@ -165,7 +165,7 @@ describe("POST /:id/reveal", () => {
       .insert(leadership)
       .values({ departmentId: await t.departmentId("Art"), role: "head", name: "A" })
       .returning();
-    const res = await reveal("staff", { confirmed: true }, row!.id);
+    const res = await reveal("staff", { confirmed: true }, defined(row, "seat").id);
     expect(await readJson(res)).toEqual({ phone: null, socials: [] });
   });
 });
