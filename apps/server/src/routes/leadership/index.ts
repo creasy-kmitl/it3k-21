@@ -19,12 +19,15 @@ import {
   type CurrentUser,
   type CurrentUserEnv,
   type RouteDeps,
+  abortUnless,
+  constraintError,
   constraintMessage,
+  notAdmin,
   requireJsonPosts,
   requireMember,
   requireUser,
 } from "../../middleware/current-user";
-import { allowed, isManager } from "../../policies/leadership";
+import { allowed, canChangeAccount, canGrantAdmin, isManager } from "../../policies/leadership";
 import { validate } from "../../middleware/validation";
 
 export const PAGE_SIZE = 20;
@@ -256,15 +259,17 @@ async function findSummary(db: Database, id: string, actor: CurrentUser) {
   return row ? toSummary(row, actor) : null;
 }
 
-type Problem = { message: string; status: 400 | 404 };
+type Problem = { message: string; status: 400 | 403 | 404 };
 
 /**
  * A seat's department and attached account must exist. Only managers can attach
  * accounts, and they manage every department, so the account may come from any;
- * attaching moves it into the seat's department (see syncAccountDepartment).
+ * attaching moves it into the seat's department (see syncAccountDepartment), so
+ * an admin's account may only be attached by an admin, as on /api/users.
  */
 async function checkPlacement(
   db: Database,
+  actor: CurrentUser,
   departmentId: string,
   userId: string | null,
 ): Promise<Problem | null> {
@@ -276,14 +281,35 @@ async function checkPlacement(
     return { message: "Department not found", status: 404 };
   }
   if (userId === null) return null;
-  const [account] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId));
+  const [account] = await db
+    .select({ id: user.id, role: user.role })
+    .from(user)
+    .where(eq(user.id, userId));
   if (!account) {
     return { message: "Account not found", status: 404 };
+  }
+  if (!canChangeAccount(actor, account.role)) {
+    return { message: "Only admins can change an admin's account", status: 403 };
   }
   return null;
 }
 
+/**
+ * Batch guard for attaching `userId`: a non-admin's batch is rolled back if the
+ * account became an admin after checkPlacement read it, and `extra` rechecks
+ * anything else the route read.
+ */
+function attachGuard(db: Database, actor: CurrentUser, userId: string, extra?: SQL) {
+  const checks = [canGrantAdmin(actor) ? undefined : notAdmin(), extra].filter(
+    (check): check is SQL => check !== undefined,
+  );
+  return abortUnless(db, userId, and(...checks) ?? sql`1`);
+}
+
 function conflictMessage(error: unknown) {
+  if (constraintError(error) === "stale") {
+    return "This seat changed while you were editing; reload and try again";
+  }
   const message = constraintMessage(error);
   if (!message?.includes("UNIQUE")) return null;
   if (message.includes("leadership.user_id")) return "This account already holds a seat";
@@ -395,7 +421,12 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
     .post("/", managerOnly, validate("json", createInput), async (c) => {
       const { socials: items, ...fields } = c.req.valid("json");
       const db = c.var.db;
-      const problem = await checkPlacement(db, fields.departmentId, fields.userId ?? null);
+      const problem = await checkPlacement(
+        db,
+        c.var.user,
+        fields.departmentId,
+        fields.userId ?? null,
+      );
       if (problem) {
         return c.json({ message: problem.message }, problem.status);
       }
@@ -403,6 +434,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       try {
         await db.batch([
           db.insert(leadership).values({ id, ...fields }),
+          ...(fields.userId ? [attachGuard(db, c.var.user, fields.userId)] : []),
           ...(fields.userId ? [syncAccountDepartment(db, id)] : []),
           ...insertSocials(db, id, items),
         ]);
@@ -437,6 +469,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       if (input.departmentId !== undefined || input.userId !== undefined) {
         const problem = await checkPlacement(
           db,
+          actor,
           input.departmentId ?? current.departmentId,
           input.userId === undefined ? current.userId : input.userId,
         );
@@ -450,17 +483,52 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       const stillAllowed = isManager(actor)
         ? eq(leadership.id, id)
         : and(eq(leadership.id, id), eq(leadership.userId, actor.id));
+      // Handing an attached seat to another account: the previous holder's
+      // nickname, phone and socials are theirs, so they go unless replaced here.
+      const handover =
+        typeof input.userId === "string" &&
+        current.userId !== null &&
+        input.userId !== current.userId;
+      // Always present, so the batch has a fixed first statement; a no-op
+      // unless an account is being attached.
+      const guard =
+        typeof input.userId === "string"
+          ? attachGuard(
+              db,
+              actor,
+              input.userId,
+              // What is cleared must still be the previous holder's.
+              handover
+                ? exists(
+                    db
+                      .select({ id: leadership.id })
+                      .from(leadership)
+                      .where(
+                        and(eq(leadership.id, id), eq(leadership.userId, current.userId ?? "")),
+                      ),
+                  )
+                : undefined,
+            )
+          : abortUnless(db, actor.id, sql`1`);
       let updated: { id: string }[];
       try {
         // One batch: D1 applies the update and the social replacement together or not at all.
-        [updated] = await db.batch([
+        const results = await db.batch([
+          guard,
           db
             .update(leadership)
-            .set({ ...fields, updatedAt: new Date() })
+            .set({
+              ...(handover ? { nickname: null, phone: null } : {}),
+              ...fields,
+              updatedAt: new Date(),
+            })
             .where(stillAllowed)
             .returning({ id: leadership.id }),
           ...(fields.departmentId !== undefined || fields.userId
             ? [syncAccountDepartment(db, id)]
+            : []),
+          ...(handover && !items
+            ? [db.delete(leadershipSocial).where(eq(leadershipSocial.leadershipId, id))]
             : []),
           ...(items
             ? [
@@ -488,6 +556,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
               ]
             : []),
         ]);
+        updated = results[1] as { id: string }[];
       } catch (error) {
         const conflict = conflictMessage(error);
         if (conflict) return c.json({ message: conflict }, 409);

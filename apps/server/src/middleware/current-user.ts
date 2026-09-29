@@ -3,7 +3,7 @@ import { type DepartmentCode, department } from "@it3k/db/schema/department";
 import { user } from "@it3k/db/schema/auth";
 import { type LeadershipRole, leadership } from "@it3k/db/schema/leadership";
 import { isMember } from "@it3k/auth/permissions";
-import { eq } from "drizzle-orm";
+import { type SQL, eq, sql } from "drizzle-orm";
 import { createMiddleware } from "hono/factory";
 
 /** Seams injected by index.ts in production and by tests in Bun. */
@@ -116,15 +116,41 @@ export function constraintMessage(error: unknown): string | null {
   let current: unknown = error;
   for (let depth = 0; current && depth < 5; depth++) {
     const message = current instanceof Error ? current.message : String(current);
-    if (/(UNIQUE|FOREIGN KEY) constraint failed/.test(message)) return message;
+    if (/(UNIQUE|FOREIGN KEY|NOT NULL) constraint failed/.test(message)) return message;
     current = current instanceof Error ? current.cause : null;
   }
   return null;
 }
 
-export function constraintError(error: unknown): "unique" | "foreign-key" | null {
+export function constraintError(error: unknown): "unique" | "foreign-key" | "stale" | null {
   const message = constraintMessage(error);
   if (message?.includes("UNIQUE constraint failed")) return "unique";
   if (message?.includes("FOREIGN KEY constraint failed")) return "foreign-key";
+  if (message?.includes("NOT NULL constraint failed: user.role")) return "stale";
   return null;
+}
+
+/**
+ * A batch statement that fails the whole batch (a NOT NULL error on user.role,
+ * reported by constraintError as "stale") unless `stillTrue` holds. D1 runs a
+ * batch as one transaction, so this rechecks what the route read and rolls
+ * every write back if it changed in between. Put it before any write in the
+ * batch that changes what it checks. With `sql\`1\`` it changes nothing.
+ */
+export function abortUnless(db: Database, userId: string, stillTrue: SQL) {
+  return (
+    db
+      .update(user)
+      // updatedAt is kept as is: this guard must not look like a change.
+      .set({
+        role: sql`case when ${stillTrue} then ${user.role} else null end`,
+        updatedAt: sql`${user.updatedAt}`,
+      })
+      .where(eq(user.id, userId))
+  );
+}
+
+/** True while the account's (comma-separated) role list does not include admin. */
+export function notAdmin(): SQL {
+  return sql`',' || replace(${user.role}, ' ', '') || ',' not like '%,admin,%'`;
 }

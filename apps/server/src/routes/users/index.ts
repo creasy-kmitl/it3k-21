@@ -3,7 +3,7 @@ import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
 import { department, departmentAppearance } from "@it3k/db/schema/department";
 import { LEADERSHIP_ROLES, leadership, leadershipSocial } from "@it3k/db/schema/leadership";
-import { type SQL, and, eq } from "drizzle-orm";
+import { type SQL, and, eq, exists, isNull, notExists, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import { z } from "zod";
@@ -12,13 +12,14 @@ import {
   type CurrentUser,
   type CurrentUserEnv,
   type RouteDeps,
+  abortUnless,
   constraintError,
   requireJsonPosts,
   requireMember,
   requireUser,
 } from "../../middleware/current-user";
 import { PAGE_SIZE, containsAny, userQuery } from "../leadership";
-import { canGrantAdmin, isManager } from "../../policies/leadership";
+import { canChangeAccount, canGrantAdmin, isManager } from "../../policies/leadership";
 import { validate } from "../../middleware/validation";
 
 const idParam = z.strictObject({ id: z.string().min(1) });
@@ -79,7 +80,7 @@ function toAccount(row: AccountRow, actor: CurrentUser) {
         : null,
     seatRole: row.seatRole,
     // Only admins may change an admin's account.
-    canEdit: isManager(actor) && (role !== "admin" || canGrantAdmin(actor)),
+    canEdit: isManager(actor) && canChangeAccount(actor, row.role),
   };
 }
 
@@ -161,7 +162,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
           .where(eq(user.id, id));
         if (!target) return c.json({ message: "User not found" }, 404);
         const isAdmin = hasRole(target.role, "admin");
-        if (isAdmin && !canGrantAdmin(actor)) {
+        if (!canChangeAccount(actor, target.role)) {
           return c.json({ message: "Only admins can change an admin's account" }, 403);
         }
 
@@ -191,17 +192,43 @@ export const createUserRoutes = (deps: RouteDeps) =>
         const [taken] =
           seatRole && departmentId && !keepsSeat
             ? await db
-                .select({ id: leadership.id })
+                .select({ id: leadership.id, userId: leadership.userId })
                 .from(leadership)
                 .where(
                   and(eq(leadership.departmentId, departmentId), eq(leadership.role, seatRole)),
                 )
             : [];
 
+        // Everything the writes below rely on, rechecked inside the batch: the
+        // role decides admin rights, and the seats say whose data gets deleted.
+        const heldBy = (seatId: string, holder: string | null) =>
+          exists(
+            db
+              .select({ id: leadership.id })
+              .from(leadership)
+              .where(
+                and(
+                  eq(leadership.id, seatId),
+                  holder === null ? isNull(leadership.userId) : eq(leadership.userId, holder),
+                ),
+              ),
+          );
+        const unchanged = and(
+          eq(user.role, target.role),
+          current
+            ? heldBy(current.id, id)
+            : notExists(
+                db.select({ id: leadership.id }).from(leadership).where(eq(leadership.userId, id)),
+              ),
+          taken ? heldBy(taken.id, taken.userId) : sql`1`,
+        );
+
         try {
-          // One batch: D1 applies it all or nothing. Seats are freed before one is
-          // taken so the one-seat-per-account and one-holder-per-seat indexes hold.
+          // One batch: D1 applies it all or nothing, and abortUnless fails it if
+          // anything read above changed. Seats are freed before one is taken so
+          // the one-seat-per-account and one-holder-per-seat indexes hold.
           await db.batch([
+            abortUnless(db, id, unchanged ?? sql`1`),
             db
               .update(user)
               .set({

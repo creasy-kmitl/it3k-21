@@ -497,6 +497,68 @@ describe("PATCH /:id", () => {
     prSeat = await seat({ department: "PR", role: "head", name: "P" });
   });
 
+  test("handing a seat to another account drops the previous holder's contact", async () => {
+    await t.db.update(leadership).set({ nickname: "อาร์ต" }).where(eq(leadership.id, artHeadSeat));
+    await t.seedUser("art-2", { department: "Art", name: "Arthur" });
+    const { res, body } = await send("admin", "PATCH", `/${artHeadSeat}`, { userId: "art-2" });
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ userId: "art-2", name: "Arthur", nickname: null });
+    expect(await stored(artHeadSeat)).toMatchObject({ phone: null, nickname: null });
+    expect(await socialsOf(artHeadSeat)).toEqual([]);
+  });
+
+  test("contact sent with the handover is kept", async () => {
+    await t.seedUser("art-2", { department: "Art", name: "Arthur" });
+    await send("admin", "PATCH", `/${artHeadSeat}`, {
+      userId: "art-2",
+      phone: "0811111111",
+      socials: [{ platform: "line", value: "arthur" }],
+    });
+    expect((await stored(artHeadSeat))?.phone).toBe("0811111111");
+    expect(await socialsOf(artHeadSeat)).toEqual([{ platform: "line", value: "arthur" }]);
+  });
+
+  test("attaching an account to an unattached seat keeps the seat's contact", async () => {
+    await t.db.update(leadership).set({ phone: "0822222222" }).where(eq(leadership.id, prSeat));
+    await t.seedUser("pr-1", { department: "PR" });
+    await send("admin", "PATCH", `/${prSeat}`, { userId: "pr-1" });
+    expect((await stored(prSeat))?.phone).toBe("0822222222");
+  });
+
+  test("a non-admin cannot attach an admin's account", async () => {
+    await seatTechHead();
+    await t.seedUser("admin-2", { role: "admin", department: "Art" });
+    const { res } = await send("tech-head", "PATCH", `/${prSeat}`, { userId: "admin-2" });
+    expect(res.status).toBe(403);
+    const created = await send("tech-head", "POST", "/", {
+      departmentId: await t.departmentId("PR"),
+      role: "vicehead",
+      name: "X",
+      socials: [],
+      userId: "admin-2",
+    });
+    expect(created.res.status).toBe(403);
+    expect((await t.db.select().from(user).where(eq(user.id, "admin-2")))[0]?.departmentId).toBe(
+      await t.departmentId("Art"),
+    );
+    // An admin may.
+    expect((await send("admin", "PATCH", `/${prSeat}`, { userId: "admin-2" })).res.status).toBe(
+      200,
+    );
+  });
+
+  test("an account made admin meanwhile is not attached by a non-admin", async () => {
+    await seatTechHead();
+    await t.seedUser("pr-1", { department: "PR" });
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("UPDATE user SET role = 'admin' WHERE id = 'pr-1'");
+    };
+    const { res } = await send("tech-head", "PATCH", `/${prSeat}`, { userId: "pr-1" });
+    expect(res.status).toBe(409);
+    expect((await stored(prSeat))?.userId).toBeNull();
+  });
+
   test("a leader outside the manager departments edits their own contact fields", async () => {
     const { res, body } = await send("art-head", "PATCH", `/${artHeadSeat}`, {
       nickname: "อาร์ต",

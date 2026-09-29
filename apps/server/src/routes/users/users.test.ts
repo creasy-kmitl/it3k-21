@@ -165,6 +165,54 @@ describe("PUT /:id/assignment", () => {
   });
 });
 
+describe("PUT /:id/assignment under concurrent changes", () => {
+  test("a target made admin meanwhile is not demoted by a non-admin", async () => {
+    // tech-staff passes the admin check, then an admin promotes the target.
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("UPDATE user SET role = 'admin' WHERE id = 'art-staff'");
+    };
+    const { res } = await assign("tech-staff", "art-staff", { kind: "guest" });
+    expect(res.status).toBe(409);
+    expect(await stored("art-staff")).toMatchObject({
+      role: "admin",
+      departmentId: await t.departmentId("Art"),
+    });
+  });
+
+  test("a seat that changed hands meanwhile is not deleted", async () => {
+    const seat = defined(await seatOf("reg-vice"), "reg-vice's seat");
+    await t.db
+      .insert(leadershipSocial)
+      .values({ leadershipId: seat.id, platform: "line", value: "b.line" });
+    // The route reads reg-vice's seat, then it is handed to art-staff.
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("UPDATE leadership SET user_id = 'art-staff' WHERE id = ?", [seat.id]);
+    };
+    const { res } = await assign("admin", "reg-vice", { kind: "guest" });
+    expect(res.status).toBe(409);
+    expect(await seatOf("art-staff")).toMatchObject({ id: seat.id });
+    expect(
+      await t.db.select().from(leadershipSocial).where(eq(leadershipSocial.leadershipId, seat.id)),
+    ).toHaveLength(1);
+    expect((await stored("reg-vice"))?.role).toBe("staff");
+  });
+
+  test("taking a seat whose holder changed meanwhile is refused", async () => {
+    const reg = await t.departmentId("ทะเบียน");
+    const seat = defined(await seatOf("reg-vice"), "reg-vice's seat");
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("UPDATE leadership SET user_id = 'tech-staff' WHERE id = ?", [seat.id]);
+    };
+    const { res } = await assign("admin", "art-staff", { kind: "vicehead", departmentId: reg });
+    expect(res.status).toBe(409);
+    expect(await seatOf("tech-staff")).toMatchObject({ id: seat.id });
+    expect(await seatOf("art-staff")).toBeUndefined();
+  });
+});
+
 describe("PUT /:id/admin", () => {
   test("only admins grant or remove admin", async () => {
     let { res } = await send("tech-staff", "PUT", "/guest/admin", { admin: true });

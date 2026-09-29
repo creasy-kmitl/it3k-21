@@ -28,6 +28,11 @@ export function isManager(actor: Actor | null): boolean {
   return isMember(actor.role) && actor.departmentCode !== null;
 }
 
+/** Only admins may change an admin's account: role, department or seat. */
+export function canChangeAccount(actor: Actor | null, targetRole: string | null): boolean {
+  return !hasRole(targetRole, "admin") || canGrantAdmin(actor);
+}
+
 /** Only admins make or unmake admins. */
 export function canGrantAdmin(actor: Actor | null): boolean {
   return !!actor && !actor.banned && hasRole(actor.role, "admin");
