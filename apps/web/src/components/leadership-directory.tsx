@@ -40,6 +40,7 @@ import {
 
 import { DepartmentIcon, DepartmentLabel } from "./department-icon";
 import LeadershipList from "./leadership-list";
+import { PageHeader } from "./page-header";
 
 type Group = { departmentId: string; departmentName: string; seats: LeadershipSummary[] };
 
@@ -139,13 +140,11 @@ export default function LeadershipDirectory({
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-          <FolderKanban className="size-6 text-primary" aria-hidden />
-          หัวหน้าฝ่าย
-        </h1>
-        <p className="text-muted-foreground">รายชื่อหัวหน้าและรองหัวหน้าของแต่ละฝ่าย</p>
-      </header>
+      <PageHeader
+        icon={FolderKanban}
+        title="หัวหน้าฝ่าย"
+        description="รายชื่อหัวหน้าและรองหัวหน้าของแต่ละฝ่าย"
+      />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Select

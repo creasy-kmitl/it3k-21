@@ -30,6 +30,7 @@ import { type LeadershipApi, type LeadershipDepartment, leadershipApi } from "@/
 import { type Account, type Assignment, type UsersApi, useMe, usersApi } from "@/lib/users";
 
 import { DepartmentBadge, DepartmentLabel } from "./department-icon";
+import { PageHeader } from "./page-header";
 import { ROLE_BADGES, RoleBadge } from "./role-badge";
 
 type Status = Assignment["kind"];
@@ -84,13 +85,11 @@ export default function UserManager({ api = usersApi, seats = leadershipApi }: P
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-          <UserCog className="size-6 text-primary" aria-hidden />
-          ผู้ใช้
-        </h1>
-        <p className="text-muted-foreground">กำหนดว่าแต่ละบัญชีเป็น Guest, นักกีฬา, Staff หรือหัวหน้าฝ่ายใด</p>
-      </header>
+      <PageHeader
+        icon={UserCog}
+        title="ผู้ใช้"
+        description="กำหนดว่าแต่ละบัญชีเป็น Guest, นักกีฬา, Staff หรือหัวหน้าฝ่ายใด"
+      />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Select
