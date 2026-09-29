@@ -9,6 +9,7 @@
     "check-types": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:local": "drizzle-kit --config drizzle.local.config.ts",
+    "db:local:studio": "drizzle-kit studio --config drizzle.local.config.ts",
     "db:migrate:deploy": "drizzle-kit migrate"
   },
   "dependencies": {

@@ -1,1 +1,14 @@
 @import "@it3k/ui/globals.css";
+
+@theme {
+  --animate-navigation-progress: navigation-progress 1.2s ease-in-out infinite;
+
+  @keyframes navigation-progress {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(300%);
+    }
+  }
+}

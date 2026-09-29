@@ -9,6 +9,7 @@
     "env:generate": "varlock codegen"
   },
   "dependencies": {
+    "@hono/zod-validator": "^0.9.1",
     "@it3k/auth": "workspace:*",
     "@it3k/db": "workspace:*",
     "better-auth": "catalog:",

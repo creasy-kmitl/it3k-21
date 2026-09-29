@@ -9,18 +9,35 @@ import {
   CardTitle,
 } from "@it3k/ui/components/card";
 import { Input } from "@it3k/ui/components/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@it3k/ui/components/select";
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { Pencil, Plus, Trash2, Users } from "lucide-react";
+import { Building2, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import {
+  DEPARTMENT_COLORS,
+  DEPARTMENT_COLOR_KEYS,
+  DEPARTMENT_ICONS,
+  DEPARTMENT_ICON_KEYS,
+  DepartmentIcon,
+  type DepartmentColorKey,
+  type DepartmentIconKey,
+} from "@/components/department-icon";
+import { PageHeader } from "@/components/page-header";
 import { type Department, type DepartmentInput, departmentsApi } from "@/lib/departments";
 
-export const Route = createFileRoute("/_auth/departments")({
+export const Route = createFileRoute("/staff/departments")({
   component: RouteComponent,
   beforeLoad: ({ context }) => {
     if (!can(context.session.data?.user.role, { department: ["read"] })) {
-      throw redirect({ to: "/dashboard" });
+      throw redirect({ to: "/staff/dashboard" });
     }
   },
   loader: () => departmentsApi.list(),
@@ -49,11 +66,8 @@ function RouteComponent() {
   }
 
   return (
-    <div className="container mx-auto flex max-w-3xl flex-col gap-4 px-6 py-10">
-      <header>
-        <h1 className="text-3xl font-bold tracking-tight">ฝ่าย</h1>
-        <p className="text-muted-foreground">{departments.length} departments</p>
-      </header>
+    <div className="flex flex-col gap-4">
+      <PageHeader icon={Building2} title="ฝ่าย" description={`ทั้งหมด ${departments.length} ฝ่าย`} />
 
       {canCreate && (
         <DepartmentForm
@@ -120,7 +134,10 @@ function DepartmentItem({
     <li>
       <Card size="sm">
         <CardHeader>
-          <CardTitle>{department.name}</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <DepartmentIcon department={department} />
+            {department.name}
+          </CardTitle>
           <CardDescription className="flex items-center gap-1">
             <Users className="size-3.5" />
             {department.memberCount}
@@ -164,6 +181,8 @@ function DepartmentForm({
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
+  const [icon, setIcon] = useState<DepartmentIconKey>(initial?.icon ?? "folder");
+  const [color, setColor] = useState<DepartmentColorKey>(initial?.color ?? "slate");
   const [pending, setPending] = useState(false);
 
   return (
@@ -174,14 +193,18 @@ function DepartmentForm({
           onSubmit={async (e) => {
             e.preventDefault();
             setPending(true);
-            const ok = await onSubmit({ name, description: description || null });
+            const ok = await onSubmit({ name, description: description || null, icon, color });
             setPending(false);
             if (ok && !initial) {
               setName("");
               setDescription("");
+              setIcon("folder");
+              setColor("slate");
             }
           }}
         >
+          <IconPicker icon={icon} color={color} onChange={setIcon} />
+          <ColorPicker color={color} onChange={setColor} />
           <Input
             placeholder="Name"
             value={name}
@@ -209,5 +232,91 @@ function DepartmentForm({
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+function IconPicker({
+  icon,
+  color,
+  onChange,
+}: {
+  icon: DepartmentIconKey;
+  color: DepartmentColorKey;
+  onChange: (icon: DepartmentIconKey) => void;
+}) {
+  return (
+    <Select
+      value={icon}
+      onValueChange={(value: DepartmentIconKey | null) => {
+        if (value) onChange(value);
+      }}
+    >
+      <SelectTrigger aria-label="Icon" className="shrink-0">
+        <SelectValue>
+          {(value: DepartmentIconKey) => <DepartmentIcon department={{ icon: value, color }} />}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent
+        align="start"
+        alignItemWithTrigger={false}
+        className="w-auto min-w-0"
+        listClassName="grid grid-cols-6 gap-1"
+      >
+        {DEPARTMENT_ICON_KEYS.map((key) => {
+          const Icon = DEPARTMENT_ICONS[key];
+          return (
+            // Square cells: the selection shows as a tint, not the check mark.
+            <SelectItem
+              key={key}
+              value={key}
+              aria-label={key}
+              className="size-9 justify-center p-0 data-selected:bg-foreground/10 *:first:justify-center *:[span]:last:hidden!"
+            >
+              <Icon />
+            </SelectItem>
+          );
+        })}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function ColorPicker({
+  color,
+  onChange,
+}: {
+  color: DepartmentColorKey;
+  onChange: (color: DepartmentColorKey) => void;
+}) {
+  return (
+    <Select
+      value={color}
+      onValueChange={(value: DepartmentColorKey | null) => {
+        if (value) onChange(value);
+      }}
+    >
+      <SelectTrigger aria-label="Color" className="shrink-0">
+        <SelectValue>{(value: DepartmentColorKey) => <Swatch color={value} />}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {DEPARTMENT_COLOR_KEYS.map((key) => (
+          <SelectItem key={key} value={key}>
+            <Swatch color={key} />
+            <span className="capitalize">{key}</span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function Swatch({ color }: { color: DepartmentColorKey }) {
+  return (
+    <span
+      aria-hidden
+      className={`inline-flex size-5 items-center justify-center rounded-full ${DEPARTMENT_COLORS[color]}`}
+    >
+      <span className="size-2.5 rounded-full bg-current" />
+    </span>
   );
 }

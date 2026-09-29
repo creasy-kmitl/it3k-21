@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { defineConfig } from "drizzle-kit";
@@ -9,14 +9,23 @@ const d1Dir = resolve(
   "../infra/.alchemy/local/d1/cloudflare-runtime-D1DatabaseObject",
 );
 
+// Stale databases from earlier dev sessions can linger here, so pick the one written to most
+// recently. Miniflare runs SQLite in WAL mode, so recent writes only touch the -wal file.
+function lastWrite(file: string) {
+  const wal = `${file}-wal`;
+  return Math.max(statSync(file).mtimeMs, existsSync(wal) ? statSync(wal).mtimeMs : 0);
+}
+
 function findLocalD1() {
-  const file = readdirSync(d1Dir).find(
-    (name) => name.endsWith(".sqlite") && name !== "metadata.sqlite",
-  );
-  if (!file) {
+  const files = existsSync(d1Dir)
+    ? readdirSync(d1Dir)
+        .filter((name) => name.endsWith(".sqlite") && name !== "metadata.sqlite")
+        .map((name) => resolve(d1Dir, name))
+    : [];
+  if (files.length === 0) {
     throw new Error(`No local D1 database found in ${d1Dir}. Run \`bun run dev\` once first.`);
   }
-  return resolve(d1Dir, file);
+  return files.reduce((latest, file) => (lastWrite(file) > lastWrite(latest) ? file : latest));
 }
 
 export default defineConfig({

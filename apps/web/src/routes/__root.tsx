@@ -1,13 +1,18 @@
 import { Toaster } from "@it3k/ui/components/sonner";
+import { PRELOAD_FONTS } from "@it3k/ui/lib/fonts";
+import type { QueryClient } from "@tanstack/react-query";
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
+import { NavigationProgress } from "../components/navigation-progress";
 import NotFound from "../components/not-found";
 import { getOrigin } from "../functions/get-origin";
 
 import appCss from "../index.css?url";
 
-export interface RouterAppContext {}
+export interface RouterAppContext {
+  queryClient: QueryClient;
+}
 
 const SITE_TITLE = "IT3Kings";
 const SITE_DESCRIPTION =
@@ -52,6 +57,13 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
           rel: "stylesheet",
           href: appCss,
         },
+        ...PRELOAD_FONTS.map((href) => ({
+          rel: "preload",
+          href,
+          as: "font",
+          type: "font/woff2",
+          crossOrigin: "anonymous" as const,
+        })),
         { rel: "icon", href: "/favicon.ico", sizes: "48x48" },
         { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
         { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
@@ -71,7 +83,9 @@ function RootDocument() {
         <HeadContent />
       </head>
       <body>
-        <div className="flex h-screen text-foreground bg-background">
+        <NavigationProgress />
+        {/* min-h, not h: pages taller than the screen must grow the layout, not overflow it. */}
+        <div className="flex min-h-svh text-foreground bg-background">
           {/*<Header />*/}
           <Outlet />
         </div>
