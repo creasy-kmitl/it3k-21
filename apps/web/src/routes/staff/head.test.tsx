@@ -2,9 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 
 import type { LeadershipPage } from "@/lib/leadership";
-import { fakeApi, page, renderWithQuery, summary } from "@/test/query";
+import { fakeApi, page, renderRoute, summary } from "@/test/query";
 
-import LeadershipManager from "./leadership-manager";
+import { Route } from "./head";
 
 afterEach(cleanup);
 
@@ -28,10 +28,10 @@ function setup(list: LeadershipPage) {
     list: async () => list,
     remove: async (id) => void removed.push(id),
   });
-  return { removed, view: renderWithQuery(<LeadershipManager api={api} />) };
+  return { removed, view: renderRoute(Route, { leadership: api }) };
 }
 
-describe("LeadershipManager", () => {
+describe("/staff/head", () => {
   test("offers contact to everyone, edit and delete only where allowed", async () => {
     const { view } = setup(page([own, other]));
     const list = within(await view.findByRole("region", { name: "Art" })).getByRole("list", {

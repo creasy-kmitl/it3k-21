@@ -3,7 +3,9 @@ import { cleanup, fireEvent } from "@testing-library/react";
 
 import { renderAtRoot } from "@/test/router";
 
-import Unauthorized from "./unauthorized";
+import { Route } from "./unauthorized";
+
+const Unauthorized = Route.options.component!;
 
 afterEach(cleanup);
 

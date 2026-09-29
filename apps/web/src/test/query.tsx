@@ -2,9 +2,12 @@
 // leadership API whose methods fail loudly unless a test provides them.
 import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { RouteComponent } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
+import { ApiProvider, type Apis } from "@/lib/api-context";
 import type { LeadershipApi, LeadershipPage, LeadershipSummary } from "@/lib/leadership";
+import type { UsersApi } from "@/lib/users";
 
 export function renderWithQuery(ui: ReactNode) {
   const client = new QueryClient({
@@ -24,6 +27,32 @@ export async function choose(trigger: HTMLElement, option: string) {
 
 function unexpected(name: string) {
   return () => Promise.reject(new Error(`Unexpected call to ${name}`));
+}
+
+export function fakeUsersApi(overrides: Partial<UsersApi> = {}): UsersApi {
+  return {
+    me: unexpected("me"),
+    list: unexpected("list"),
+    assign: unexpected("assign"),
+    setAdmin: unexpected("setAdmin"),
+    ...overrides,
+  };
+}
+
+/** Renders a file route's page with fake API clients in place of the real ones. */
+export function renderRoute(
+  route: { options: { component?: RouteComponent } },
+  apis: Partial<Apis> = {},
+) {
+  const Page = route.options.component;
+  if (!Page) throw new Error("Route has no component");
+  return renderWithQuery(
+    <ApiProvider
+      value={{ leadership: apis.leadership ?? fakeApi(), users: apis.users ?? fakeUsersApi() }}
+    >
+      <Page />
+    </ApiProvider>,
+  );
 }
 
 export function fakeApi(overrides: Partial<LeadershipApi> = {}): LeadershipApi {

@@ -14,5 +14,10 @@ export default defineConfig({
   resolve: {
     tsconfigPaths: true,
   },
-  plugins: [tailwindcss(), tanstackStart(), viteReact()],
+  plugins: [
+    tailwindcss(),
+    // Page tests sit beside their route files; they are not routes.
+    tanstackStart({ router: { routeFileIgnorePattern: "\\.test\\.tsx?$" } }),
+    viteReact(),
+  ],
 });

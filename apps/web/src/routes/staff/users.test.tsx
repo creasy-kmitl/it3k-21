@@ -2,9 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 
 import type { Account, Assignment, UsersApi } from "@/lib/users";
-import { choose, fakeApi, page, renderWithQuery, summary } from "@/test/query";
+import { choose, fakeApi, page, renderRoute, summary } from "@/test/query";
 
-import UserManager from "./user-manager";
+import { Route } from "./users";
 
 afterEach(cleanup);
 
@@ -44,10 +44,10 @@ function setup(items: Account[], canGrantAdmin = false) {
     list: async () =>
       page([summary({ role: "head", userId: "u-old", displayName: "Old Head", name: "Old Head" })]),
   });
-  return { assigned, view: renderWithQuery(<UserManager api={api} seats={seats} />) };
+  return { assigned, view: renderRoute(Route, { users: api, leadership: seats }) };
 }
 
-describe("UserManager", () => {
+describe("/staff/users", () => {
   test("shows each account's standing and only offers allowed edits", async () => {
     const { view } = setup([
       account({ name: "Guest One", role: "guest" }),
