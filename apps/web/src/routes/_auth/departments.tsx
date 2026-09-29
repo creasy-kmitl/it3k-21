@@ -258,11 +258,22 @@ function IconPicker({
           {(value: DepartmentIconKey) => <DepartmentIcon department={{ icon: value, color }} />}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="grid grid-cols-5 p-1">
+      <SelectContent
+        align="start"
+        alignItemWithTrigger={false}
+        className="w-auto min-w-0"
+        listClassName="grid grid-cols-6 gap-1"
+      >
         {DEPARTMENT_ICON_KEYS.map((key) => {
           const Icon = DEPARTMENT_ICONS[key];
           return (
-            <SelectItem key={key} value={key} aria-label={key} className="justify-center px-2">
+            // Square cells: the selection shows as a tint, not the check mark.
+            <SelectItem
+              key={key}
+              value={key}
+              aria-label={key}
+              className="size-9 justify-center p-0 data-selected:bg-foreground/10 *:first:justify-center *:[span]:last:hidden!"
+            >
               <Icon />
             </SelectItem>
           );
