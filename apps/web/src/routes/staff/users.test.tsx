@@ -70,4 +70,23 @@ describe("/staff/users", () => {
       expect(assigned).toEqual([["u-guest", { kind: "head", departmentId: "d-art" }]]),
     );
   });
+  test("a staff account without a department can be made a guest", async () => {
+    const stray = account({ id: "u-stray", name: "Stray Staff", role: "staff" });
+    const { view, assigned } = setup([stray]);
+    fireEvent.click(await view.findByRole("button", { name: "แก้ไข Stray Staff" }));
+    // It opens as Staff, not as the Guest it is not.
+    expect(view.getByRole("combobox", { name: "สถานะ" }).textContent).toContain("Staff");
+    await choose(view.getByRole("combobox", { name: "สถานะ" }), "Guest");
+    fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(assigned).toEqual([["u-stray", { kind: "guest" }]]));
+  });
+
+  test("saving an unchanged guest sends nothing", async () => {
+    const guest = account({ id: "u-guest", name: "Guest One", role: "guest" });
+    const { view, assigned } = setup([guest]);
+    fireEvent.click(await view.findByRole("button", { name: "แก้ไข Guest One" }));
+    fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(view.queryByRole("alertdialog")).toBeNull());
+    expect(assigned).toEqual([]);
+  });
 });

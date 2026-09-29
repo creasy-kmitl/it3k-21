@@ -50,8 +50,23 @@ function initials(name: string) {
 
 function statusOf(account: Account): Status {
   if (account.seatRole) return account.seatRole;
-  if (account.role === "athlete") return "athlete";
+  if (account.role === "athlete" || account.role === "guest") return account.role;
+  // Staff, even without a department, is not a guest; admins read by department.
+  if (account.role === "staff") return "staff";
   return account.department ? "staff" : "guest";
+}
+
+/** Whether saving `status` in `departmentId` would leave the account as it is. */
+function alreadyIs(account: Account, status: Status, departmentId: string) {
+  const unaffiliated = UNAFFILIATED.has(status);
+  const seatRole = status === "head" || status === "vicehead" ? status : null;
+  // The server keeps an admin's role; anyone else becomes guest, athlete or staff.
+  const role = account.role === "admin" ? "admin" : unaffiliated ? status : "staff";
+  return (
+    account.role === role &&
+    account.seatRole === seatRole &&
+    (account.department?.id ?? null) === (unaffiliated ? null : departmentId)
+  );
 }
 
 /**
@@ -259,9 +274,9 @@ function EditAccountDialog({
 
   const save = useMutation({
     mutationFn: async () => {
-      const assignmentChanged =
-        status !== initialStatus || (needsDepartment && departmentId !== account.department?.id);
-      if (assignmentChanged) {
+      // Compared with what the account is, not with the status the dialog opened
+      // on, so e.g. a staff account without a department can still be made a guest.
+      if (!alreadyIs(account, status, departmentId)) {
         await api.assign(
           account.id,
           status === "guest" || status === "athlete"
