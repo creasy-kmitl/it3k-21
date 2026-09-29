@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 
 import { ApiError, type ListQuery } from "@/lib/leadership";
-import { fakeApi, page, renderWithQuery, summary } from "@/test/query";
+import { choose, fakeApi, page, renderWithQuery, summary } from "@/test/query";
 
 import LeadershipDirectory from "./leadership-directory";
 
@@ -47,13 +47,14 @@ describe("LeadershipDirectory", () => {
     expect(within(tech).queryByText("Beam")).toBeNull();
   });
 
-  test("renders a table for wide screens and cards for small ones", async () => {
+  test("renders each seat as a card with an icon for its role", async () => {
     const { view } = setup(async () => page(roster));
     const art = await view.findByRole("region", { name: "Art" });
-    const table = within(art).getByRole("table");
-    expect(within(table).getByRole("columnheader", { name: "ตำแหน่ง" })).toBeTruthy();
-    expect(within(table).getAllByRole("row")).toHaveLength(3);
-    expect(within(art).getByRole("list", { name: "Art" }).querySelectorAll("li")).toHaveLength(2);
+    expect(within(art).queryByRole("table")).toBeNull();
+    const cards = within(art).getByRole("list", { name: "Art" }).querySelectorAll("li");
+    expect(cards).toHaveLength(2);
+    expect(cards[0]!.querySelector("svg.lucide-crown")).not.toBeNull();
+    expect(cards[1]!.querySelector("svg.lucide-shield-user")).not.toBeNull();
   });
 
   test("shows the directory icon and title", async () => {
@@ -76,7 +77,7 @@ describe("LeadershipDirectory", () => {
     const { view } = setup(() => new Promise((r) => (resolve = r)));
     expect(view.getByRole("status").textContent).toContain("กำลังโหลด");
     resolve(page([]));
-    expect(await view.findByText("ไม่พบรายชื่อ")).toBeTruthy();
+    expect(await view.findByText("ยังไม่มีรายชื่อหัวหน้าฝ่าย")).toBeTruthy();
     cleanup();
 
     const failing = setup(async () => {
@@ -110,16 +111,32 @@ describe("LeadershipDirectory", () => {
       { timeout: 3000 },
     );
     expect(calls.filter((c) => c.q)).toHaveLength(1);
-    expect(view.queryByRole("region", { name: "Art" })).toBeNull();
+    await waitFor(() => expect(view.queryByRole("region", { name: "Art" })).toBeNull());
   });
 
   test("filters by department", async () => {
     const { calls, view } = setup(async () => page(roster));
     await view.findByRole("region", { name: "Art" });
     const select = view.getByRole("combobox", { name: "ฝ่าย" });
-    await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(3));
-    fireEvent.change(select, { target: { value: "d-tech" } });
+    await choose(select, "Tech/Live");
     await waitFor(() => expect(calls.at(-1)).toMatchObject({ departmentId: "d-tech", page: 1 }));
+  });
+
+  test("the empty state follows the chosen department and search", async () => {
+    const { view } = setup(async (query) => page(query.departmentId || query.q ? [] : roster));
+    await view.findByRole("region", { name: "Art" });
+
+    await choose(view.getByRole("combobox", { name: "ฝ่าย" }), "Tech/Live");
+    expect(await view.findByText("ฝ่ายTech/Liveยังไม่มีหัวหน้า")).toBeTruthy();
+
+    fireEvent.change(view.getByRole("searchbox"), { target: { value: "Zed" } });
+    expect(await view.findByText("ไม่พบ “Zed” ในฝ่ายTech/Live", {}, { timeout: 3000 })).toBeTruthy();
+
+    fireEvent.click(view.getByRole("button", { name: "ดูทุกฝ่าย" }));
+    expect(await view.findByText("ไม่พบ “Zed”")).toBeTruthy();
+
+    fireEvent.click(view.getByRole("button", { name: "ล้างคำค้นหา" }));
+    expect(await view.findByRole("region", { name: "Art" }, { timeout: 3000 })).toBeTruthy();
   });
 
   test("Mod+K focuses the search box", async () => {

@@ -7,7 +7,7 @@ import {
   type LeadershipUpdate,
   type ListQuery,
 } from "@/lib/leadership";
-import { fakeApi, renderWithQuery, summary } from "@/test/query";
+import { choose, fakeApi, renderWithQuery, summary } from "@/test/query";
 
 import LeadershipForm, { type FormMode } from "./leadership-form";
 
@@ -50,14 +50,12 @@ describe("LeadershipForm (create)", () => {
 
   test("creates a seat with socials and blank optional fields left out", async () => {
     const { view, created, done } = setup({ kind: "create" });
-    const department = view.getByLabelText("ฝ่าย");
-    await waitFor(() => expect(department.querySelectorAll("option").length).toBe(3));
-    type(department, "d-art");
-    type(view.getByLabelText("ตำแหน่ง"), "vicehead");
+    await choose(view.getByLabelText("ฝ่าย"), "Art");
+    await choose(view.getByLabelText("ตำแหน่ง"), "รองหัวหน้าฝ่าย");
     type(view.getByLabelText("ชื่อ"), " Beam ");
     type(view.getByLabelText("เบอร์โทร"), "081-234-5678");
     fireEvent.click(view.getByRole("button", { name: "เพิ่มช่องทาง" }));
-    type(view.getByLabelText("แพลตฟอร์ม 1"), "line");
+    await choose(view.getByLabelText("แพลตฟอร์ม 1"), "LINE");
     type(view.getByLabelText("ช่องทาง 1"), "beam.line");
     fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
     await waitFor(() => expect(created).toHaveLength(1));
@@ -78,8 +76,8 @@ describe("LeadershipForm (create)", () => {
     type(view.getByLabelText("ชื่อ"), "Beam");
     fireEvent.click(view.getByRole("button", { name: "เพิ่มช่องทาง" }));
     fireEvent.click(view.getByRole("button", { name: "เพิ่มช่องทาง" }));
-    type(view.getByLabelText("แพลตฟอร์ม 1"), "line");
-    type(view.getByLabelText("แพลตฟอร์ม 2"), "line");
+    await choose(view.getByLabelText("แพลตฟอร์ม 1"), "LINE");
+    await choose(view.getByLabelText("แพลตฟอร์ม 2"), "LINE");
     type(view.getByLabelText("ช่องทาง 1"), "a");
     type(view.getByLabelText("ช่องทาง 2"), "http://insecure.example");
     fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
@@ -90,9 +88,7 @@ describe("LeadershipForm (create)", () => {
 
   test("searches accounts in the chosen department and attaches one", async () => {
     const { view, created, searches } = setup({ kind: "create" });
-    const department = view.getByLabelText("ฝ่าย");
-    await waitFor(() => expect(department.querySelectorAll("option").length).toBe(3));
-    type(department, "d-art");
+    await choose(view.getByLabelText("ฝ่าย"), "Art");
     type(view.getByLabelText("ชื่อ"), "Oat");
     const account = view.getByRole("combobox", { name: "บัญชีผู้ใช้" });
     fireEvent.focus(account);
@@ -118,9 +114,7 @@ describe("LeadershipForm (create)", () => {
         },
       },
     );
-    const department = view.getByLabelText("ฝ่าย");
-    await waitFor(() => expect(department.querySelectorAll("option").length).toBe(3));
-    type(department, "d-art");
+    await choose(view.getByLabelText("ฝ่าย"), "Art");
     type(view.getByLabelText("ชื่อ"), "Beam");
     fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
     expect((await view.findByRole("alert")).textContent).toContain("already has someone");
@@ -141,7 +135,7 @@ describe("LeadershipForm (edit)", () => {
   test("a manager edits seat fields without touching contact details", async () => {
     const { view, updated } = setup({ kind: "edit", seat, selfOnly: false });
     expect((view.getByLabelText("ชื่อเล่น") as HTMLInputElement).value).toBe("โอ๊ต");
-    type(view.getByLabelText("ตำแหน่ง"), "vicehead");
+    await choose(view.getByLabelText("ตำแหน่ง"), "รองหัวหน้าฝ่าย");
     fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
     await waitFor(() => expect(updated).toHaveLength(1));
     expect(updated[0]).toEqual([

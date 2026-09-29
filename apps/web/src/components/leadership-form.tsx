@@ -17,6 +17,13 @@ import {
   FieldSet,
 } from "@it3k/ui/components/field";
 import { Input } from "@it3k/ui/components/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@it3k/ui/components/select";
 import { Spinner } from "@it3k/ui/components/spinner";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -34,7 +41,8 @@ import {
   leadershipApi,
 } from "@/lib/leadership";
 
-import { ROLE_LABELS } from "./leadership-table";
+import { DepartmentLabel } from "./department-icon";
+import { ROLE_LABELS } from "./leadership-list";
 
 export type FormMode =
   | { kind: "create" }
@@ -50,6 +58,8 @@ const PLATFORMS: { value: Platform; label: string }[] = [
   { value: "other", label: "อื่น ๆ" },
 ];
 const ROLES = ["head", "vicehead"] as const;
+type Role = (typeof ROLES)[number];
+const ROLE_ITEMS = ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] }));
 
 // Mirrors the server's rules so mistakes show up before a round trip; the
 // server still validates everything.
@@ -151,6 +161,10 @@ export default function LeadershipForm({ mode, api = leadershipApi, onDone, onCa
     staleTime: 5 * 60_000,
   });
 
+  const departmentItems =
+    departments.data?.map((d) => ({ value: d.id, label: <DepartmentLabel department={d} /> })) ??
+    [];
+
   const save = useMutation({
     mutationFn: (values: FormValues) =>
       mode.kind === "create"
@@ -193,27 +207,32 @@ export default function LeadershipForm({ mode, api = leadershipApi, onDone, onCa
             {(field) => (
               <Field data-invalid={!field.state.meta.isValid}>
                 <FieldLabel htmlFor="leadership-department">ฝ่าย</FieldLabel>
-                <select
-                  id="leadership-department"
-                  className="h-9 rounded-4xl border border-input bg-input/30 px-3 text-sm disabled:opacity-50"
-                  required
+                <Select
+                  items={departmentItems}
                   disabled={selfOnly}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => {
-                    field.handleChange(e.target.value);
+                  value={field.state.value || null}
+                  onValueChange={(value: string | null) => {
+                    field.handleChange(value ?? "");
                     // An attached account must belong to the seat's department.
                     form.setFieldValue("account", null);
                   }}
-                  aria-invalid={!field.state.meta.isValid}
                 >
-                  <option value="">เลือกฝ่าย</option>
-                  {departments.data?.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger
+                    id="leadership-department"
+                    className="w-full"
+                    onBlur={field.handleBlur}
+                    aria-invalid={!field.state.meta.isValid}
+                  >
+                    <SelectValue placeholder="เลือกฝ่าย" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departmentItems.map((d) => (
+                      <SelectItem key={d.value} value={d.value}>
+                        {d.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FieldError errors={field.state.meta.errors} />
               </Field>
             )}
@@ -223,22 +242,25 @@ export default function LeadershipForm({ mode, api = leadershipApi, onDone, onCa
             {(field) => (
               <Field>
                 <FieldLabel htmlFor="leadership-role">ตำแหน่ง</FieldLabel>
-                <select
-                  id="leadership-role"
-                  className="h-9 rounded-4xl border border-input bg-input/30 px-3 text-sm disabled:opacity-50"
+                <Select
+                  items={ROLE_ITEMS}
                   disabled={selfOnly}
                   value={field.state.value}
-                  onChange={(e) => {
-                    const role = ROLES.find((r) => r === e.target.value);
+                  onValueChange={(role: Role | null) => {
                     if (role) field.handleChange(role);
                   }}
                 >
-                  {ROLES.map((role) => (
-                    <option key={role} value={role}>
-                      {ROLE_LABELS[role]}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="leadership-role" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ROLE_ITEMS.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>
+                        {r.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
             )}
           </form.Field>
@@ -350,23 +372,24 @@ export default function LeadershipForm({ mode, api = leadershipApi, onDone, onCa
                         <div key={i} className="flex items-start gap-2">
                           <form.Field name={`socials[${i}].platform`}>
                             {(field) => (
-                              <select
-                                aria-label={`แพลตฟอร์ม ${i + 1}`}
-                                className="h-9 rounded-4xl border border-input bg-input/30 px-3 text-sm"
+                              <Select
+                                items={PLATFORMS}
                                 value={field.state.value}
-                                onChange={(e) => {
-                                  const platform = PLATFORMS.find(
-                                    (p) => p.value === e.target.value,
-                                  );
-                                  if (platform) field.handleChange(platform.value);
+                                onValueChange={(platform: Platform | null) => {
+                                  if (platform) field.handleChange(platform);
                                 }}
                               >
-                                {PLATFORMS.map((p) => (
-                                  <option key={p.value} value={p.value}>
-                                    {p.label}
-                                  </option>
-                                ))}
-                              </select>
+                                <SelectTrigger aria-label={`แพลตฟอร์ม ${i + 1}`} className="w-32">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {PLATFORMS.map((p) => (
+                                    <SelectItem key={p.value} value={p.value}>
+                                      {p.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             )}
                           </form.Field>
                           <form.Field name={`socials[${i}].value`}>

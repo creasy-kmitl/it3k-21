@@ -1,21 +1,45 @@
 import { Button } from "@it3k/ui/components/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@it3k/ui/components/empty";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@it3k/ui/components/empty";
 import { Input } from "@it3k/ui/components/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@it3k/ui/components/select";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, FolderKanban, Search } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FolderKanban,
+  LayoutGrid,
+  Search,
+  SearchX,
+  Users,
+} from "lucide-react";
 import { type ReactNode, useCallback, useRef, useState } from "react";
 
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   ApiError,
   type LeadershipApi,
+  type LeadershipDepartment,
   type LeadershipSummary,
   leadershipApi,
 } from "@/lib/leadership";
 
-import LeadershipTable from "./leadership-table";
+import { DepartmentIcon, DepartmentLabel } from "./department-icon";
+import LeadershipList from "./leadership-list";
 
 type Group = { departmentId: string; departmentName: string; seats: LeadershipSummary[] };
 
@@ -37,6 +61,18 @@ function groupByDepartment(seats: LeadershipSummary[]): Group[] {
   return groups;
 }
 
+const ALL_DEPARTMENTS = (
+  <span className="flex items-center gap-2">
+    <span
+      aria-hidden
+      className="inline-flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-3.5"
+    >
+      <LayoutGrid />
+    </span>
+    ทุกฝ่าย
+  </span>
+);
+
 function errorMessage(error: Error) {
   if (error instanceof ApiError && error.status === 403) {
     return "คุณไม่มีสิทธิ์เข้าถึงรายชื่อนี้";
@@ -47,7 +83,7 @@ function errorMessage(error: Error) {
 type Props = {
   api?: LeadershipApi;
   /** Controls shown next to each seat (contact, edit, delete). */
-  renderActions?: (seat: LeadershipSummary) => ReactNode;
+  renderActions?: (seat: LeadershipSummary, department?: LeadershipDepartment) => ReactNode;
   /** Shown in the toolbar when the server says the caller may add seats. */
   createAction?: ReactNode;
   /** Shown between the toolbar and the list, e.g. the create/edit form. */
@@ -79,6 +115,11 @@ export default function LeadershipDirectory({
     staleTime: 5 * 60_000,
   });
 
+  const departmentItems =
+    departments.data?.map((d) => ({ value: d.id, label: <DepartmentLabel department={d} /> })) ??
+    [];
+  const departmentById = new Map(departments.data?.map((d) => [d.id, d]));
+
   // Only summaries are cached here; contact details are never part of a list.
   const roster = useQuery({
     queryKey: ["leadership", "list", { q, departmentId, page }],
@@ -86,22 +127,44 @@ export default function LeadershipDirectory({
     placeholderData: keepPreviousData,
   });
 
+  const departmentList = departments.data;
   const actions = useCallback(
-    (seat: LeadershipSummary) => renderActions?.(seat) ?? null,
-    [renderActions],
+    (seat: LeadershipSummary) =>
+      renderActions?.(
+        seat,
+        departmentList?.find((d) => d.id === seat.departmentId),
+      ) ?? null,
+    [renderActions, departmentList],
   );
 
   return (
-    <div className="container mx-auto flex max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6">
+    <div className="flex flex-1 flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
-          <FolderKanban className="size-7 text-primary" aria-hidden />
+        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+          <FolderKanban className="size-6 text-primary" aria-hidden />
           หัวหน้าฝ่าย
         </h1>
         <p className="text-muted-foreground">รายชื่อหัวหน้าและรองหัวหน้าของแต่ละฝ่าย</p>
       </header>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <Select
+          items={[{ value: null, label: ALL_DEPARTMENTS }, ...departmentItems]}
+          value={departmentId ?? null}
+          onValueChange={(value: string | null) => setDepartmentId(value ?? undefined)}
+        >
+          <SelectTrigger aria-label="ฝ่าย" className="sm:w-52">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={null}>{ALL_DEPARTMENTS}</SelectItem>
+            {departmentItems.map((d) => (
+              <SelectItem key={d.value} value={d.value}>
+                {d.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <div className="relative flex-1">
           <Search
             className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
@@ -121,19 +184,6 @@ export default function LeadershipDirectory({
             ⌘K
           </kbd>
         </div>
-        <select
-          aria-label="ฝ่าย"
-          className="h-9 rounded-4xl border border-input bg-input/30 px-3 text-sm"
-          value={departmentId ?? ""}
-          onChange={(e) => setDepartmentId(e.target.value || undefined)}
-        >
-          <option value="">ทุกฝ่าย</option>
-          {departments.data?.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
         {roster.data?.canCreate && createAction}
       </div>
 
@@ -154,12 +204,12 @@ export default function LeadershipDirectory({
           </Button>
         </div>
       ) : roster.data.items.length === 0 ? (
-        <Empty>
-          <EmptyHeader>
-            <EmptyTitle>ไม่พบรายชื่อ</EmptyTitle>
-            <EmptyDescription>ลองค้นหาด้วยคำอื่น หรือเลือกฝ่ายอื่น</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
+        <EmptyRoster
+          query={q}
+          department={departmentId ? departmentById.get(departmentId) : undefined}
+          onClearSearch={() => setSearch("")}
+          onAllDepartments={() => setDepartmentId(undefined)}
+        />
       ) : (
         <div className="flex flex-col gap-6" aria-busy={roster.isFetching}>
           {groupByDepartment(roster.data.items).map((group) => (
@@ -168,10 +218,14 @@ export default function LeadershipDirectory({
               aria-labelledby={`dept-${group.departmentId}`}
               className="flex flex-col gap-2"
             >
-              <h2 id={`dept-${group.departmentId}`} className="text-lg font-semibold">
+              <h2
+                id={`dept-${group.departmentId}`}
+                className="flex items-center gap-2 text-lg font-semibold"
+              >
+                <DepartmentIcon department={departmentById.get(group.departmentId)} />
                 {group.departmentName}
               </h2>
-              <LeadershipTable
+              <LeadershipList
                 departmentName={group.departmentName}
                 seats={group.seats}
                 renderActions={actions}
@@ -205,5 +259,64 @@ export default function LeadershipDirectory({
         </nav>
       )}
     </div>
+  );
+}
+
+/** Says why the list is empty for the current filters, with a way out of each. */
+function EmptyRoster({
+  query,
+  department,
+  onClearSearch,
+  onAllDepartments,
+}: {
+  query: string;
+  department: LeadershipDepartment | undefined;
+  onClearSearch: () => void;
+  onAllDepartments: () => void;
+}) {
+  const quoted = `“${query}”`;
+  const title = department
+    ? query
+      ? `ไม่พบ ${quoted} ในฝ่าย${department.name}`
+      : `ฝ่าย${department.name}ยังไม่มีหัวหน้า`
+    : query
+      ? `ไม่พบ ${quoted}`
+      : "ยังไม่มีรายชื่อหัวหน้าฝ่าย";
+  const description = department
+    ? query
+      ? "ลองค้นหาด้วยคำอื่น หรือค้นหาในทุกฝ่าย"
+      : "ฝ่ายนี้ยังไม่ได้ระบุหัวหน้าและรองหัวหน้า"
+    : query
+      ? "ลองค้นหาด้วยชื่อ ชื่อเล่น หรือชื่อฝ่ายอื่น"
+      : "เมื่อมีการเพิ่มหัวหน้าและรองหัวหน้า รายชื่อจะแสดงที่นี่";
+
+  return (
+    <Empty className="flex-none border border-dashed">
+      <EmptyHeader>
+        {department ? (
+          <EmptyMedia>
+            <DepartmentIcon department={department} className="size-10 [&_svg]:size-5" />
+          </EmptyMedia>
+        ) : (
+          <EmptyMedia variant="icon">{query ? <SearchX /> : <Users />}</EmptyMedia>
+        )}
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
+      </EmptyHeader>
+      {(query || department) && (
+        <EmptyContent className="flex-row justify-center">
+          {query && (
+            <Button variant="outline" size="sm" onClick={onClearSearch}>
+              ล้างคำค้นหา
+            </Button>
+          )}
+          {department && (
+            <Button variant="outline" size="sm" onClick={onAllDepartments}>
+              <LayoutGrid /> ดูทุกฝ่าย
+            </Button>
+          )}
+        </EmptyContent>
+      )}
+    </Empty>
   );
 }

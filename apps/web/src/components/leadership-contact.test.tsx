@@ -105,4 +105,20 @@ describe("LeadershipContactButton", () => {
     fireEvent.click(await view.findByRole("button", { name: "ยืนยัน" }));
     expect(await view.findByText("ยังไม่มีข้อมูลติดต่อ")).toBeTruthy();
   });
+
+  test("shows the department as a colored badge with its icon", async () => {
+    const api = fakeApi({ reveal: async () => contact });
+    const view = render(
+      <LeadershipContactButton
+        seat={seat}
+        department={{ id: "d-art", name: "Art", icon: "palette", color: "rose" }}
+        api={api}
+      />,
+    );
+    fireEvent.click(view.getByRole("button", { name: /ช่องทางติดต่อ/ }));
+    fireEvent.click(await view.findByRole("button", { name: "ยืนยัน" }));
+    const badge = (await view.findByText("Art")).closest("[data-slot=badge]")!;
+    expect(badge.className).toContain("bg-rose-500/15");
+    expect(badge.querySelector("svg.lucide-palette")).not.toBeNull();
+  });
 });

@@ -14,7 +14,12 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import { type LeadershipApi, type LeadershipSummary, leadershipApi } from "@/lib/leadership";
+import {
+  type LeadershipApi,
+  type LeadershipDepartment,
+  type LeadershipSummary,
+  leadershipApi,
+} from "@/lib/leadership";
 
 import LeadershipContactButton from "./leadership-contact";
 import LeadershipDirectory from "./leadership-directory";
@@ -28,9 +33,9 @@ export default function LeadershipManager({ api = leadershipApi }: { api?: Leade
   const [editing, setEditing] = useState<FormMode | null>(null);
 
   const renderActions = useCallback(
-    (seat: LeadershipSummary) => (
+    (seat: LeadershipSummary, department?: LeadershipDepartment) => (
       <>
-        <LeadershipContactButton seat={seat} api={api} />
+        <LeadershipContactButton seat={seat} department={department} api={api} />
         {seat.canEdit && (
           <Button
             variant="ghost"
