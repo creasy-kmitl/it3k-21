@@ -127,6 +127,9 @@ export default function LeadershipDirectory({
     queryFn: () => api.list({ q: q || undefined, departmentId, page }),
     placeholderData: keepPreviousData,
   });
+  // The previous page stays up while the next loads (so typing a search does
+  // not flash); a page change still shows the skeleton so it reads as loading.
+  const loading = roster.isPending || (roster.isPlaceholderData && roster.data.page !== page);
 
   const departmentList = departments.data;
   const actions = useCallback(
@@ -188,7 +191,7 @@ export default function LeadershipDirectory({
 
       {panel}
 
-      {roster.isPending ? (
+      {loading ? (
         <div role="status" className="flex flex-col gap-2">
           <span className="sr-only">กำลังโหลด</span>
           <Skeleton className="h-10 w-full" />

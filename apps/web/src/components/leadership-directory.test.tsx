@@ -92,6 +92,25 @@ describe("LeadershipDirectory", () => {
     expect((await forbidden.view.findByRole("alert")).textContent).toContain("ไม่มีสิทธิ์");
   });
 
+  test("shows the skeleton while the next page loads", async () => {
+    let release = () => {};
+    const { view } = setup((query) =>
+      query.page === 1
+        ? Promise.resolve(page(roster, { page: 1, hasMore: true }))
+        : new Promise((resolve) => {
+            release = () => resolve(page(roster, { page: query.page }));
+          }),
+    );
+    await view.findByRole("region", { name: "Art" });
+    expect(view.queryByRole("status", { name: "กำลังโหลด" })).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "หน้าถัดไป" }));
+    expect(await view.findByText("กำลังโหลด")).toBeTruthy();
+    expect(view.queryByRole("region", { name: "Art" })).toBeNull();
+    release();
+    await view.findByRole("region", { name: "Art" });
+    expect(view.queryByText("กำลังโหลด")).toBeNull();
+  });
+
   test("debounces search and asks the server, resetting to page 1", async () => {
     const { calls, view } = setup(async (query) =>
       page(query.q ? [defined(roster[2])] : roster, { page: query.page, hasMore: !query.q }),

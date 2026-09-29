@@ -79,6 +79,9 @@ function UsersPage() {
     queryFn: () => api.list({ q: q || undefined, departmentId, page }),
     placeholderData: keepPreviousData,
   });
+  // As in the leadership directory: keep results up while searching, but show
+  // the skeleton when moving to another page.
+  const loading = accounts.isPending || (accounts.isPlaceholderData && accounts.data.page !== page);
 
   const departmentItems = [
     { value: null, label: "ทุกฝ่าย" },
@@ -130,7 +133,7 @@ function UsersPage() {
         </div>
       </div>
 
-      {accounts.isPending ? (
+      {loading ? (
         <div role="status" className="flex flex-col gap-2">
           <span className="sr-only">กำลังโหลด</span>
           <Skeleton className="h-12 w-full" />
