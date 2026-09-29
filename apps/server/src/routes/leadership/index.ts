@@ -295,6 +295,37 @@ async function checkPlacement(
 }
 
 /**
+ * True while the seat still matches what the route read: the same holder and,
+ * when given, the same department and role. For abortUnless, so a batch built
+ * on a stale read is rolled back rather than applied to a seat that moved on.
+ */
+export function seatIsAsRead(
+  db: Database,
+  seat: {
+    id: string;
+    userId: string | null;
+    departmentId?: string;
+    role?: LeadershipRole;
+  },
+) {
+  return exists(
+    db
+      .select({ id: leadership.id })
+      .from(leadership)
+      .where(
+        and(
+          eq(leadership.id, seat.id),
+          seat.userId === null ? isNull(leadership.userId) : eq(leadership.userId, seat.userId),
+          seat.departmentId === undefined
+            ? undefined
+            : eq(leadership.departmentId, seat.departmentId),
+          seat.role === undefined ? undefined : eq(leadership.role, seat.role),
+        ),
+      ),
+  );
+}
+
+/**
  * Batch guard for attaching `userId`: a non-admin's batch is rolled back if the
  * account became an admin after checkPlacement read it, and `extra` rechecks
  * anything else the route read.
@@ -489,27 +520,17 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
         typeof input.userId === "string" &&
         current.userId !== null &&
         input.userId !== current.userId;
-      // Always present, so the batch has a fixed first statement; a no-op
-      // unless an account is being attached.
-      const guard =
-        typeof input.userId === "string"
-          ? attachGuard(
-              db,
-              actor,
-              input.userId,
-              // What is cleared must still be the previous holder's.
-              handover
-                ? exists(
-                    db
-                      .select({ id: leadership.id })
-                      .from(leadership)
-                      .where(
-                        and(eq(leadership.id, id), eq(leadership.userId, current.userId ?? "")),
-                      ),
-                  )
-                : undefined,
-            )
-          : abortUnless(db, actor.id, sql`1`);
+      // Rechecked inside the batch whenever the request touches who holds the
+      // seat or where it sits: `handover` and the admin rule were decided from
+      // the holder read above, and syncAccountDepartment moves whoever holds it.
+      const holder = input.userId === undefined ? current.userId : input.userId;
+      const touchesHolder = input.userId !== undefined || input.departmentId !== undefined;
+      const checks: SQL[] = [];
+      if (touchesHolder) checks.push(seatIsAsRead(db, { id, userId: current.userId }));
+      if (touchesHolder && holder !== null && !canGrantAdmin(actor)) checks.push(notAdmin());
+      // Always present, so the batch has a fixed first statement. notAdmin()
+      // reads the row the guard updates, hence the holder's.
+      const guard = abortUnless(db, holder ?? actor.id, and(...checks) ?? sql`1`);
       let updated: { id: string }[];
       try {
         // One batch: D1 applies the update and the social replacement together or not at all.

@@ -3,7 +3,7 @@ import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
 import { department, departmentAppearance } from "@it3k/db/schema/department";
 import { LEADERSHIP_ROLES, leadership, leadershipSocial } from "@it3k/db/schema/leadership";
-import { type SQL, and, eq, exists, isNull, notExists, sql } from "drizzle-orm";
+import { type SQL, and, eq, notExists, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import { z } from "zod";
@@ -18,7 +18,7 @@ import {
   requireMember,
   requireUser,
 } from "../../middleware/current-user";
-import { PAGE_SIZE, containsAny, userQuery } from "../leadership";
+import { PAGE_SIZE, containsAny, seatIsAsRead, userQuery } from "../leadership";
 import { canChangeAccount, canGrantAdmin, isManager } from "../../policies/leadership";
 import { validate } from "../../middleware/validation";
 
@@ -201,26 +201,18 @@ export const createUserRoutes = (deps: RouteDeps) =>
 
         // Everything the writes below rely on, rechecked inside the batch: the
         // role decides admin rights, and the seats say whose data gets deleted.
-        const heldBy = (seatId: string, holder: string | null) =>
-          exists(
-            db
-              .select({ id: leadership.id })
-              .from(leadership)
-              .where(
-                and(
-                  eq(leadership.id, seatId),
-                  holder === null ? isNull(leadership.userId) : eq(leadership.userId, holder),
-                ),
-              ),
-          );
+        // keepsSeat compared the current seat's department and role, and the
+        // seat to take over was found by them, so both are rechecked as read.
         const unchanged = and(
           eq(user.role, target.role),
           current
-            ? heldBy(current.id, id)
+            ? seatIsAsRead(db, { ...current, userId: id })
             : notExists(
                 db.select({ id: leadership.id }).from(leadership).where(eq(leadership.userId, id)),
               ),
-          taken ? heldBy(taken.id, taken.userId) : sql`1`,
+          taken && seatRole && departmentId
+            ? seatIsAsRead(db, { ...taken, departmentId, role: seatRole })
+            : sql`1`,
         );
 
         try {

@@ -547,6 +547,39 @@ describe("PATCH /:id", () => {
     );
   });
 
+  test("moving a seat whose holder was made admin meanwhile is refused", async () => {
+    await seatTechHead();
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("UPDATE user SET role = 'admin' WHERE id = 'art-head'");
+    };
+    const { res } = await send("tech-head", "PATCH", `/${artHeadSeat}`, {
+      departmentId: await t.departmentId("PR"),
+      role: "vicehead",
+    });
+    expect(res.status).toBe(409);
+    const [artHead] = await t.db.select().from(user).where(eq(user.id, "art-head"));
+    expect(artHead?.departmentId).toBe(await t.departmentId("Art"));
+    expect((await stored(artHeadSeat))?.departmentId).toBe(await t.departmentId("Art"));
+  });
+
+  test("resending the holder read earlier does not take a newer holder's contact", async () => {
+    await t.seedUser("art-2", { department: "Art", name: "Arthur" });
+    // Another request hands the seat to art-2 with new contact first.
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("UPDATE leadership SET user_id = 'art-2', phone = '0899999999' WHERE id = ?", [
+        artHeadSeat,
+      ]);
+    };
+    const { res } = await send("admin", "PATCH", `/${artHeadSeat}`, {
+      userId: "art-head",
+      name: "A",
+    });
+    expect(res.status).toBe(409);
+    expect(await stored(artHeadSeat)).toMatchObject({ userId: "art-2", phone: "0899999999" });
+  });
+
   test("an account made admin meanwhile is not attached by a non-admin", async () => {
     await seatTechHead();
     await t.seedUser("pr-1", { department: "PR" });

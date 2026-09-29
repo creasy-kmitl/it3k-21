@@ -213,6 +213,40 @@ describe("PUT /:id/assignment under concurrent changes", () => {
   });
 });
 
+describe("PUT /:id/assignment when a seat moves meanwhile", () => {
+  // Moves reg-vice's seat to PR's head right before the batch; the holder stays.
+  async function moveSeatOnWrite() {
+    const seat = defined(await seatOf("reg-vice"), "reg-vice's seat");
+    const pr = await t.departmentId("PR");
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("UPDATE leadership SET department_id = ?, role = 'head' WHERE id = ?", [
+        pr,
+        seat.id,
+      ]);
+    };
+    return { seat, pr };
+  }
+
+  test("taking over a seat that moved is refused", async () => {
+    const reg = await t.departmentId("ทะเบียน");
+    const { seat, pr } = await moveSeatOnWrite();
+    const { res } = await assign("admin", "art-staff", { kind: "vicehead", departmentId: reg });
+    expect(res.status).toBe(409);
+    expect(await seatOf("reg-vice")).toMatchObject({ id: seat.id, departmentId: pr, role: "head" });
+    expect(await seatOf("art-staff")).toBeUndefined();
+    expect((await stored("art-staff"))?.departmentId).toBe(await t.departmentId("Art"));
+  });
+
+  test("keeping a seat that moved is refused", async () => {
+    const reg = await t.departmentId("ทะเบียน");
+    const { seat, pr } = await moveSeatOnWrite();
+    const { res } = await assign("admin", "reg-vice", { kind: "vicehead", departmentId: reg });
+    expect(res.status).toBe(409);
+    expect(await seatOf("reg-vice")).toMatchObject({ id: seat.id, departmentId: pr, role: "head" });
+  });
+});
+
 describe("PUT /:id/admin", () => {
   test("only admins grant or remove admin", async () => {
     let { res } = await send("tech-staff", "PUT", "/guest/admin", { admin: true });
