@@ -15,16 +15,17 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { authClient } from "@/lib/auth-client";
 import { clearCacheOnUserChange } from "@/lib/query-cache";
 
-const COLUMN = "mx-auto w-full max-w-6xl";
+// Every staff page uses the same reading width.
+const COLUMN = "mx-auto w-full max-w-3xl";
 
 const PAGE_TITLES: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/head": "หัวหน้าฝ่าย",
-  "/departments": "Departments",
-  "/users": "ผู้ใช้",
+  "/staff/dashboard": "หน้าหลัก",
+  "/staff/head": "หัวหน้าฝ่าย",
+  "/staff/departments": "ฝ่าย",
+  "/staff/users": "ผู้ใช้",
 };
 
-export const Route = createFileRoute("/_auth")({
+export const Route = createFileRoute("/staff")({
   ssr: false,
   component: AuthLayout,
   beforeLoad: async ({ context }) => {

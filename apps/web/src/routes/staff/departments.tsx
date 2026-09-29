@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@it3k/ui/components/select";
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { Pencil, Plus, Trash2, Users } from "lucide-react";
+import { Building2, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -30,13 +30,14 @@ import {
   type DepartmentColorKey,
   type DepartmentIconKey,
 } from "@/components/department-icon";
+import { PageHeader } from "@/components/page-header";
 import { type Department, type DepartmentInput, departmentsApi } from "@/lib/departments";
 
-export const Route = createFileRoute("/_auth/departments")({
+export const Route = createFileRoute("/staff/departments")({
   component: RouteComponent,
   beforeLoad: ({ context }) => {
     if (!can(context.session.data?.user.role, { department: ["read"] })) {
-      throw redirect({ to: "/dashboard" });
+      throw redirect({ to: "/staff/dashboard" });
     }
   },
   loader: () => departmentsApi.list(),
@@ -65,11 +66,8 @@ function RouteComponent() {
   }
 
   return (
-    <div className="flex w-full max-w-3xl flex-col gap-4">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">ฝ่าย</h1>
-        <p className="text-muted-foreground">{departments.length} departments</p>
-      </header>
+    <div className="flex flex-col gap-4">
+      <PageHeader icon={Building2} title="ฝ่าย" description={`ทั้งหมด ${departments.length} ฝ่าย`} />
 
       {canCreate && (
         <DepartmentForm

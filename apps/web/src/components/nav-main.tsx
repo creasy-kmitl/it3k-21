@@ -10,30 +10,35 @@ import type * as React from "react";
 
 export type NavMainItem = {
   title: string;
-  to: "/dashboard" | "/head" | "/departments" | "/users";
+  to: "/staff/dashboard" | "/staff/head" | "/staff/departments" | "/staff/users";
   icon: React.ReactNode;
 };
 
-export function NavMain({ items }: { items: NavMainItem[] }) {
+export type NavMainGroup = { label: string; items: NavMainItem[] };
+
+/** One sidebar group per entry; a group the user can see nothing in is left out. */
+export function NavMain({ groups }: { groups: NavMainGroup[] }) {
   const pathname = useLocation({ select: (location) => location.pathname });
 
-  return (
-    <SidebarGroup>
-      <SidebarGroupLabel>Menu</SidebarGroupLabel>
-      <SidebarMenu>
-        {items.map((item) => (
-          <SidebarMenuItem key={item.to}>
-            <SidebarMenuButton
-              tooltip={item.title}
-              isActive={pathname.startsWith(item.to)}
-              render={<Link to={item.to} />}
-            >
-              {item.icon}
-              <span>{item.title}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ))}
-      </SidebarMenu>
-    </SidebarGroup>
-  );
+  return groups
+    .filter((group) => group.items.length > 0)
+    .map((group) => (
+      <SidebarGroup key={group.label}>
+        <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+        <SidebarMenu>
+          {group.items.map((item) => (
+            <SidebarMenuItem key={item.to}>
+              <SidebarMenuButton
+                tooltip={item.title}
+                isActive={pathname.startsWith(item.to)}
+                render={<Link to={item.to} />}
+              >
+                {item.icon}
+                <span>{item.title}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroup>
+    ));
 }
