@@ -1,6 +1,6 @@
 // Test-only helpers: an in-memory database plus a header-based stand-in for
 // the Better Auth session so routes can be exercised with Hono#request.
-import { department, user } from "@it3k/db/schema/index";
+import { type LeadershipRole, department, leadership, user } from "@it3k/db/schema/index";
 import { createTestDb } from "@it3k/db/testing";
 import { eq } from "drizzle-orm";
 
@@ -32,16 +32,33 @@ export function createTestContext() {
 
   async function seedUser(
     id: string,
-    options: { role?: string; department?: string; banned?: boolean; name?: string } = {},
+    options: {
+      role?: string;
+      department?: string;
+      /** Attaches the account to this seat in its department. */
+      seat?: LeadershipRole;
+      banned?: boolean;
+      name?: string;
+    } = {},
   ) {
+    const deptId = options.department ? await departmentId(options.department) : null;
     await db.insert(user).values({
       id,
       name: options.name ?? `User ${id}`,
       email: `${id}@example.com`,
       role: options.role ?? "staff",
       banned: options.banned ?? false,
-      departmentId: options.department ? await departmentId(options.department) : null,
+      departmentId: deptId,
     });
+    if (options.seat) {
+      if (!deptId) throw new Error(`A seat needs a department (${id})`);
+      await db.insert(leadership).values({
+        departmentId: deptId,
+        role: options.seat,
+        userId: id,
+        name: options.name ?? `User ${id}`,
+      });
+    }
     return id;
   }
 

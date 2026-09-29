@@ -22,7 +22,7 @@ beforeEach(async () => {
     },
   });
   await t.seedUser("staff", { department: "Art" });
-  await t.seedUser("tech-head", { role: "head", department: "Tech/Live" });
+  await t.seedUser("tech-head", { department: "Tech/Live" });
   await t.seedUser("banned", { banned: true });
   const [row] = await t.db
     .insert(leadership)

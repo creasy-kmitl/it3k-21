@@ -1,6 +1,4 @@
-import { type Role, parseRoles } from "@it3k/auth/permissions";
 import { Avatar, AvatarFallback, AvatarImage } from "@it3k/ui/components/avatar";
-import { Badge } from "@it3k/ui/components/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,42 +15,14 @@ import {
   useSidebar,
 } from "@it3k/ui/components/sidebar";
 import { Skeleton } from "@it3k/ui/components/skeleton";
-import { cn } from "@it3k/ui/lib/utils";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import {
-  ChevronsUpDownIcon,
-  CrownIcon,
-  LogOutIcon,
-  type LucideIcon,
-  ShieldCheckIcon,
-  StarIcon,
-  UserIcon,
-} from "lucide-react";
+import { ChevronsUpDownIcon, LogOutIcon } from "lucide-react";
 
 import { DepartmentBadge } from "@/components/department-icon";
+import { RoleBadge, standingText } from "@/components/role-badge";
 import { authClient } from "@/lib/auth-client";
-import { leadershipApi } from "@/lib/leadership";
-
-const ROLE_BADGES: Record<
-  Role,
-  { label: string; icon: LucideIcon; variant: "default" | "secondary" | "outline" }
-> = {
-  admin: { label: "Admin", icon: ShieldCheckIcon, variant: "default" },
-  head: { label: "หัวหน้าฝ่าย", icon: CrownIcon, variant: "default" },
-  vicehead: { label: "รองหัวหน้าฝ่าย", icon: StarIcon, variant: "secondary" },
-  staff: { label: "Staff", icon: UserIcon, variant: "outline" },
-};
-
-function RoleBadge({ role }: { role: Role }) {
-  const { label, icon: Icon, variant } = ROLE_BADGES[role];
-  return (
-    <Badge variant={variant}>
-      <Icon data-icon="inline-start" />
-      {label}
-    </Badge>
-  );
-}
+import { useMe } from "@/lib/users";
 
 function initials(name: string) {
   return name.trim().slice(0, 2).toUpperCase();
@@ -63,15 +33,7 @@ export function NavUser() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: session, isPending } = authClient.useSession();
-  const departmentId = session?.user.departmentId;
-  // Shares the cache with the leadership pages; any signed-in user may read it.
-  const { data: department } = useQuery({
-    queryKey: ["leadership", "departments"],
-    queryFn: () => leadershipApi.departments(),
-    staleTime: 5 * 60_000,
-    enabled: Boolean(departmentId),
-    select: (departments) => departments.find((d) => d.id === departmentId),
-  });
+  const { data: me } = useMe();
 
   if (isPending || !session) {
     return <Skeleton className="h-12 w-full" />;
@@ -84,19 +46,26 @@ export function NavUser() {
       <AvatarFallback>{initials(user.name)}</AvatarFallback>
     </Avatar>
   );
-  const badges = (className: string) => (
-    <span className={cn("flex min-w-0 items-center gap-1", className)}>
-      {parseRoles(user.role).map((role) => (
-        <RoleBadge key={role} role={role} />
-      ))}
-      {department && <DepartmentBadge department={department} />}
+  const badges = me && (
+    <span className="flex flex-wrap items-center gap-1">
+      {me.role === "admin" && <RoleBadge role="admin" />}
+      {me.seatRole ? (
+        <RoleBadge role={me.seatRole} department={me.department} />
+      ) : (
+        <>
+          {me.role !== "admin" && <RoleBadge role={me.role} />}
+          {me.department && <DepartmentBadge department={me.department} />}
+        </>
+      )}
     </span>
   );
   const identity = (
-    <div className="grid flex-1 gap-1 text-left text-sm leading-tight">
+    <div className="grid flex-1 text-left text-sm leading-tight">
       <span className="truncate font-medium">{user.name}</span>
-      {/* The lg menu button has a fixed height, so keep the badges on one line. */}
-      {badges("overflow-hidden")}
+      {/* The lg menu button has a fixed height: one line here, badges in the menu. */}
+      <span className="truncate text-xs text-muted-foreground">
+        {me ? standingText(me) : user.email}
+      </span>
     </div>
   );
 
@@ -126,7 +95,7 @@ export function NavUser() {
                     <span className="truncate text-xs text-muted-foreground">{user.email}</span>
                   </div>
                 </div>
-                <div className="px-1 pb-1.5">{badges("flex-wrap")}</div>
+                {badges && <div className="px-1 pb-1.5">{badges}</div>}
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

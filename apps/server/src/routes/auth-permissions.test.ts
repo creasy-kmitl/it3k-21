@@ -20,9 +20,12 @@ beforeEach(async () => {
     },
     t.db,
   );
-  for (const role of ["staff", "head", "vicehead", "admin"]) {
-    await t.seedUser(role, { role, department: "Tech/Live" });
-  }
+  await t.seedUser("guest", { role: "guest" });
+  await t.seedUser("staff", { department: "Tech/Live" });
+  await t.seedUser("admin", { role: "admin", department: "Tech/Live" });
+  // Seat holders get no Better Auth grants of their own.
+  await t.seedUser("head", { seat: "head", department: "Tech/Live" });
+  await t.seedUser("vicehead", { seat: "vicehead", department: "Tech/Live" });
 });
 
 // Better Auth's /admin/list-users and /admin/get-user run this same check.
@@ -37,9 +40,9 @@ describe("Better Auth user directory", () => {
   test("only admins may list or read accounts (emails included)", async () => {
     expect(await can("admin", "list")).toBe(true);
     expect(await can("admin", "get")).toBe(true);
-    for (const role of ["staff", "head", "vicehead"]) {
-      expect(await can(role, "list")).toBe(false);
-      expect(await can(role, "get")).toBe(false);
+    for (const id of ["guest", "staff", "head", "vicehead"]) {
+      expect(await can(id, "list")).toBe(false);
+      expect(await can(id, "get")).toBe(false);
     }
   });
 });

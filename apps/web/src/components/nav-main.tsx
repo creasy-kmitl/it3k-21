@@ -10,7 +10,7 @@ import type * as React from "react";
 
 export type NavMainItem = {
   title: string;
-  to: "/dashboard" | "/head" | "/departments";
+  to: "/dashboard" | "/head" | "/departments" | "/users";
   icon: React.ReactNode;
 };
 

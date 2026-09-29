@@ -15,7 +15,7 @@ export class ApiError extends Error {
   }
 }
 
-async function toApiError(res: { status: number; json(): Promise<unknown> }) {
+export async function toApiError(res: { status: number; json(): Promise<unknown> }) {
   const body: unknown = await res.json().catch(() => null);
   const message =
     body && typeof body === "object" && "message" in body && typeof body.message === "string"

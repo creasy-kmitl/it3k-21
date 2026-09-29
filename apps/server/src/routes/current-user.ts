@@ -1,6 +1,8 @@
 import type { Database } from "@it3k/db";
 import { type DepartmentCode, department } from "@it3k/db/schema/department";
 import { user } from "@it3k/db/schema/auth";
+import { type LeadershipRole, leadership } from "@it3k/db/schema/leadership";
+import { isMember } from "@it3k/auth/permissions";
 import { eq } from "drizzle-orm";
 import { createMiddleware } from "hono/factory";
 
@@ -22,6 +24,8 @@ export type CurrentUser = {
   impersonatedBy: string | null;
   name: string;
   role: string | null;
+  /** The seat the account holds, if any; seats are what make someone a leader. */
+  leadershipRole: LeadershipRole | null;
   departmentId: string | null;
   departmentCode: DepartmentCode | null;
   banned: boolean;
@@ -68,6 +72,7 @@ export function requireUser(deps: RouteDeps) {
         id: user.id,
         name: user.name,
         role: user.role,
+        leadershipRole: leadership.role,
         departmentId: user.departmentId,
         departmentCode: department.code,
         banned: user.banned,
@@ -75,6 +80,7 @@ export function requireUser(deps: RouteDeps) {
       })
       .from(user)
       .leftJoin(department, eq(department.id, user.departmentId))
+      .leftJoin(leadership, eq(leadership.userId, user.id))
       .where(eq(user.id, session.userId));
     if (!row) {
       return c.json({ message: "Unauthorized" }, 401);
@@ -88,6 +94,7 @@ export function requireUser(deps: RouteDeps) {
       impersonatedBy: session.impersonatedBy,
       name: row.name,
       role: row.role,
+      leadershipRole: row.leadershipRole,
       departmentId: row.departmentId,
       departmentCode: row.departmentCode,
       banned: false,
@@ -95,6 +102,14 @@ export function requireUser(deps: RouteDeps) {
     await next();
   });
 }
+
+/** Guests (new sign-ins not yet made staff) get nothing past sign-in. */
+export const requireMember = createMiddleware<CurrentUserEnv>(async (c, next) => {
+  if (!isMember(c.var.user.role)) {
+    return c.json({ message: "Forbidden" }, 403);
+  }
+  await next();
+});
 
 /** Drizzle wraps driver errors; the SQLite message is on the cause chain. */
 export function constraintMessage(error: unknown): string | null {

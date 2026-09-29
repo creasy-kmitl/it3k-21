@@ -1,4 +1,5 @@
 import { Button } from "@it3k/ui/components/button";
+import { Checkbox } from "@it3k/ui/components/checkbox";
 import {
   Combobox,
   ComboboxContent,
@@ -304,32 +305,25 @@ export default function LeadershipForm({ mode, api = leadershipApi, onDone, onCa
         </div>
 
         {!selfOnly && (
-          <form.Subscribe selector={(state) => state.values.departmentId}>
-            {(departmentId) => (
-              <form.Field name="account">
-                {(field) => (
-                  <AccountPicker
-                    api={api}
-                    departmentId={departmentId}
-                    value={field.state.value}
-                    onChange={(account) => field.handleChange(account)}
-                  />
-                )}
-              </form.Field>
+          <form.Field name="account">
+            {(field) => (
+              <AccountPicker
+                api={api}
+                value={field.state.value}
+                onChange={(account) => field.handleChange(account)}
+              />
             )}
-          </form.Subscribe>
+          </form.Field>
         )}
 
         {mode.kind === "edit" && (
           <form.Field name="replaceContact">
             {(field) => (
               <Field orientation="horizontal">
-                <input
+                <Checkbox
                   id="leadership-replace-contact"
-                  type="checkbox"
-                  className="size-4 accent-primary"
                   checked={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.checked)}
+                  onCheckedChange={(checked) => field.handleChange(checked)}
                 />
                 <FieldLabel htmlFor="leadership-replace-contact">
                   เปลี่ยนเบอร์โทรและช่องทางติดต่อ
@@ -471,12 +465,10 @@ export default function LeadershipForm({ mode, api = leadershipApi, onDone, onCa
 
 function AccountPicker({
   api,
-  departmentId,
   value,
   onChange,
 }: {
   api: LeadershipApi;
-  departmentId: string;
   value: AttachableUser | null;
   onChange: (account: AttachableUser | null) => void;
 }) {
@@ -484,9 +476,9 @@ function AccountPicker({
   const q = useDebouncedValue(search.trim(), 300);
 
   const users = useQuery({
-    queryKey: ["leadership", "users", { q, departmentId }],
-    queryFn: () => api.users({ q, departmentId: departmentId || undefined, page: 1 }),
-    enabled: value === null && (q.length > 0 || departmentId.length > 0),
+    queryKey: ["leadership", "users", { q }],
+    queryFn: () => api.users({ q: q || undefined, page: 1 }),
+    enabled: value === null,
   });
 
   if (value) {
@@ -521,7 +513,7 @@ function AccountPicker({
         <ComboboxInput
           id="leadership-account"
           aria-label="บัญชีผู้ใช้"
-          placeholder="ค้นหาชื่อบัญชีในฝ่ายนี้"
+          placeholder="ค้นหาชื่อบัญชี"
           maxLength={64}
         />
         <ComboboxContent>
@@ -535,7 +527,7 @@ function AccountPicker({
           </ComboboxList>
         </ComboboxContent>
       </Combobox>
-      <FieldDescription>ไม่บังคับ — บัญชีต้องอยู่ในฝ่ายเดียวกับตำแหน่งนี้</FieldDescription>
+      <FieldDescription>ไม่บังคับ — เลือกบัญชีจากฝ่ายใดก็ได้</FieldDescription>
     </Field>
   );
 }

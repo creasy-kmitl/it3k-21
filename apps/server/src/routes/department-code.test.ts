@@ -12,7 +12,7 @@ beforeEach(async () => {
   t = createTestContext();
   app = createDepartmentRoutes(t.deps);
   await t.seedUser("admin", { role: "admin" });
-  await t.seedUser("head", { role: "head", department: "Tech/Live" });
+  await t.seedUser("head", { seat: "head", department: "Tech/Live" });
 });
 
 describe("PATCH /:id/code", () => {
@@ -132,7 +132,7 @@ describe("cross-site form posts", () => {
 
 describe("department membership vs. seats", () => {
   beforeEach(async () => {
-    await t.seedUser("art-lead", { role: "head", department: "Art" });
+    await t.seedUser("art-lead", { department: "Art" });
     await t.db.insert(leadership).values({
       departmentId: await t.departmentId("Art"),
       role: "head",

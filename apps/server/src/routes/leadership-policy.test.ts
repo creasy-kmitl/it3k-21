@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { type Action, type Actor, allowed, isManager } from "./leadership-policy";
+import { type Action, type Actor, allowed, canGrantAdmin, isManager } from "./leadership-policy";
 
 const actor = (overrides: Partial<Actor> = {}): Actor => ({
   id: "me",
   role: "staff",
+  leadershipRole: null,
   departmentCode: null,
   banned: false,
   ...overrides,
@@ -20,10 +21,13 @@ describe("leadership policy", () => {
   const managers: [string, Actor][] = [
     ["admin", actor({ role: "admin" })],
     ["admin in another department", actor({ role: "admin", departmentCode: null })],
-    ["tech-live head", actor({ role: "head", departmentCode: "tech-live" })],
-    ["tech-live vicehead", actor({ role: "vicehead", departmentCode: "tech-live" })],
-    ["registration head", actor({ role: "head", departmentCode: "registration" })],
-    ["registration vicehead", actor({ role: "vicehead", departmentCode: "registration" })],
+    ["tech-live head", actor({ leadershipRole: "head", departmentCode: "tech-live" })],
+    ["tech-live vicehead", actor({ leadershipRole: "vicehead", departmentCode: "tech-live" })],
+    ["registration head", actor({ leadershipRole: "head", departmentCode: "registration" })],
+    [
+      "registration vicehead",
+      actor({ leadershipRole: "vicehead", departmentCode: "registration" }),
+    ],
   ];
 
   for (const [label, who] of managers) {
@@ -38,8 +42,8 @@ describe("leadership policy", () => {
   }
 
   const outsiders: [string, Actor][] = [
-    ["other-department head", actor({ role: "head", departmentCode: null })],
-    ["other-department vicehead", actor({ role: "vicehead", departmentCode: null })],
+    ["other-department head", actor({ leadershipRole: "head", departmentCode: null })],
+    ["other-department vicehead", actor({ leadershipRole: "vicehead", departmentCode: null })],
   ];
 
   for (const [label, who] of outsiders) {
@@ -55,12 +59,28 @@ describe("leadership policy", () => {
     });
   }
 
-  test("staff in a manager department is not a manager", () => {
-    const who = actor({ role: "staff", departmentCode: "tech-live" });
+  test("staff of Tech/Live or ทะเบียน are managers", () => {
+    for (const departmentCode of ["tech-live", "registration"] as const) {
+      const who = actor({ role: "staff", departmentCode });
+      expect(isManager(who)).toBe(true);
+      for (const action of MANAGE) {
+        expect(allowed(who, action, other)).toBe(true);
+      }
+    }
+  });
+
+  test("guests get nothing, not even in a manager department", () => {
+    const who = actor({ role: "guest", departmentCode: "tech-live", leadershipRole: "head" });
     expect(isManager(who)).toBe(false);
-    for (const action of MANAGE) {
+    for (const action of [...MANAGE, "reveal"] as const) {
       expect(allowed(who, action, self)).toBe(false);
     }
+  });
+
+  test("only admins grant admin", () => {
+    expect(canGrantAdmin(actor({ role: "admin" }))).toBe(true);
+    expect(canGrantAdmin(actor({ role: "staff", departmentCode: "tech-live" }))).toBe(false);
+    expect(canGrantAdmin(actor({ role: "admin", banned: true }))).toBe(false);
   });
 
   test("staff may only reveal contacts", () => {
@@ -72,8 +92,8 @@ describe("leadership policy", () => {
   });
 
   test("every signed-in, unbanned user may reveal", () => {
-    for (const role of ["staff", "head", "vicehead", "admin"]) {
-      expect(allowed(actor({ role }), "reveal", other)).toBe(true);
+    for (const who of [actor(), actor({ leadershipRole: "head" }), actor({ role: "admin" })]) {
+      expect(allowed(who, "reveal", other)).toBe(true);
     }
   });
 
@@ -88,6 +108,12 @@ describe("leadership policy", () => {
   });
 
   test("multi-role strings are honoured", () => {
-    expect(isManager(actor({ role: "staff,vicehead", departmentCode: "tech-live" }))).toBe(true);
+    expect(isManager(actor({ role: "staff,admin" }))).toBe(true);
+  });
+
+  test("a leftover 'head' account role grants nothing without a seat", () => {
+    const who = actor({ role: "head", departmentCode: "tech-live" });
+    expect(isManager(who)).toBe(false);
+    expect(allowed(who, "update", self)).toBe(false);
   });
 });

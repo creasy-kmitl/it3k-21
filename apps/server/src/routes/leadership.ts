@@ -9,7 +9,7 @@ import {
   leadershipContactReveal,
   leadershipSocial,
 } from "@it3k/db/schema/leadership";
-import { type SQL, type SQLWrapper, and, eq, exists, isNull, sql } from "drizzle-orm";
+import { type SQL, type SQLWrapper, and, eq, exists, inArray, isNull, sql } from "drizzle-orm";
 import type { AuditableLogger } from "evlog";
 import { type Context, Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -21,6 +21,7 @@ import {
   type RouteDeps,
   constraintMessage,
   requireJsonPosts,
+  requireMember,
   requireUser,
 } from "./current-user";
 import { allowed, isManager } from "./leadership-policy";
@@ -118,7 +119,7 @@ const listQuery = z.strictObject({
   page,
 });
 
-const userQuery = z.strictObject({
+export const userQuery = z.strictObject({
   q: searchText.optional(),
   departmentId: departmentId.optional(),
   page,
@@ -205,7 +206,7 @@ function contains(column: SQLWrapper, pattern: string): SQL {
   return sql`${column} LIKE ${pattern} ESCAPE '\\'`;
 }
 
-function containsAny(columns: SQLWrapper[], text: string): SQL {
+export function containsAny(columns: SQLWrapper[], text: string): SQL {
   const pattern = `%${escapeLike(text)}%`;
   return sql`(${sql.join(
     columns.map((column) => contains(column, pattern)),
@@ -257,7 +258,11 @@ async function findSummary(db: Database, id: string, actor: CurrentUser) {
 
 type Problem = { message: string; status: 400 | 404 };
 
-/** A seat's department must exist, and an attached account must belong to it. */
+/**
+ * A seat's department and attached account must exist. Only managers can attach
+ * accounts, and they manage every department, so the account may come from any;
+ * attaching moves it into the seat's department (see syncAccountDepartment).
+ */
 async function checkPlacement(
   db: Database,
   departmentId: string,
@@ -271,15 +276,9 @@ async function checkPlacement(
     return { message: "Department not found", status: 404 };
   }
   if (userId === null) return null;
-  const [account] = await db
-    .select({ departmentId: user.departmentId })
-    .from(user)
-    .where(eq(user.id, userId));
+  const [account] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId));
   if (!account) {
     return { message: "Account not found", status: 404 };
-  }
-  if (account.departmentId !== departmentId) {
-    return { message: "The account must belong to this seat's department", status: 400 };
   }
   return null;
 }
@@ -289,6 +288,22 @@ function conflictMessage(error: unknown) {
   if (!message?.includes("UNIQUE")) return null;
   if (message.includes("leadership.user_id")) return "This account already holds a seat";
   return "This department already has someone in that role";
+}
+
+/**
+ * Moves a seat's account into the seat's department, so the account keeps
+ * belonging to the department it leads, and makes a guest staff. Reads the
+ * seat inside the statement, so it follows whatever the same batch just wrote.
+ */
+export function syncAccountDepartment(db: Database, leadershipId: string) {
+  const seat = eq(leadership.id, leadershipId);
+  return db
+    .update(user)
+    .set({
+      departmentId: sql`(select ${leadership.departmentId} from ${leadership} where ${seat})`,
+      role: sql`case when ${user.role} = 'guest' then 'staff' else ${user.role} end`,
+    })
+    .where(inArray(user.id, db.select({ id: leadership.userId }).from(leadership).where(seat)));
 }
 
 function insertSocials(db: Database, leadershipId: string, items: z.infer<typeof socials>) {
@@ -308,6 +323,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
   new Hono<LeadershipEnv>()
     .use(requireJsonPosts)
     .use(requireUser(deps))
+    .use(requireMember)
 
     .get("/", validate("query", listQuery), async (c) => {
       const { q, departmentId, page } = c.req.valid("query");
@@ -387,6 +403,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       try {
         await db.batch([
           db.insert(leadership).values({ id, ...fields }),
+          ...(fields.userId ? [syncAccountDepartment(db, id)] : []),
           ...insertSocials(db, id, items),
         ]);
       } catch (error) {
@@ -442,6 +459,9 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
             .set({ ...fields, updatedAt: new Date() })
             .where(stillAllowed)
             .returning({ id: leadership.id }),
+          ...(fields.departmentId !== undefined || fields.userId
+            ? [syncAccountDepartment(db, id)]
+            : []),
           ...(items
             ? [
                 db

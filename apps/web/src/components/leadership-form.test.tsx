@@ -86,19 +86,16 @@ describe("LeadershipForm (create)", () => {
     expect(created).toEqual([]);
   });
 
-  test("searches accounts in the chosen department and attaches one", async () => {
+  test("searches accounts across departments and attaches one", async () => {
     const { view, created, searches } = setup({ kind: "create" });
     await choose(view.getByLabelText("ฝ่าย"), "Art");
     type(view.getByLabelText("ชื่อ"), "Oat");
     const account = view.getByRole("combobox", { name: "บัญชีผู้ใช้" });
     fireEvent.focus(account);
     type(account, "oa");
-    await waitFor(
-      () => expect(searches.at(-1)).toEqual({ q: "oa", departmentId: "d-art", page: 1 }),
-      {
-        timeout: 3000,
-      },
-    );
+    await waitFor(() => expect(searches.at(-1)).toEqual({ q: "oa", page: 1 }), {
+      timeout: 3000,
+    });
     fireEvent.keyDown(account, { key: "ArrowDown" });
     fireEvent.click(await view.findByRole("option", { name: "Oat Arthit" }));
     fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
@@ -153,7 +150,7 @@ describe("LeadershipForm (edit)", () => {
 
   test("replacing contact details sends the full new set", async () => {
     const { view, updated } = setup({ kind: "edit", seat, selfOnly: false });
-    fireEvent.click(view.getByLabelText("เปลี่ยนเบอร์โทรและช่องทางติดต่อ"));
+    fireEvent.click(view.getByRole("checkbox", { name: "เปลี่ยนเบอร์โทรและช่องทางติดต่อ" }));
     type(view.getByLabelText("เบอร์โทร"), "");
     fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
     await waitFor(() => expect(updated).toHaveLength(1));

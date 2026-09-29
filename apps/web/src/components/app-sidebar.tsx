@@ -9,19 +9,28 @@ import {
   SidebarMenuItem,
 } from "@it3k/ui/components/sidebar";
 import { Link } from "@tanstack/react-router";
-import { Building2Icon, LayoutDashboardIcon, TrophyIcon, UsersIcon } from "lucide-react";
+import {
+  Building2Icon,
+  LayoutDashboardIcon,
+  TrophyIcon,
+  UserCogIcon,
+  UsersIcon,
+} from "lucide-react";
 import type * as React from "react";
 
 import { NavMain, type NavMainItem } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
+import { useMe } from "@/lib/users";
 
 export function AppSidebar({
   userRole,
   ...props
 }: React.ComponentProps<typeof Sidebar> & { userRole: string | null | undefined }) {
+  const { data: me } = useMe();
   const items: NavMainItem[] = [
     { title: "Dashboard", to: "/dashboard", icon: <LayoutDashboardIcon /> },
     { title: "หัวหน้าฝ่าย", to: "/head", icon: <UsersIcon /> },
+    ...(me?.canManageUsers ? [{ title: "ผู้ใช้", to: "/users", icon: <UserCogIcon /> } as const] : []),
     ...(can(userRole, { department: ["read"] })
       ? [{ title: "Departments", to: "/departments", icon: <Building2Icon /> } as const]
       : []),

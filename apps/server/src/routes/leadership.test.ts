@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { leadership, leadershipSocial } from "@it3k/db/schema/index";
+import { leadership, leadershipSocial, user } from "@it3k/db/schema/index";
 import { eq } from "drizzle-orm";
 
 import { createTestContext, readJson } from "../testing";
@@ -22,6 +22,11 @@ type Summary = {
   canDelete: boolean;
 };
 type Page = { items: Summary[]; page: number; hasMore: boolean; canCreate: boolean };
+
+/** Seats tech-head, which is what makes it a manager (a Tech/Live leader). */
+function seatTechHead() {
+  return seat({ department: "Tech/Live", role: "head", name: "Somchai", userId: "tech-head" });
+}
 
 async function seat(values: {
   department: string;
@@ -59,8 +64,8 @@ beforeEach(async () => {
     audit: async (_c, event) => void audit.events.push(event),
   });
   await t.seedUser("admin", { role: "admin" });
-  await t.seedUser("tech-head", { role: "head", department: "Tech/Live", name: "Somchai Jaidee" });
-  await t.seedUser("art-head", { role: "head", department: "Art", name: "Arthit" });
+  await t.seedUser("tech-head", { department: "Tech/Live", name: "Somchai Jaidee" });
+  await t.seedUser("art-head", { department: "Art", name: "Arthit" });
   await t.seedUser("staff", { role: "staff", department: "Art" });
   await t.seedUser("banned", { role: "admin", banned: true });
 });
@@ -188,6 +193,8 @@ describe("GET /", () => {
   });
 
   test("reports whether the caller can create seats", async () => {
+    await seatTechHead();
+    await seat({ department: "Art", role: "head", name: "Mine", userId: "art-head" });
     expect((await list("admin")).body.canCreate).toBe(true);
     expect((await list("tech-head")).body.canCreate).toBe(true);
     expect((await list("art-head")).body.canCreate).toBe(false);
@@ -203,6 +210,7 @@ describe("GET /", () => {
       ["Theirs", false, false],
       ["Arthit", true, false],
     ]);
+    await seatTechHead();
     const managed = (await list("tech-head")).body.items;
     expect(managed.every((s) => s.canEdit && s.canDelete)).toBe(true);
     const staff = (await list("staff")).body.items;
@@ -312,6 +320,14 @@ async function socialsOf(id: string) {
   return rows.sort((a, b) => a.platform.localeCompare(b.platform));
 }
 
+async function departmentOf(userId: string) {
+  const [row] = await t.db
+    .select({ departmentId: user.departmentId })
+    .from(user)
+    .where(eq(user.id, userId));
+  return row?.departmentId;
+}
+
 async function stored(id: string) {
   const [row] = await t.db.select().from(leadership).where(eq(leadership.id, id));
   return row;
@@ -328,7 +344,8 @@ describe("POST /", () => {
 
   for (const manager of ["admin", "tech-head", "reg-vice"]) {
     test(`${manager} creates a seat`, async () => {
-      await t.seedUser("reg-vice", { role: "vicehead", department: "ทะเบียน" });
+      await t.seedUser("reg-vice", { seat: "vicehead", department: "ทะเบียน" });
+      if (manager === "tech-head") await seatTechHead();
       const { res, body } = await send(
         manager,
         "POST",
@@ -363,11 +380,12 @@ describe("POST /", () => {
   }
 
   test("other leaders and staff cannot create", async () => {
+    await seat({ department: "PR", role: "head", name: "Mine", userId: "art-head" });
     for (const who of ["art-head", "staff"]) {
       const { res } = await send(who, "POST", "/", await input());
       expect(res.status).toBe(403);
     }
-    expect(await t.db.select().from(leadership)).toEqual([]);
+    expect(await t.db.select().from(leadership)).toHaveLength(1);
   });
 
   test("stores blank phone and nickname as null", async () => {
@@ -401,11 +419,17 @@ describe("POST /", () => {
     expect(res.status).toBe(409);
   });
 
-  test("attaching requires the account to belong to the seat's department", async () => {
-    const { res, body } = await send("admin", "POST", "/", await input({ userId: "tech-head" }));
-    expect(res.status).toBe(400);
-    expect(body).toMatchObject({ message: expect.any(String) });
-    const ok = await send("admin", "POST", "/", await input({ userId: "art-head" }));
+  test("attaching an account from another department moves it into the seat's", async () => {
+    const other = await send("admin", "POST", "/", await input({ userId: "tech-head" }));
+    expect(other.res.status).toBe(201);
+    expect(other.body).toMatchObject({ userId: "tech-head" });
+    expect(await departmentOf("tech-head")).toBe(await t.departmentId("Art"));
+    const ok = await send(
+      "admin",
+      "POST",
+      "/",
+      await input({ role: "vicehead", userId: "art-head" }),
+    );
     expect(ok.res.status).toBe(201);
     expect(ok.body).toMatchObject({ userId: "art-head", name: "Arthit" });
   });
@@ -527,13 +551,16 @@ describe("PATCH /:id", () => {
     expect((await send("staff", "PATCH", `/${prSeat}`, { nickname: "x" })).res.status).toBe(403);
   });
 
-  test("an attached staff account still cannot edit (role is required)", async () => {
+  test("holding the seat is what lets an account edit it", async () => {
     await t.seedUser("pr-staff", { department: "PR" });
-    await t.db.update(leadership).set({ userId: "pr-staff" }).where(eq(leadership.id, prSeat));
     expect((await send("pr-staff", "PATCH", `/${prSeat}`, { nickname: "x" })).res.status).toBe(403);
+    await t.db.update(leadership).set({ userId: "pr-staff" }).where(eq(leadership.id, prSeat));
+    expect((await send("pr-staff", "PATCH", `/${prSeat}`, { nickname: "x" })).res.status).toBe(200);
+    expect((await send("pr-staff", "PATCH", `/${prSeat}`, { name: "x" })).res.status).toBe(403);
   });
 
   test("managers edit every field and detach accounts", async () => {
+    await seatTechHead();
     const { res, body } = await send("tech-head", "PATCH", `/${artHeadSeat}`, {
       role: "vicehead",
       userId: null,
@@ -550,12 +577,15 @@ describe("PATCH /:id", () => {
     expect(await socialsOf(artHeadSeat)).toEqual([{ platform: "line", value: "old" }]);
   });
 
-  test("moving an attached seat to another department is refused", async () => {
-    const { res } = await send("admin", "PATCH", `/${artHeadSeat}`, {
-      departmentId: await t.departmentId("PR"),
+  test("an attached seat can move to another department", async () => {
+    const pr = await t.departmentId("PR");
+    const { res, body } = await send("admin", "PATCH", `/${artHeadSeat}`, {
+      departmentId: pr,
       role: "vicehead",
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ departmentId: pr, userId: "art-head" });
+    expect(await departmentOf("art-head")).toBe(pr);
   });
 
   test("a failed update leaves socials untouched", async () => {
@@ -603,13 +633,14 @@ describe("GET /users", () => {
   test("managers search unattached accounts by name, optionally by department", async () => {
     await t.seedUser("art-2", { department: "Art", name: "Arthur" });
     await seat({ department: "Art", role: "head", name: "A", userId: "art-head" });
+    await seatTechHead();
     const art = await t.departmentId("Art");
     let { res, body } = await send("tech-head", "GET", `/users?q=ar&departmentId=${art}`);
     expect(res.status).toBe(200);
     // art-head is already attached, so only Arthur remains.
     expect(body).toEqual({ items: [{ id: "art-2", name: "Arthur" }], hasMore: false });
-    ({ body } = await send("admin", "GET", "/users?q=somchai"));
-    expect(body).toEqual({ items: [{ id: "tech-head", name: "Somchai Jaidee" }], hasMore: false });
+    ({ body } = await send("admin", "GET", "/users?q=user%20staff"));
+    expect(body).toEqual({ items: [{ id: "staff", name: "User staff" }], hasMore: false });
     expect(JSON.stringify(body)).not.toContain("@");
   });
 

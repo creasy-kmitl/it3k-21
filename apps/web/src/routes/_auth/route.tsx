@@ -1,3 +1,4 @@
+import { isMember } from "@it3k/auth/permissions";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -20,6 +21,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/head": "หัวหน้าฝ่าย",
   "/departments": "Departments",
+  "/users": "ผู้ใช้",
 };
 
 export const Route = createFileRoute("/_auth")({
@@ -33,6 +35,10 @@ export const Route = createFileRoute("/_auth")({
       throw redirect({
         to: "/unauthorized",
       });
+    }
+    // Guests wait outside until a user manager makes them staff.
+    if (!isMember(session.data.user.role)) {
+      throw redirect({ to: "/" });
     }
     return { session };
   },
