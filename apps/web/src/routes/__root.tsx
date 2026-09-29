@@ -74,7 +74,8 @@ function RootDocument() {
         <HeadContent />
       </head>
       <body>
-        <div className="flex h-screen text-foreground bg-background">
+        {/* min-h, not h: pages taller than the screen must grow the layout, not overflow it. */}
+        <div className="flex min-h-svh text-foreground bg-background">
           {/*<Header />*/}
           <Outlet />
         </div>
