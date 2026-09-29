@@ -1,4 +1,5 @@
 import { Toaster } from "@it3k/ui/components/sonner";
+import { PRELOAD_FONTS } from "@it3k/ui/lib/fonts";
 import type { QueryClient } from "@tanstack/react-query";
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
@@ -55,6 +56,13 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
           rel: "stylesheet",
           href: appCss,
         },
+        ...PRELOAD_FONTS.map((href) => ({
+          rel: "preload",
+          href,
+          as: "font",
+          type: "font/woff2",
+          crossOrigin: "anonymous" as const,
+        })),
         { rel: "icon", href: "/favicon.ico", sizes: "48x48" },
         { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
         { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
