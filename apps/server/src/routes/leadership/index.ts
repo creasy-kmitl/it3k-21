@@ -292,7 +292,7 @@ function conflictMessage(error: unknown) {
 
 /**
  * Moves a seat's account into the seat's department, so the account keeps
- * belonging to the department it leads, and makes a guest staff. Reads the
+ * belonging to the department it leads, and makes a guest or athlete staff. Reads the
  * seat inside the statement, so it follows whatever the same batch just wrote.
  */
 export function syncAccountDepartment(db: Database, leadershipId: string) {
@@ -301,7 +301,7 @@ export function syncAccountDepartment(db: Database, leadershipId: string) {
     .update(user)
     .set({
       departmentId: sql`(select ${leadership.departmentId} from ${leadership} where ${seat})`,
-      role: sql`case when ${user.role} = 'guest' then 'staff' else ${user.role} end`,
+      role: sql`case when ${user.role} in ('guest', 'athlete') then 'staff' else ${user.role} end`,
     })
     .where(inArray(user.id, db.select({ id: leadership.userId }).from(leadership).where(seat)));
 }

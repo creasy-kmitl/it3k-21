@@ -5,6 +5,7 @@ import {
   CircleDashedIcon,
   CrownIcon,
   type LucideIcon,
+  MedalIcon,
   ShieldCheckIcon,
   StarIcon,
   UserIcon,
@@ -26,6 +27,7 @@ export const ROLE_BADGES: Record<
   vicehead: { label: "รองหัวหน้าฝ่าย", icon: StarIcon, variant: "secondary" },
   staff: { label: "Staff", icon: UserIcon, variant: "outline" },
   guest: { label: "Guest", icon: CircleDashedIcon, variant: "outline" },
+  athlete: { label: "นักกีฬา", icon: MedalIcon, variant: "secondary" },
 };
 
 /**

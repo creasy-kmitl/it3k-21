@@ -11,6 +11,9 @@ export const ac = createAccessControl(statement);
 // New sign-ins wait as guests until a user manager makes them staff.
 export const guest = ac.newRole({});
 
+// Athletes are told apart from guests but, for now, reach no more than they do.
+export const athlete = ac.newRole({});
+
 export const staff = ac.newRole({});
 
 // Heads and viceheads are not account roles: holding a seat in the
@@ -24,7 +27,7 @@ export const admin = ac.newRole({
   department: ["create", "read", "update", "delete", "assign"],
 });
 
-export const roles = { guest, staff, admin };
+export const roles = { guest, athlete, staff, admin };
 
 export type Role = keyof typeof roles;
 export const ROLES = Object.keys(roles) as Role[];
@@ -43,7 +46,7 @@ export function hasRole(role: string | null | undefined, target: Role) {
   return parseRoles(role).includes(target);
 }
 
-/** Staff and admins; guests may not use the signed-in app yet. */
+/** Staff and admins; guests and athletes may not use the signed-in app yet. */
 export function isMember(role: string | null | undefined) {
   return hasRole(role, "admin") || hasRole(role, "staff");
 }

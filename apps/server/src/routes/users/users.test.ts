@@ -12,7 +12,7 @@ let app: ReturnType<typeof createUserRoutes>;
 type Account = {
   id: string;
   name: string;
-  role: "guest" | "staff" | "admin";
+  role: "guest" | "athlete" | "staff" | "admin";
   department: { id: string; name: string } | null;
   seatRole: "head" | "vicehead" | null;
   canEdit: boolean;
@@ -86,6 +86,16 @@ describe("PUT /:id/assignment", () => {
     const { res, body } = await assign("tech-staff", "guest", { kind: "staff", departmentId: art });
     expect(res.status).toBe(200);
     expect(body).toMatchObject({ role: "staff", department: { id: art }, seatRole: null });
+  });
+
+  test("makes someone an athlete, leaving their department and seat", async () => {
+    const seat = (await seatOf("reg-vice"))!;
+    const { res, body } = await assign("admin", "reg-vice", { kind: "athlete" });
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ role: "athlete", department: null, seatRole: null });
+    expect(await t.db.select().from(leadership).where(eq(leadership.id, seat.id))).toEqual([]);
+    // Athletes, like guests, are kept out of the signed-in app.
+    expect((await send("reg-vice", "GET", "/me")).res.status).toBe(403);
   });
 
   test("makes someone head of a vacant seat", async () => {

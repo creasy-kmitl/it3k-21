@@ -77,6 +77,12 @@ describe("leadership policy", () => {
     }
   });
 
+  test("athletes get nothing either", () => {
+    const who = actor({ role: "athlete", departmentCode: "tech-live" });
+    expect(isManager(who)).toBe(false);
+    expect(allowed(who, "reveal", other)).toBe(false);
+  });
+
   test("only admins grant admin", () => {
     expect(canGrantAdmin(actor({ role: "admin" }))).toBe(true);
     expect(canGrantAdmin(actor({ role: "staff", departmentCode: "tech-live" }))).toBe(false);

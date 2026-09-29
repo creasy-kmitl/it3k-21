@@ -33,7 +33,9 @@ import { DepartmentBadge, DepartmentLabel } from "./department-icon";
 import { ROLE_BADGES, RoleBadge } from "./role-badge";
 
 type Status = Assignment["kind"];
-const STATUSES: Status[] = ["guest", "staff", "vicehead", "head"];
+const STATUSES: Status[] = ["guest", "athlete", "staff", "vicehead", "head"];
+// Statuses that carry no department.
+const UNAFFILIATED = new Set<Status>(["guest", "athlete"]);
 
 function initials(name: string) {
   return name.trim().slice(0, 2).toUpperCase();
@@ -41,13 +43,14 @@ function initials(name: string) {
 
 function statusOf(account: Account): Status {
   if (account.seatRole) return account.seatRole;
+  if (account.role === "athlete") return "athlete";
   return account.department ? "staff" : "guest";
 }
 
 type Props = { api?: UsersApi; seats?: LeadershipApi };
 
 /**
- * Accounts and what each one is: guest, staff of a department, or a head or
+ * Accounts and what each one is: guest, athlete, staff of a department, or a head or
  * vicehead. The flags only decide what to show; the API enforces the rules.
  */
 export default function UserManager({ api = usersApi, seats = leadershipApi }: Props) {
@@ -86,7 +89,7 @@ export default function UserManager({ api = usersApi, seats = leadershipApi }: P
           <UserCog className="size-6 text-primary" aria-hidden />
           ผู้ใช้
         </h1>
-        <p className="text-muted-foreground">กำหนดว่าแต่ละบัญชีเป็น Guest, Staff หรือหัวหน้าฝ่ายใด</p>
+        <p className="text-muted-foreground">กำหนดว่าแต่ละบัญชีเป็น Guest, นักกีฬา, Staff หรือหัวหน้าฝ่ายใด</p>
       </header>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -235,7 +238,7 @@ function EditAccountDialog({
   const [status, setStatus] = useState<Status>(initialStatus);
   const [departmentId, setDepartmentId] = useState(account.department?.id ?? "");
   const [admin, setAdmin] = useState(account.role === "admin");
-  const needsDepartment = status !== "guest";
+  const needsDepartment = !UNAFFILIATED.has(status);
   const seatRole = status === "head" || status === "vicehead" ? status : null;
 
   // Who holds the chosen seat now, so taking it over is never a surprise.
@@ -254,7 +257,9 @@ function EditAccountDialog({
       if (assignmentChanged) {
         await api.assign(
           account.id,
-          status === "guest" ? { kind: "guest" } : { kind: status, departmentId },
+          status === "guest" || status === "athlete"
+            ? { kind: status }
+            : { kind: status, departmentId },
         );
       }
       if (canGrantAdmin && admin !== (account.role === "admin")) {

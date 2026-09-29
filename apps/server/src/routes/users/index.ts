@@ -24,7 +24,7 @@ import { validate } from "../../middleware/validation";
 const idParam = z.strictObject({ id: z.string().min(1) });
 
 const assignmentInput = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("guest") }),
+  z.strictObject({ kind: z.enum(["guest", "athlete"]) }),
   z.strictObject({
     kind: z.enum(["staff", ...LEADERSHIP_ROLES]),
     departmentId: z.string().trim().min(1),
@@ -37,6 +37,7 @@ const adminInput = z.strictObject({ admin: z.boolean() });
 function accountRole(role: string | null): Role {
   if (hasRole(role, "admin")) return "admin";
   if (hasRole(role, "staff")) return "staff";
+  if (hasRole(role, "athlete")) return "athlete";
   return "guest";
 }
 
@@ -139,7 +140,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
     })
 
     /**
-     * Makes an account a guest, staff of a department, or the head/vicehead of
+     * Makes an account a guest, an athlete, staff of a department, or the head/vicehead of
      * one. Leaving a seat deletes it; taking an occupied seat replaces its
      * holder, who stays on as staff of that department.
      */
@@ -164,7 +165,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
           return c.json({ message: "Only admins can change an admin's account" }, 403);
         }
 
-        const departmentId = input.kind === "guest" ? null : input.departmentId;
+        const departmentId = "departmentId" in input ? input.departmentId : null;
         if (departmentId) {
           const [found] = await db
             .select({ id: department.id })
@@ -206,7 +207,11 @@ export const createUserRoutes = (deps: RouteDeps) =>
               .set({
                 departmentId,
                 // Seats are not account roles: a head or vicehead is staff.
-                role: isAdmin ? target.role : input.kind === "guest" ? "guest" : "staff",
+                role: isAdmin
+                  ? target.role
+                  : input.kind === "guest" || input.kind === "athlete"
+                    ? input.kind
+                    : "staff",
               })
               .where(eq(user.id, id)),
             ...(current && !keepsSeat
