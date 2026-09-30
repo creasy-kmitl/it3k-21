@@ -12,6 +12,7 @@ const START = Date.UTC(2026, 9, 10, 6);
 
 type Inbox = {
   unread: number;
+  nextCursor: string | null;
   items: { id: string; kind: string; itemTitle: string; data: Record<string, unknown> }[];
 };
 
@@ -149,6 +150,41 @@ describe("notifications", () => {
     await send("owner", "POST", "/notifications/read", { ids: [box.items[0]?.id] });
     expect((await inbox("owner")).unread).toBe(1);
     expect((await send("owner", "POST", "/notifications/read", { ids: [] })).res.status).toBe(400);
+  });
+
+  test("pages through every notice, so an old unread one can still be opened", async () => {
+    const item = await create();
+    await send("owner", "POST", "/notifications/read", { all: true });
+    // 55 more, all in the same millisecond; the oldest is left unread.
+    const at = Date.now() - 60_000;
+    for (let i = 0; i < 55; i++) {
+      t.sqlite.run(
+        "INSERT INTO calendar_notification (id, user_id, item_id, kind, item_title, data, read_at, created_at) VALUES (?, 'owner', ?, 'assignment', ?, '{}', ?, ?)",
+        [`n${String(i).padStart(2, "0")}`, item.id, `notice ${i}`, i === 0 ? null : at, at],
+      );
+    }
+    const first = await inbox("owner");
+    expect(first.unread).toBe(1);
+    expect(first.items).toHaveLength(50);
+    expect(first.nextCursor).not.toBeNull();
+    const { body: second } = await send<Inbox>(
+      "owner",
+      "GET",
+      `/notifications?cursor=${first.nextCursor}`,
+    );
+    const titles = [...first.items, ...second.items].map((n) => n.itemTitle);
+    // Every notice exactly once, newest first, ending with the oldest.
+    expect(new Set(titles).size).toBe(56);
+    expect(titles.slice(0, 2)).toEqual(["ซ้อมพิธีเปิด", "notice 54"]);
+    expect(titles.at(-1)).toBe("notice 0");
+    expect(second.nextCursor).toBeNull();
+    expect(second.items.at(-1)).toMatchObject({ itemTitle: "notice 0", readAt: null });
+  });
+
+  test("refuses a malformed cursor", async () => {
+    for (const cursor of ["abc", "1", "1.2.3", "-1.2"]) {
+      expect((await send("owner", "GET", `/notifications?cursor=${cursor}`)).res.status).toBe(400);
+    }
   });
 
   test("marking read only touches the caller's own notifications", async () => {

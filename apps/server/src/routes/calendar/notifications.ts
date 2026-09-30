@@ -47,6 +47,17 @@ export function notify(
   ];
 }
 
+/**
+ * Where the previous page ended: `<createdAt ms>.<rowid>`. The rowid breaks
+ * ties between notices written in the same millisecond, in insertion order.
+ */
+const inboxQuery = z.strictObject({
+  cursor: z
+    .string()
+    .regex(/^\d{1,16}\.\d{1,16}$/)
+    .optional(),
+});
+
 const readInput = z.union([
   z.strictObject({ ids: z.array(id).min(1).max(INBOX_LIMIT) }),
   z.strictObject({ all: z.literal(true) }),
@@ -54,15 +65,28 @@ const readInput = z.union([
 
 export const createNotificationRoutes = () =>
   new Hono<CurrentUserEnv>()
-    .get("/notifications", async (c) => {
+    // Newest first, a page at a time, so older notices (unread ones too) stay reachable.
+    .get("/notifications", validate("query", inboxQuery), async (c) => {
       const db = c.var.db;
       const actor = c.var.user;
-      const rows = await db
-        .select()
+      const { cursor } = c.req.valid("query");
+      const rowid = sql<number>`${calendarNotification}.rowid`;
+      const filters = [eq(calendarNotification.userId, actor.id)];
+      if (cursor) {
+        const [at, id] = cursor.split(".").map(Number) as [number, number];
+        filters.push(
+          sql`(${calendarNotification.createdAt} < ${at} or (${calendarNotification.createdAt} = ${at} and ${rowid} < ${id}))`,
+        );
+      }
+      const found = await db
+        .select({ notice: calendarNotification, rowid })
         .from(calendarNotification)
-        .where(eq(calendarNotification.userId, actor.id))
-        .orderBy(desc(calendarNotification.createdAt), sql`${calendarNotification}.rowid desc`)
-        .limit(INBOX_LIMIT);
+        .where(and(...filters))
+        .orderBy(desc(calendarNotification.createdAt), sql`${rowid} desc`)
+        .limit(INBOX_LIMIT + 1);
+      const page = found.slice(0, INBOX_LIMIT);
+      const last = page.at(-1);
+      const rows = page.map((row) => row.notice);
       const [unread] = await db
         .select({ count: sql<number>`count(*)` })
         .from(calendarNotification)
@@ -79,6 +103,11 @@ export const createNotificationRoutes = () =>
             readAt: ms(row.readAt),
           })),
           unread: Number(unread?.count ?? 0),
+          /** Pass back as `cursor` for the next, older page; null on the last one. */
+          nextCursor:
+            found.length > INBOX_LIMIT && last
+              ? `${last.notice.createdAt.getTime()}.${last.rowid}`
+              : null,
         },
         200,
       );

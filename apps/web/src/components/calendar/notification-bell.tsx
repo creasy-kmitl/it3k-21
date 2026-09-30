@@ -1,8 +1,9 @@
 import { Button } from "@it3k/ui/components/button";
+import { Spinner } from "@it3k/ui/components/spinner";
 import { cn } from "@it3k/ui/lib/utils";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, CheckCheck, Inbox } from "lucide-react";
+import { Bell, CheckCheck, History, Inbox } from "lucide-react";
 import { useState } from "react";
 
 import { useApis } from "@/lib/api-context";
@@ -18,15 +19,22 @@ function NoticeIcon({ kind }: { kind: CalendarNotification["kind"] }) {
   return <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />;
 }
 
-/** The inbox itself: notifications, newest first. */
+/** The inbox itself: notifications, newest first, with older pages on request. */
 export function NotificationList({
   inbox,
   onOpen,
   onReadAll,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
 }: {
-  inbox: CalendarInbox;
+  inbox: Pick<CalendarInbox, "items" | "unread">;
   onOpen: (target: { itemId: string; startAt?: number; notificationId?: string }) => void;
   onReadAll: () => void;
+  /** Whether older notices are left to load. */
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -85,6 +93,22 @@ export function NotificationList({
             ))}
           </ul>
         )}
+        {hasMore && onLoadMore && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="self-center"
+            disabled={loadingMore}
+            onClick={onLoadMore}
+          >
+            {loadingMore ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <History data-icon="inline-start" />
+            )}
+            โหลดการแจ้งเตือนเก่ากว่านี้
+          </Button>
+        )}
       </section>
     </div>
   );
@@ -96,16 +120,20 @@ export function NotificationBell() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const inbox = useQuery({
+  // Pages of the inbox, newest first; older ones load on request.
+  const inbox = useInfiniteQuery({
     queryKey: ["calendar", "notifications"],
-    queryFn: () => calendar.notifications(),
+    queryFn: ({ pageParam }) => calendar.notifications(pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
     refetchInterval: 60_000,
   });
   const markRead = useMutation({
     mutationFn: (ids: string[] | "all") => calendar.markRead(ids),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["calendar", "notifications"] }),
   });
-  const count = inbox.data?.unread ?? 0;
+  // The unread count covers every notice, not just the pages loaded.
+  const count = inbox.data?.pages[0]?.unread ?? 0;
 
   return (
     <>
@@ -136,7 +164,10 @@ export function NotificationBell() {
         <div>
           {inbox.data ? (
             <NotificationList
-              inbox={inbox.data}
+              inbox={{ items: inbox.data.pages.flatMap((page) => page.items), unread: count }}
+              hasMore={inbox.hasNextPage}
+              loadingMore={inbox.isFetchingNextPage}
+              onLoadMore={() => void inbox.fetchNextPage()}
               onReadAll={() => markRead.mutate("all")}
               onOpen={({ itemId, startAt, notificationId }) => {
                 if (notificationId) markRead.mutate([notificationId]);

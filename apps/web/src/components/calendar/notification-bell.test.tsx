@@ -1,12 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { bangkokTime } from "@/lib/bangkok-time";
 import type { CalendarInbox } from "@/lib/calendar";
 import { describeNotification } from "@/lib/calendar-labels";
 
 import { isImportantChange } from "./item-sheet";
-import { NotificationList } from "./notification-bell";
+import { ApiProvider } from "@/lib/api-context";
+import { fakeApi, fakeCalendarApi, fakeUsersApi } from "@/test/query";
+import { renderAtRoot } from "@/test/router";
+
+import { NotificationBell, NotificationList } from "./notification-bell";
 
 afterEach(cleanup);
 
@@ -35,6 +40,7 @@ function inbox(overrides: Partial<CalendarInbox> = {}): CalendarInbox {
       },
     ],
     unread: 1,
+    nextCursor: null,
     ...overrides,
   };
 }
@@ -66,6 +72,79 @@ describe("NotificationList", () => {
       { itemId: "item-2", notificationId: undefined, startAt: undefined },
     ]);
     expect(readAll).toBe(1);
+  });
+});
+
+describe("older notices", () => {
+  test("offers the next page while there is one, and says when it is loading", () => {
+    let loads = 0;
+    const { rerender } = render(
+      <NotificationList
+        inbox={inbox()}
+        onOpen={() => {}}
+        onReadAll={() => {}}
+        hasMore
+        onLoadMore={() => loads++}
+      />,
+    );
+    const more = screen.getByRole("button", { name: "โหลดการแจ้งเตือนเก่ากว่านี้" });
+    fireEvent.click(more);
+    expect(loads).toBe(1);
+    rerender(
+      <NotificationList
+        inbox={inbox()}
+        onOpen={() => {}}
+        onReadAll={() => {}}
+        hasMore
+        loadingMore
+        onLoadMore={() => loads++}
+      />,
+    );
+    // The spinner adds its own label while loading.
+    expect(
+      screen.getByRole("button", { name: /โหลดการแจ้งเตือนเก่ากว่านี้/ }).hasAttribute("disabled"),
+    ).toBe(true);
+    rerender(<NotificationList inbox={inbox()} onOpen={() => {}} onReadAll={() => {}} />);
+    expect(screen.queryByRole("button", { name: "โหลดการแจ้งเตือนเก่ากว่านี้" })).toBeNull();
+  });
+});
+
+describe("<NotificationBell />", () => {
+  test("loads older pages until the old unread notice can be opened", async () => {
+    const notice = (id: string, readAt: number | null) => ({
+      id,
+      itemId: `item-${id}`,
+      kind: "assignment" as const,
+      itemTitle: `งาน ${id}`,
+      data: {},
+      createdAt: AT,
+      readAt,
+    });
+    const cursors: (string | undefined)[] = [];
+    const calendar = fakeCalendarApi({
+      notifications: async (cursor) => {
+        cursors.push(cursor);
+        return cursor
+          ? { items: [notice("old", null)], unread: 1, nextCursor: null }
+          : { items: [notice("new", AT)], unread: 1, nextCursor: "123.4" };
+      },
+    });
+    await renderAtRoot(() => (
+      <QueryClientProvider client={new QueryClient()}>
+        <ApiProvider value={{ calendar, leadership: fakeApi(), users: fakeUsersApi() }}>
+          <NotificationBell />
+        </ApiProvider>
+      </QueryClientProvider>
+    ));
+    fireEvent.click(await screen.findByRole("button", { name: "การแจ้งเตือน 1 รายการใหม่" }));
+    const inboxPanel = await screen.findByRole("region", { name: "การแจ้งเตือน" });
+    expect(inboxPanel.textContent).toContain("งาน new");
+    expect(inboxPanel.textContent).not.toContain("งาน old");
+    fireEvent.click(within(inboxPanel).getByRole("button", { name: "โหลดการแจ้งเตือนเก่ากว่านี้" }));
+    await waitFor(() => expect(inboxPanel.textContent).toContain("งาน old"));
+    expect(cursors).toEqual([undefined, "123.4"]);
+    expect(within(inboxPanel).getAllByText("ยังไม่อ่าน")).toHaveLength(1);
+    expect(within(inboxPanel).queryByRole("button", { name: "โหลดการแจ้งเตือนเก่ากว่านี้" })).toBeNull();
   });
 });
 

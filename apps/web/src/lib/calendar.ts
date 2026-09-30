@@ -92,8 +92,9 @@ export function createCalendarApi(baseUrl: string, fetchImpl?: ClientRequestOpti
       if (!res.ok) throw await toApiError(res);
     },
 
-    async notifications() {
-      const res = await client.notifications.$get();
+    /** One page of the inbox, newest first; pass `nextCursor` for the next, older one. */
+    async notifications(cursor?: string) {
+      const res = await client.notifications.$get({ query: cursor ? { cursor } : {} });
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
