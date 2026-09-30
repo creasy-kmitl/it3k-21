@@ -3,11 +3,15 @@
 import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
 import {
+  type CalendarCategory,
+  type CalendarMode,
   type ConflictKind,
+  LIVE_BLOCK_CATEGORIES,
   LIVE_CHECKLIST,
   type LiveChecklistKey,
   calendarChecklistItem,
   calendarItem,
+  holdsASlot,
   needsLiveChecklist,
 } from "@it3k/db/schema/calendar";
 import { type SQL, and, eq, exists, gt, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
@@ -22,6 +26,8 @@ import { conflictResponse, logChange, ms, optionalText } from "./shared";
 /** The slot an item holds, and who and what it holds it with. */
 export type Slot = {
   excludeId?: string;
+  mode: CalendarMode;
+  category: CalendarCategory;
   startAt: number;
   endAt: number;
   ownerId: string | null;
@@ -44,11 +50,81 @@ export type Conflict = {
 const normal = (value: string | null) => value?.trim().toLowerCase() || null;
 
 /**
- * Other live-slot items overlapping `slot` that share a person (owner,
- * on-call or scoreboard operator), the venue or the stream channel.
- * Cancelled, archived and delivery items never clash.
+ * Everything `slot` clashes with: slot holders sharing a person, the venue or
+ * the stream channel, and release windows overlapping live blocks (either
+ * way round). Cancelled and archived items never clash.
  */
 export async function findConflicts(db: Database, slot: Slot): Promise<Conflict[]> {
+  const found = new Map<string, Conflict>();
+  const add = (conflicts: Conflict[]) => {
+    for (const conflict of conflicts) {
+      const seen = found.get(conflict.id);
+      found.set(
+        conflict.id,
+        seen
+          ? {
+              ...seen,
+              kinds: [...new Set([...seen.kinds, ...conflict.kinds])],
+              people: [...new Set([...seen.people, ...conflict.people])],
+            }
+          : conflict,
+      );
+    }
+  };
+  if (holdsASlot(slot)) add(await findSlotConflicts(db, slot));
+  if (slot.category === "release") {
+    add(
+      await findWindowOverlaps(
+        db,
+        slot,
+        inArray(calendarItem.category, [...LIVE_BLOCK_CATEGORIES]),
+      ),
+    );
+  }
+  if (LIVE_BLOCK_CATEGORIES.includes(slot.category)) {
+    add(await findWindowOverlaps(db, slot, eq(calendarItem.category, "release")));
+  }
+  return [...found.values()].sort((a, b) => a.startAt - b.startAt);
+}
+
+/** Items of `kind` whose time overlaps the slot: releases against live blocks. */
+async function findWindowOverlaps(db: Database, slot: Slot, kind: SQL): Promise<Conflict[]> {
+  const rows = await db
+    .select({
+      id: calendarItem.id,
+      title: calendarItem.title,
+      startAt: calendarItem.startAt,
+      endAt: calendarItem.endAt,
+    })
+    .from(calendarItem)
+    .where(
+      and(
+        lt(calendarItem.startAt, new Date(slot.endAt)),
+        gt(calendarItem.endAt, new Date(slot.startAt)),
+        isNull(calendarItem.archivedAt),
+        ne(calendarItem.status, "cancelled"),
+        slot.excludeId ? ne(calendarItem.id, slot.excludeId) : undefined,
+        kind,
+      ),
+    )
+    .orderBy(calendarItem.startAt)
+    .limit(20);
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    startAt: row.startAt.getTime(),
+    endAt: row.endAt.getTime(),
+    kinds: ["release_window"],
+    people: [],
+  }));
+}
+
+/**
+ * Other slot holders overlapping `slot` that share a person (owner, on-call or
+ * scoreboard operator), the venue or the stream channel. Delivery work never
+ * holds a slot.
+ */
+async function findSlotConflicts(db: Database, slot: Slot): Promise<Conflict[]> {
   const people = [slot.ownerId, slot.onCallOwnerId, slot.scoreboardOperatorId].filter(
     (person): person is string => !!person,
   );

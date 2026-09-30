@@ -14,9 +14,11 @@ import {
   calendarChange,
   calendarItem,
   calendarItemDepartment,
+  QA_RESULTS,
   READY_STATUSES,
+  RELEASE_ENVIRONMENTS,
+  canClash,
   calendarChecklistItem,
-  holdsASlot,
   isTbd,
   needsCloseOut,
   needsLiveChecklist,
@@ -45,6 +47,14 @@ import {
   stillCalendarEditor,
 } from "../../policies/calendar";
 import { containsAny } from "../leadership";
+import {
+  createDeliveryRoutes,
+  dependenciesSatisfied,
+  loadDependencies,
+  monitoringWrites,
+  releaseProblems,
+  waitingOn,
+} from "./delivery";
 import {
   CONFLICT_MESSAGE,
   type Conflict,
@@ -165,6 +175,15 @@ const itemFields = {
   agenda: optionalText(4000),
   feature: optionalText(200),
   environment: optionalText(64),
+  specUrl: optionalLink,
+  designUrl: optionalLink,
+  pullRequestUrl: optionalLink,
+  qaUrl: optionalLink,
+  incidentUrl: optionalLink,
+  qaResult: z.enum(QA_RESULTS).nullable().optional(),
+  rolloutPlan: optionalText(2000),
+  rollbackPlan: optionalText(2000),
+  monitoringOwnerId: id.nullable().optional(),
 };
 
 const departmentIds = z
@@ -216,6 +235,17 @@ const updateInput = z
     agenda: itemFields.agenda,
     feature: itemFields.feature,
     environment: itemFields.environment,
+    specUrl: itemFields.specUrl,
+    designUrl: itemFields.designUrl,
+    pullRequestUrl: itemFields.pullRequestUrl,
+    qaUrl: itemFields.qaUrl,
+    incidentUrl: itemFields.incidentUrl,
+    qaResult: itemFields.qaResult,
+    rolloutPlan: itemFields.rolloutPlan,
+    rollbackPlan: itemFields.rollbackPlan,
+    monitoringOwnerId: itemFields.monitoringOwnerId,
+    /** Approvers approve (true) or withdraw (false) a release's plan. */
+    releaseApproved: z.boolean().optional(),
     departmentIds: departmentIds.optional(),
     confirm: z.literal(true).optional(),
     acceptConflicts: z.literal(true).optional(),
@@ -238,15 +268,29 @@ type ItemInput = {
   status: (typeof CALENDAR_STATUSES)[number];
   startAt: number;
   endAt: number;
+  environment?: string | null;
 };
 
 const READINESS_MESSAGE = "Finish the live checklist and name who is on call first";
+const RELEASE_MESSAGE =
+  "A release needs QA, approval, a rollback plan and a monitoring owner first";
+
+/** Changing any of these after approval sends a release back for approval. */
+const RELEASE_PLAN_FIELDS = [
+  "startAt",
+  "endAt",
+  "environment",
+  "feature",
+  "rolloutPlan",
+  "rollbackPlan",
+] as const;
 
 /** Changing any of these can create a clash with another item. */
 const SLOT_FIELDS = [
   "startAt",
   "endAt",
   "mode",
+  "category",
   "ownerId",
   "onCallOwnerId",
   "scoreboardOperatorId",
@@ -284,6 +328,13 @@ function itemProblem(item: ItemInput): string | null {
   }
   if (item.endAt <= item.startAt) return "The end must be after the start";
   if (item.endAt - item.startAt > MAX_ITEM_MS) return "An item may last at most 31 days";
+  if (
+    item.category === "release" &&
+    item.environment &&
+    !(RELEASE_ENVIRONMENTS as readonly string[]).includes(item.environment)
+  ) {
+    return `A release goes to ${RELEASE_ENVIRONMENTS.join(", ")}`;
+  }
   return null;
 }
 
@@ -294,6 +345,7 @@ const departmentIdList = sql<
 const pendingRequests = sql<number>`(select count(*) from ${calendarItemDepartment} where ${calendarItemDepartment.itemId} = ${calendarItem.id} and ${calendarItemDepartment.state} = 'requested')`;
 
 const onCall = alias(user, "on_call");
+const monitoringOwner = alias(user, "monitoring_owner");
 const scoreboardOperator = alias(user, "scoreboard_operator");
 
 const checklistDone = sql<number>`(select count(*) from ${calendarChecklistItem} where ${calendarChecklistItem.itemId} = ${calendarItem.id} and ${calendarChecklistItem.checked} = 1)`;
@@ -306,13 +358,16 @@ function selectItems(db: Database) {
       onCallName: onCall.name,
       scoreboardOperatorName: scoreboardOperator.name,
       checklistDone,
+      monitoringOwnerName: monitoringOwner.name,
+      waitingOn,
       departmentIds: departmentIdList,
       pendingRequests,
     })
     .from(calendarItem)
     .leftJoin(user, eq(user.id, calendarItem.ownerId))
     .leftJoin(onCall, eq(onCall.id, calendarItem.onCallOwnerId))
-    .leftJoin(scoreboardOperator, eq(scoreboardOperator.id, calendarItem.scoreboardOperatorId));
+    .leftJoin(scoreboardOperator, eq(scoreboardOperator.id, calendarItem.scoreboardOperatorId))
+    .leftJoin(monitoringOwner, eq(monitoringOwner.id, calendarItem.monitoringOwnerId));
 }
 
 type ItemRow = Awaited<ReturnType<ReturnType<typeof selectItems>["all"]>>[number];
@@ -348,6 +403,20 @@ function toItem(row: ItemRow, actor: CurrentUser) {
       ? { id: item.scoreboardOperatorId, name: row.scoreboardOperatorName ?? "" }
       : null,
     mitigation: item.mitigation,
+    specUrl: item.specUrl,
+    designUrl: item.designUrl,
+    pullRequestUrl: item.pullRequestUrl,
+    qaUrl: item.qaUrl,
+    incidentUrl: item.incidentUrl,
+    qaResult: item.qaResult,
+    rolloutPlan: item.rolloutPlan,
+    rollbackPlan: item.rollbackPlan,
+    monitoringOwner: item.monitoringOwnerId
+      ? { id: item.monitoringOwnerId, name: row.monitoringOwnerName ?? "" }
+      : null,
+    releaseApprovedAt: ms(item.releaseApprovedAt),
+    /** Dependencies not completed or released yet. */
+    waitingOn: Number(row.waitingOn),
     /** Checked entries out of LIVE_CHECKLIST; null when the item has no checklist. */
     checklistDone: needsLiveChecklist(item) ? Number(row.checklistDone) : null,
     meetingLink: item.meetingLink,
@@ -389,6 +458,9 @@ function actionFor(changes: Change): CalendarChangeAction {
   if (changes.status?.[1] === "cancelled") return "cancel";
   if ("startAt" in changes || "endAt" in changes) return "reschedule";
   if ("visibility" in changes) return "publish";
+  if (Object.keys(changes).every((key) => key.startsWith("releaseApproved"))) {
+    return "release_approval";
+  }
   if ("status" in changes) return "status";
   if (Object.keys(changes).every((key) => key.startsWith("lastConfirmed"))) return "confirm";
   return "update";
@@ -470,6 +542,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       const item = await findItem(db, itemId, c.var.user);
       if (!item) return c.json({ message: "Item not found" }, 404);
       const checklist = await loadChecklist(db, item);
+      const dependencies = await loadDependencies(db, itemId);
       const coordination = await loadCoordination(
         db,
         { id: item.id, seriesId: item.seriesId, startAt: new Date(item.startAt) },
@@ -496,6 +569,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
           ...item,
           ...coordination,
           checklist,
+          ...dependencies,
           canCheck: canCheck(c.var.user, { onCallOwnerId: item.onCallOwner?.id ?? null }),
           changes: changes.map((change) => ({
             ...change,
@@ -552,6 +626,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         (fields.scoreboardOperatorId
           ? await ownerProblem(db, fields.scoreboardOperatorId)
           : null) ??
+        (fields.monitoringOwnerId ? await ownerProblem(db, fields.monitoringOwnerId) : null) ??
         (await departmentsProblem(db, ids));
       if (invalid) return c.json({ message: invalid }, 400);
       // A new item has no checklist ticked yet, so it cannot start out ready.
@@ -560,11 +635,25 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         return c.json({ message: READINESS_MESSAGE, missing }, 400);
       }
 
+      // A new release has not been approved, so it cannot start out released.
+      if (fields.status === "released" && fields.category === "release") {
+        const missing = await releaseProblems(db, null, {
+          environment: fields.environment ?? null,
+          qaResult: fields.qaResult ?? null,
+          releaseApprovedAt: null,
+          rollbackPlan: fields.rollbackPlan ?? null,
+          monitoringOwnerId: fields.monitoringOwnerId ?? null,
+        });
+        return c.json({ message: RELEASE_MESSAGE, missing }, 400);
+      }
+
       // Bangkok has no daylight saving, so a day is always 24 hours.
       const stepMs = repeat?.every === "week" ? 7 * DAY_MS : DAY_MS;
       const conflicts =
-        holdsASlot(fields) && fields.status !== "cancelled"
+        canClash(fields) && fields.status !== "cancelled"
           ? await seriesConflicts(db, repeat?.count ?? 1, stepMs, {
+              mode: fields.mode,
+              category: fields.category,
               startAt: fields.startAt,
               endAt: fields.endAt,
               ownerId: fields.ownerId,
@@ -593,6 +682,10 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
           approvedById: approving ? actor.id : null,
           seriesId,
           mitigation: mitigation ?? null,
+          // A release that overlaps a live block is high risk.
+          ...(conflicts.length > 0 && fields.category === "release"
+            ? { riskLevel: "high" as const }
+            : {}),
         };
         const logged: Change = {};
         for (const [key, value] of Object.entries({ ...values, departmentIds: ids })) {
@@ -636,6 +729,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
           departmentIds: ids,
           acceptConflicts,
           mitigation,
+          releaseApproved,
           ...fields
         } = c.req.valid("json");
         const db = c.var.db;
@@ -650,6 +744,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
           status: fields.status ?? current.status,
           startAt: fields.startAt ?? current.startAt.getTime(),
           endAt: fields.endAt ?? current.endAt.getTime(),
+          environment: fields.environment === undefined ? current.environment : fields.environment,
         };
         const problem = itemProblem(next);
         if (problem) return c.json({ message: problem }, 400);
@@ -686,6 +781,22 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         }
         if (archived !== undefined && archived !== (current.archivedAt !== null)) {
           record("archivedAt", archived ? now : null);
+        }
+        // An approval covers the plan as approved; changing the plan withdraws it.
+        const planChanged = RELEASE_PLAN_FIELDS.some((key) => key in changes);
+        const approvingRelease = releaseApproved !== undefined;
+        if (approvingRelease && !canApproveCalendar(actor)) {
+          return c.json({ message: "Only approvers can approve a release" }, 403);
+        }
+        if (releaseApproved && next.category !== "release") {
+          return c.json({ message: "Only releases are approved" }, 400);
+        }
+        if (releaseApproved && (planChanged || !current.releaseApprovedAt)) {
+          record("releaseApprovedAt", now);
+          record("releaseApprovedById", actor.id);
+        } else if (releaseApproved === false || (!approvingRelease && planChanged)) {
+          record("releaseApprovedAt", null);
+          record("releaseApprovedById", null);
         }
         const currentIds = (
           await db
@@ -729,6 +840,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
           (set.ownerId ? await ownerProblem(db, set.ownerId) : null) ??
           (set.onCallOwnerId ? await ownerProblem(db, set.onCallOwnerId) : null) ??
           (set.scoreboardOperatorId ? await ownerProblem(db, set.scoreboardOperatorId) : null) ??
+          (set.monitoringOwnerId ? await ownerProblem(db, set.monitoringOwnerId) : null) ??
           (departmentsChanged && ids ? await departmentsProblem(db, ids) : null);
         if (invalid) return c.json({ message: invalid }, 400);
 
@@ -746,16 +858,32 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
           }
         }
 
+        const becomingReleased =
+          next.status === "released" &&
+          current.status !== "released" &&
+          next.category === "release";
+        if (becomingReleased) {
+          const missing = await releaseProblems(db, itemId, {
+            environment: after.environment,
+            qaResult: after.qaResult,
+            releaseApprovedAt: after.releaseApprovedAt ?? null,
+            rollbackPlan: after.rollbackPlan,
+            monitoringOwnerId: after.monitoringOwnerId,
+          });
+          if (missing.length > 0) {
+            return c.json({ message: RELEASE_MESSAGE, missing }, 400);
+          }
+        }
+
         // Only what decides the slot is rechecked, so an accepted clash is not
         // raised again by every later edit.
         const slotChanged = SLOT_FIELDS.some((key) => key in changes);
         const conflicts =
-          slotChanged &&
-          holdsASlot(next) &&
-          next.status !== "cancelled" &&
-          after.archivedAt === null
+          slotChanged && canClash(next) && next.status !== "cancelled" && after.archivedAt === null
             ? await findConflicts(db, {
                 excludeId: itemId,
+                mode: next.mode,
+                category: next.category,
                 startAt: next.startAt,
                 endAt: next.endAt,
                 ownerId: after.ownerId ?? null,
@@ -773,6 +901,8 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         }
         if (mitigation !== undefined) record("mitigation", mitigation);
         if (conflicts.length > 0) changes.conflicts = [null, conflicts.map((c) => c.title)];
+        // A release that overlaps a live block is high risk.
+        if (conflicts.length > 0 && next.category === "release") record("riskLevel", "high");
 
         const closing =
           next.status === "completed" && current.status !== "completed" && needsCloseOut(next);
@@ -796,11 +926,12 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
               db,
               actor.id,
               and(
-                approving ? stillCalendarApprover() : stillCalendarEditor(),
+                approving || approvingRelease ? stillCalendarApprover() : stillCalendarEditor(),
                 itemIsAsRead(db, itemId, version),
                 // Decisions, action items and the checklist live outside the item's version.
                 closing ? hasMeetingRecord(db, itemId) : undefined,
                 becomingReady ? checklistComplete(itemId) : undefined,
+                becomingReleased ? dependenciesSatisfied(db, itemId) : undefined,
               ) ?? sql`1`,
             ),
             db
@@ -823,6 +954,21 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
               : []),
             ...insertDepartments(db, itemId, added),
             ...(rescheduled ? [uncheckTimes(db, itemId)] : []),
+            ...(becomingReleased
+              ? monitoringWrites(
+                  db,
+                  actor,
+                  {
+                    id: itemId,
+                    title: after.title,
+                    endAt: new Date(next.endAt),
+                    feature: after.feature,
+                    environment: after.environment,
+                    monitoringOwnerId: after.monitoringOwnerId,
+                  },
+                  now,
+                )
+              : []),
             logChange(db, actor, itemId, action, changes, reason ?? null),
           ]);
           updated = results[1] as { id: string }[];
@@ -883,6 +1029,10 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
               approvedAt: null,
               approvedById: null,
               archivedAt: null,
+              // A copy is a new plan: it needs its own QA and approval.
+              qaResult: null,
+              releaseApprovedAt: null,
+              releaseApprovedById: null,
               // A copy stands alone, outside the source's series.
               seriesId: null,
               createdById: actor.id,
@@ -903,6 +1053,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
     )
 
     .route("/", createCoordinationRoutes())
-    .route("/", createLiveRoutes());
+    .route("/", createLiveRoutes())
+    .route("/", createDeliveryRoutes());
 
 export type CalendarRoutes = ReturnType<typeof createCalendarRoutes>;

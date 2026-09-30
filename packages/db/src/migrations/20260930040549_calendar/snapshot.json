@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "759bc467-e4a6-42eb-a96d-380633fb9f26",
+  "id": "b047555b-e477-4846-b2a7-f28cd31fdd4d",
   "prevIds": [
     "f830fd90-f191-4873-86fb-9e50f0448861"
   ],
@@ -47,7 +47,15 @@
       "entityType": "tables"
     },
     {
+      "name": "calendar_checklist_item",
+      "entityType": "tables"
+    },
+    {
       "name": "calendar_decision",
+      "entityType": "tables"
+    },
+    {
+      "name": "calendar_dependency",
       "entityType": "tables"
     },
     {
@@ -946,6 +954,76 @@
       "generated": null,
       "name": "id",
       "entityType": "columns",
+      "table": "calendar_checklist_item"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "item_id",
+      "entityType": "columns",
+      "table": "calendar_checklist_item"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "key",
+      "entityType": "columns",
+      "table": "calendar_checklist_item"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "false",
+      "generated": null,
+      "name": "checked",
+      "entityType": "columns",
+      "table": "calendar_checklist_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "note",
+      "entityType": "columns",
+      "table": "calendar_checklist_item"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "checked_at",
+      "entityType": "columns",
+      "table": "calendar_checklist_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "checked_by_id",
+      "entityType": "columns",
+      "table": "calendar_checklist_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
       "table": "calendar_decision"
     },
     {
@@ -987,6 +1065,66 @@
       "name": "created_at",
       "entityType": "columns",
       "table": "calendar_decision"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "calendar_dependency"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "item_id",
+      "entityType": "columns",
+      "table": "calendar_dependency"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "depends_on_id",
+      "entityType": "columns",
+      "table": "calendar_dependency"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "impact",
+      "entityType": "columns",
+      "table": "calendar_dependency"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_by_id",
+      "entityType": "columns",
+      "table": "calendar_dependency"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "(cast(unixepoch('subsecond') * 1000 as integer))",
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "calendar_dependency"
     },
     {
       "type": "text",
@@ -1225,6 +1363,146 @@
       "default": null,
       "generated": null,
       "name": "scoreboard_url",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "on_call_owner_id",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "scoreboard_operator_id",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "mitigation",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "spec_url",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "design_url",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "pull_request_url",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "qa_url",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "incident_url",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "qa_result",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "rollout_plan",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "rollback_plan",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "monitoring_owner_id",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "release_approved_at",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "release_approved_by_id",
       "entityType": "columns",
       "table": "calendar_item"
     },
@@ -1604,6 +1882,36 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
+      "name": "fk_calendar_checklist_item_item_id_calendar_item_id_fk",
+      "entityType": "fks",
+      "table": "calendar_checklist_item"
+    },
+    {
+      "columns": [
+        "checked_by_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_calendar_checklist_item_checked_by_id_user_id_fk",
+      "entityType": "fks",
+      "table": "calendar_checklist_item"
+    },
+    {
+      "columns": [
+        "item_id"
+      ],
+      "tableTo": "calendar_item",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
       "name": "fk_calendar_decision_item_id_calendar_item_id_fk",
       "entityType": "fks",
       "table": "calendar_decision"
@@ -1622,6 +1930,51 @@
       "name": "fk_calendar_decision_created_by_id_user_id_fk",
       "entityType": "fks",
       "table": "calendar_decision"
+    },
+    {
+      "columns": [
+        "item_id"
+      ],
+      "tableTo": "calendar_item",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_calendar_dependency_item_id_calendar_item_id_fk",
+      "entityType": "fks",
+      "table": "calendar_dependency"
+    },
+    {
+      "columns": [
+        "depends_on_id"
+      ],
+      "tableTo": "calendar_item",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_calendar_dependency_depends_on_id_calendar_item_id_fk",
+      "entityType": "fks",
+      "table": "calendar_dependency"
+    },
+    {
+      "columns": [
+        "created_by_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_calendar_dependency_created_by_id_user_id_fk",
+      "entityType": "fks",
+      "table": "calendar_dependency"
     },
     {
       "columns": [
@@ -1665,6 +2018,66 @@
       "onDelete": "SET NULL",
       "nameExplicit": false,
       "name": "fk_calendar_item_approved_by_id_user_id_fk",
+      "entityType": "fks",
+      "table": "calendar_item"
+    },
+    {
+      "columns": [
+        "on_call_owner_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_calendar_item_on_call_owner_id_user_id_fk",
+      "entityType": "fks",
+      "table": "calendar_item"
+    },
+    {
+      "columns": [
+        "scoreboard_operator_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_calendar_item_scoreboard_operator_id_user_id_fk",
+      "entityType": "fks",
+      "table": "calendar_item"
+    },
+    {
+      "columns": [
+        "monitoring_owner_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_calendar_item_monitoring_owner_id_user_id_fk",
+      "entityType": "fks",
+      "table": "calendar_item"
+    },
+    {
+      "columns": [
+        "release_approved_by_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_calendar_item_release_approved_by_id_user_id_fk",
       "entityType": "fks",
       "table": "calendar_item"
     },
@@ -1838,8 +2251,26 @@
         "id"
       ],
       "nameExplicit": false,
+      "name": "calendar_checklist_item_pk",
+      "table": "calendar_checklist_item",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
       "name": "calendar_decision_pk",
       "table": "calendar_decision",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "calendar_dependency_pk",
+      "table": "calendar_dependency",
       "entityType": "pks"
     },
     {
@@ -2109,6 +2540,24 @@
           "isExpression": false
         },
         {
+          "value": "key",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "calendar_checklist_item_uidx",
+      "entityType": "indexes",
+      "table": "calendar_checklist_item"
+    },
+    {
+      "columns": [
+        {
+          "value": "item_id",
+          "isExpression": false
+        },
+        {
           "value": "created_at",
           "isExpression": false
         }
@@ -2119,6 +2568,38 @@
       "name": "calendar_decision_item_id_idx",
       "entityType": "indexes",
       "table": "calendar_decision"
+    },
+    {
+      "columns": [
+        {
+          "value": "item_id",
+          "isExpression": false
+        },
+        {
+          "value": "depends_on_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "calendar_dependency_uidx",
+      "entityType": "indexes",
+      "table": "calendar_dependency"
+    },
+    {
+      "columns": [
+        {
+          "value": "depends_on_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "calendar_dependency_depends_on_id_idx",
+      "entityType": "indexes",
+      "table": "calendar_dependency"
     },
     {
       "columns": [
@@ -2272,6 +2753,18 @@
       "table": "calendar_action_item"
     },
     {
+      "value": "\"key\" IN ('network', 'audio', 'overlay', 'stream', 'scoreboard', 'backup', 'times')",
+      "name": "calendar_checklist_item_key_check",
+      "entityType": "checks",
+      "table": "calendar_checklist_item"
+    },
+    {
+      "value": "\"item_id\" <> \"depends_on_id\"",
+      "name": "calendar_dependency_self_check",
+      "entityType": "checks",
+      "table": "calendar_dependency"
+    },
+    {
       "value": "\"mode\" IN ('operations', 'coordination', 'delivery', 'meetings')",
       "name": "calendar_item_mode_check",
       "entityType": "checks",
@@ -2310,6 +2803,12 @@
     {
       "value": "\"end_at\" > \"start_at\"",
       "name": "calendar_item_time_check",
+      "entityType": "checks",
+      "table": "calendar_item"
+    },
+    {
+      "value": "\"qa_result\" IS NULL OR \"qa_result\" IN ('passed', 'failed')",
+      "name": "calendar_item_qa_result_check",
       "entityType": "checks",
       "table": "calendar_item"
     },

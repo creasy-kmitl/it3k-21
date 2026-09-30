@@ -214,6 +214,9 @@ describe("list", () => {
       mode: "delivery",
       category: "release",
       status: "planned",
+      // After the match, so the release window does not overlap it.
+      startAt: START + 4 * HOUR,
+      endAt: START + 5 * HOUR,
       feature: "Live scoreboard",
       game: null,
       matchId: null,

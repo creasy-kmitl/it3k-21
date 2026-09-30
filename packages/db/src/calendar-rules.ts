@@ -100,6 +100,9 @@ export const CALENDAR_CHANGE_ACTIONS = [
   "decision",
   // Live readiness.
   "checklist",
+  // Delivery.
+  "release_approval",
+  "dependency",
 ] as const;
 export type CalendarChangeAction = (typeof CALENDAR_CHANGE_ACTIONS)[number];
 
@@ -173,5 +176,36 @@ export function holdsASlot(item: { mode: CalendarMode }) {
 }
 
 /** What two items can clash over. */
-export const CONFLICT_KINDS = ["person", "venue", "stream"] as const;
+export const CONFLICT_KINDS = ["person", "venue", "stream", "release_window"] as const;
 export type ConflictKind = (typeof CONFLICT_KINDS)[number];
+
+/** Where a release goes; the same stages the site itself deploys to. */
+export const RELEASE_ENVIRONMENTS = ["preview", "staging", "prod"] as const;
+export type ReleaseEnvironment = (typeof RELEASE_ENVIRONMENTS)[number];
+
+export const QA_RESULTS = ["passed", "failed"] as const;
+export type QaResult = (typeof QA_RESULTS)[number];
+
+/**
+ * An upstream item in one of these statuses no longer holds anything up.
+ * Delivery work has no "completed": it is done once it is ready to release.
+ */
+export const SATISFIED_STATUSES: readonly CalendarStatus[] = [
+  "completed",
+  "ready_to_release",
+  "released",
+];
+
+/** How long the monitoring item created after a release lasts. */
+export const MONITORING_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Live blocks a risky release window must not overlap. */
+export const LIVE_BLOCK_CATEGORIES: readonly CalendarCategory[] = ["match", "broadcast"];
+
+/**
+ * Items that can clash with something: slot holders over people, rooms and
+ * streams, and releases over live blocks.
+ */
+export function canClash(item: { mode: CalendarMode; category: CalendarCategory }) {
+  return holdsASlot(item) || item.category === "release";
+}

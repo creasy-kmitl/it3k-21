@@ -11,6 +11,7 @@ import {
   CALENDAR_VISIBILITIES,
   GAMES,
   LIVE_CHECKLIST,
+  QA_RESULTS,
   REQUEST_STATES,
   RISK_LEVELS,
 } from "../calendar-rules";
@@ -69,6 +70,22 @@ export const calendarItem = sqliteTable(
     }),
     // How a clash the editor accepted will be handled.
     mitigation: text("mitigation"),
+    // Delivery: links, and for releases the plan and the gates before release.
+    specUrl: text("spec_url"),
+    designUrl: text("design_url"),
+    pullRequestUrl: text("pull_request_url"),
+    qaUrl: text("qa_url"),
+    incidentUrl: text("incident_url"),
+    qaResult: text("qa_result", { enum: QA_RESULTS }),
+    rolloutPlan: text("rollout_plan"),
+    rollbackPlan: text("rollback_plan"),
+    monitoringOwnerId: text("monitoring_owner_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    releaseApprovedAt: integer("release_approved_at", { mode: "timestamp_ms" }),
+    releaseApprovedById: text("release_approved_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
     meetingLink: text("meeting_link"),
     agenda: text("agenda"),
     feature: text("feature"),
@@ -110,6 +127,10 @@ export const calendarItem = sqliteTable(
       sql`${table.game} IS NULL OR ${table.game} IN (${inList(GAMES)})`,
     ),
     check("calendar_item_time_check", sql`${table.endAt} > ${table.startAt}`),
+    check(
+      "calendar_item_qa_result_check",
+      sql`${table.qaResult} IS NULL OR ${table.qaResult} IN (${inList(QA_RESULTS)})`,
+    ),
   ],
 );
 
@@ -202,6 +223,31 @@ export const calendarChecklistItem = sqliteTable(
   (table) => [
     uniqueIndex("calendar_checklist_item_uidx").on(table.itemId, table.key),
     check("calendar_checklist_item_key_check", sql`${table.key} IN (${inList(LIVE_CHECKLIST)})`),
+  ],
+);
+
+/** `itemId` cannot finish until `dependsOnId` is completed or released. */
+export const calendarDependency = sqliteTable(
+  "calendar_dependency",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    itemId: text("item_id")
+      .notNull()
+      .references(() => calendarItem.id, { onDelete: "cascade" }),
+    dependsOnId: text("depends_on_id")
+      .notNull()
+      .references(() => calendarItem.id, { onDelete: "cascade" }),
+    // What slips if the upstream item is late, e.g. "stream slot 18:00".
+    impact: text("impact"),
+    createdById: text("created_by_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("calendar_dependency_uidx").on(table.itemId, table.dependsOnId),
+    index("calendar_dependency_depends_on_id_idx").on(table.dependsOnId),
+    check("calendar_dependency_self_check", sql`${table.itemId} <> ${table.dependsOnId}`),
   ],
 );
 
