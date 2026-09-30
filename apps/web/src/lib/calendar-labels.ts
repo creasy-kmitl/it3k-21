@@ -3,6 +3,8 @@ import {
   type CalendarCategory,
   type ConflictKind,
   type LiveChecklistKey,
+  type QaResult,
+  type ReleaseEnvironment,
   type CalendarChangeAction,
   type CalendarMode,
   type CalendarStatus,
@@ -115,6 +117,8 @@ export const ACTION_LABELS: Record<CalendarChangeAction, string> = {
   action_item: "Action item",
   decision: "บันทึกการตัดสินใจ",
   checklist: "Checklist ไลฟ์",
+  release_approval: "อนุมัติ release",
+  dependency: "Dependency",
 };
 
 export const REQUEST_STATE_LABELS: Record<RequestState, string> = {
@@ -203,6 +207,19 @@ export const FIELD_LABELS: Record<string, string> = {
   scoreboardOperatorId: "คนคุม Scoreboard",
   mitigation: "แผนรับมือการชน",
   conflicts: "ชนกับ",
+  specUrl: "ลิงก์ spec",
+  designUrl: "ลิงก์ design",
+  pullRequestUrl: "Pull request",
+  qaUrl: "ลิงก์ผล QA",
+  incidentUrl: "ลิงก์ incident",
+  qaResult: "ผล QA",
+  rolloutPlan: "Rollout checklist",
+  rollbackPlan: "แผน rollback",
+  monitoringOwnerId: "ผู้ดูแลการ monitor",
+  releaseApprovedAt: "อนุมัติ release",
+  releaseApprovedById: "ผู้อนุมัติ release",
+  dependsOn: "รอรายการ",
+  impact: "ผลกระทบ",
 };
 
 export const CHECKLIST_LABELS: Record<LiveChecklistKey, string> = {
@@ -219,7 +236,42 @@ export const CONFLICT_KIND_LABELS: Record<ConflictKind, string> = {
   person: "คนเดียวกัน",
   venue: "สถานที่เดียวกัน",
   stream: "ช่องสตรีมเดียวกัน",
+  release_window: "ช่วง release ทับช่วงไลฟ์",
 };
+
+export const RELEASE_ENVIRONMENT_LABELS: Record<ReleaseEnvironment, string> = {
+  preview: "Preview",
+  staging: "Staging",
+  prod: "Production",
+};
+
+export const QA_RESULT_LABELS: Record<QaResult, string> = {
+  passed: "ผ่าน",
+  failed: "ไม่ผ่าน",
+};
+
+const RELEASE_MISSING_LABELS: Record<string, string> = {
+  environment: "environment",
+  qa: "ผล QA ที่ผ่าน",
+  approval: "การอนุมัติ release",
+  rollbackPlan: "แผน rollback",
+  monitoringOwner: "ผู้ดูแลการ monitor",
+  dependencies: "dependency ที่เสร็จครบ",
+};
+
+/**
+ * The Thai explanation for a release the API refused to mark released, or
+ * null when the error is something else.
+ */
+export function releaseMessage(body: unknown): string | null {
+  if (!body || typeof body !== "object" || !("missing" in body)) return null;
+  const missing = (body as { missing: unknown }).missing;
+  if (!Array.isArray(missing) || !missing.every((key) => String(key) in RELEASE_MISSING_LABELS)) {
+    return null;
+  }
+  const labels = missing.map((key) => RELEASE_MISSING_LABELS[String(key)]);
+  return `ยังตั้งเป็น Released ไม่ได้ ต้องมี${labels.join(", ")}ก่อน`;
+}
 
 /**
  * The Thai explanation for an item the API refused to mark ready or live,
@@ -274,6 +326,13 @@ export function itemFlags(item: CalendarItem): ItemFlag[] {
     flags.push({
       key: "checklist",
       label: `Checklist ${item.checklistDone}/${LIVE_CHECKLIST_SIZE}`,
+      className: "bg-destructive text-white",
+    });
+  }
+  if (item.waitingOn > 0) {
+    flags.push({
+      key: "waiting-on",
+      label: `รอ ${item.waitingOn} รายการ`,
       className: "bg-destructive text-white",
     });
   }

@@ -48,6 +48,8 @@ function detail(item: CalendarItem, overrides: Partial<CalendarItemDetail> = {})
     carriedOver: [],
     checklist: null,
     canCheck: false,
+    dependsOn: [],
+    blocks: [],
     changes: [],
     canApprove: false,
     ...overrides,
@@ -398,5 +400,35 @@ describe("/staff/calendar", () => {
     expect(within(panel).getByText("1/7")).toBeTruthy();
     fireEvent.click(within(panel).getByRole("checkbox", { name: "Audio เข้า/ออก และ monitor" }));
     await waitFor(() => expect(ticks).toEqual([[item.id, "audio", true]]));
+  });
+
+  test("explains in Thai why a release cannot be released yet", async () => {
+    const item = calendarItem({
+      mode: "delivery",
+      category: "release",
+      status: "ready_to_release",
+      environment: "prod",
+    });
+    setup({
+      items: [item],
+      search: { item: item.id },
+      api: {
+        get: async () => detail(item),
+        update: async () => {
+          throw new ApiError(400, "A release needs QA", {
+            message: "A release needs QA",
+            missing: ["qa", "approval", "dependencies"],
+          });
+        },
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "แก้ไข" }));
+    const form = await screen.findByRole("form", { name: "แก้ไขรายการ" });
+    await choose(within(form).getByRole("combobox", { name: "สถานะ" }), "Released");
+    fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+    const alert = await within(form).findByRole("alert");
+    expect(alert.textContent).toContain("ยังตั้งเป็น Released ไม่ได้");
+    expect(alert.textContent).toContain("การอนุมัติ release");
+    expect(alert.textContent).toContain("dependency ที่เสร็จครบ");
   });
 });

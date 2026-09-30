@@ -6,6 +6,9 @@ import {
   type CalendarStatus,
   GAMES,
   MAX_REPEAT_COUNT,
+  QA_RESULTS,
+  type QaResult,
+  RELEASE_ENVIRONMENTS,
   REPEAT_UNITS,
   RISK_LEVELS,
   type RepeatUnit,
@@ -57,9 +60,12 @@ import {
   CONFLICT_KIND_LABELS,
   GAME_LABELS,
   MEETING_TEMPLATES,
+  QA_RESULT_LABELS,
+  RELEASE_ENVIRONMENT_LABELS,
   REPEAT_LABELS,
   closeOutMessage,
   readinessMessage,
+  releaseMessage,
   MODE_LABELS,
   RISK_LABELS,
   STATUS_LABELS,
@@ -116,6 +122,15 @@ const fields = z.object({
   agenda: text(4000),
   feature: text(200),
   environment: text(64),
+  specUrl: https,
+  designUrl: https,
+  pullRequestUrl: https,
+  qaUrl: https,
+  incidentUrl: https,
+  qaResult: z.string(),
+  rolloutPlan: text(2000),
+  rollbackPlan: text(2000),
+  monitoringOwnerId: z.string(),
   notes: text(4000),
   reason: text(500),
   // Creating only: a series of copies, one per day or week.
@@ -192,6 +207,15 @@ function defaults(mode: ItemFormMode, ownerId: string): FormValues {
     agenda: item?.agenda ?? "",
     feature: item?.feature ?? "",
     environment: item?.environment ?? "",
+    specUrl: item?.specUrl ?? "",
+    designUrl: item?.designUrl ?? "",
+    pullRequestUrl: item?.pullRequestUrl ?? "",
+    qaUrl: item?.qaUrl ?? "",
+    incidentUrl: item?.incidentUrl ?? "",
+    qaResult: item?.qaResult ?? NONE,
+    rolloutPlan: item?.rolloutPlan ?? "",
+    rollbackPlan: item?.rollbackPlan ?? "",
+    monitoringOwnerId: item?.monitoringOwner?.id ?? NONE,
     notes: item?.notes ?? "",
     reason: "",
     repeatEvery: NONE,
@@ -231,6 +255,15 @@ function payload(values: FormValues, canApprove: boolean): Omit<CalendarInput, "
     agenda: orNull(values.agenda),
     feature: orNull(values.feature),
     environment: orNull(values.environment),
+    specUrl: orNull(values.specUrl),
+    designUrl: orNull(values.designUrl),
+    pullRequestUrl: orNull(values.pullRequestUrl),
+    qaUrl: orNull(values.qaUrl),
+    incidentUrl: orNull(values.incidentUrl),
+    qaResult: noneToNull<QaResult>(values.qaResult),
+    rolloutPlan: orNull(values.rolloutPlan),
+    rollbackPlan: orNull(values.rollbackPlan),
+    monitoringOwnerId: noneToNull(values.monitoringOwnerId),
     notes: orNull(values.notes),
   };
 }
@@ -367,7 +400,7 @@ export function ItemForm({
       setFormError({
         message: error.message,
         stale: error instanceof ApiError && error.status === 409,
-        closeOut: closeOutMessage(body) ?? readinessMessage(body),
+        closeOut: closeOutMessage(body) ?? readinessMessage(body) ?? releaseMessage(body),
       });
     },
   });
@@ -445,6 +478,7 @@ export function ItemForm({
   ];
   const isOperations = values.mode === "operations";
   const isDelivery = values.mode === "delivery";
+  const isRelease = values.category === "release";
   const isMeeting = values.mode === "coordination" || values.mode === "meetings";
 
   return (
@@ -653,8 +687,72 @@ export function ItemForm({
             <FieldLegend variant="label">ฟีเจอร์และ Release</FieldLegend>
             <div className="grid gap-4 sm:grid-cols-2">
               {textField("feature", "ฟีเจอร์/Release")}
-              {textField("environment", "Environment")}
+              {isRelease ? (
+                <form.Field name="environment">
+                  {(field) => (
+                    <OptionSelect
+                      id="calendar-environment"
+                      label="Environment"
+                      value={field.state.value}
+                      options={RELEASE_ENVIRONMENTS.map((value) => ({
+                        value,
+                        label: RELEASE_ENVIRONMENT_LABELS[value],
+                      }))}
+                      onChange={field.handleChange}
+                    />
+                  )}
+                </form.Field>
+              ) : (
+                textField("environment", "Environment")
+              )}
+              {textField("specUrl", "ลิงก์ spec", { type: "url" })}
+              {textField("designUrl", "ลิงก์ design", { type: "url" })}
+              {textField("pullRequestUrl", "Pull request", { type: "url" })}
+              {textField("qaUrl", "ลิงก์ผล QA", { type: "url" })}
+              <form.Field name="qaResult">
+                {(field) => (
+                  <OptionSelect
+                    id="calendar-qa-result"
+                    label="ผล QA"
+                    value={field.state.value}
+                    options={[
+                      { value: NONE, label: "ยังไม่มี" },
+                      ...QA_RESULTS.map((value) => ({ value, label: QA_RESULT_LABELS[value] })),
+                    ]}
+                    onChange={field.handleChange}
+                  />
+                )}
+              </form.Field>
+              {isRelease && (
+                <form.Field name="monitoringOwnerId">
+                  {(field) => (
+                    <OptionSelect
+                      id="calendar-monitoring-owner"
+                      label="ผู้ดูแลการ monitor"
+                      value={field.state.value}
+                      options={[{ value: NONE, label: "ยังไม่ระบุ" }, ...personOptions]}
+                      onChange={field.handleChange}
+                    />
+                  )}
+                </form.Field>
+              )}
+              {values.category === "monitoring" &&
+                textField("incidentUrl", "ลิงก์ incident", { type: "url" })}
             </div>
+            {isRelease && (
+              <>
+                {textField("rolloutPlan", "Rollout checklist", { multiline: true })}
+                {textField("rollbackPlan", "แผน rollback", {
+                  multiline: true,
+                  description: "ต้องมีก่อนตั้งเป็น Released",
+                })}
+                {original?.releaseApprovedAt && (
+                  <FieldDescription>
+                    แก้ช่วงเวลา, environment, ฟีเจอร์ หรือแผน จะต้องขออนุมัติ release ใหม่
+                  </FieldDescription>
+                )}
+              </>
+            )}
           </FieldSet>
         )}
 

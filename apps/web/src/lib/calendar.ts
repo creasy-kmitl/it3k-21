@@ -24,6 +24,11 @@ export type CalendarDecision = CalendarItemDetail["decisions"][number];
 export type CalendarRequestInput = InferRequestType<Link["request"]["$put"]>["json"];
 export type CalendarActionInput = InferRequestType<Item["action-items"]["$post"]>["json"];
 export type CalendarActionUpdate = InferRequestType<Action["$patch"]>["json"];
+export type CalendarDependencyLink = CalendarItemDetail["dependsOn"][number];
+export type CalendarSearchResult = InferResponseType<
+  Client["search"]["$get"],
+  200
+>["items"][number];
 export type CalendarChecklistEntry = NonNullable<CalendarItemDetail["checklist"]>[number];
 export type CalendarChecklistInput = InferRequestType<Item["checklist"][":key"]["$put"]>["json"];
 
@@ -33,7 +38,7 @@ export type CalendarConflict = {
   title: string;
   startAt: number;
   endAt: number;
-  kinds: ("person" | "venue" | "stream")[];
+  kinds: ("person" | "venue" | "stream" | "release_window")[];
   people: string[];
 };
 
@@ -150,6 +155,25 @@ export function createCalendarApi(baseUrl: string, fetchImpl?: ClientRequestOpti
         param: { id, key },
         json,
       });
+      if (!res.ok) throw await toApiError(res);
+    },
+
+    async search(q: string) {
+      const res = await client.search.$get({ query: { q } });
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
+
+    async addDependency(id: string, dependsOnId: string, impact: string | null) {
+      const res = await client.items[":id"].dependencies.$post({
+        param: { id },
+        json: { dependsOnId, impact },
+      });
+      if (!res.ok) throw await toApiError(res);
+    },
+
+    async removeDependency(id: string) {
+      const res = await client.dependencies[":id"].$delete({ param: { id } });
       if (!res.ok) throw await toApiError(res);
     },
 

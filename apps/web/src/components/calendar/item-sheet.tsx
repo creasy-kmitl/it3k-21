@@ -41,6 +41,7 @@ import {
 import { ApiError } from "@/lib/leadership";
 
 import { CoordinationPanel } from "./coordination-panel";
+import { DeliveryPanel } from "./delivery-panel";
 import { ItemFlags } from "./item-chip";
 import { ItemForm, type ItemFormMode } from "./item-form";
 
@@ -513,6 +514,7 @@ export function ItemSheet({
               <Actions item={detail.data} onSelect={onSelect} onEdit={() => setEditing(true)} />
               <ItemDetails item={detail.data} />
               {detail.data.checklist && <ChecklistPanel item={detail.data} />}
+              <DeliveryPanel item={detail.data} />
               <CoordinationPanel item={detail.data} />
               <section className="flex flex-col gap-2">
                 <h3 className="text-sm font-semibold">ประวัติการเปลี่ยนแปลง</h3>
