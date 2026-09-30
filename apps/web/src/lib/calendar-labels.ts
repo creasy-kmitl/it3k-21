@@ -1,10 +1,13 @@
 import type {
+  ActionItemStatus,
   CalendarCategory,
   CalendarChangeAction,
   CalendarMode,
   CalendarStatus,
   CalendarVisibility,
   Game,
+  RepeatUnit,
+  RequestState,
   RiskLevel,
 } from "@it3k/db/calendar-rules";
 
@@ -104,7 +107,53 @@ export const ACTION_LABELS: Record<CalendarChangeAction, string> = {
   duplicate: "ทำสำเนา",
   confirm: "ยืนยันข้อมูล",
   publish: "เปลี่ยนการเผยแพร่",
+  request: "ขอข้อมูลจากฝ่าย",
+  answer: "ฝ่ายตอบกลับ",
+  action_item: "Action item",
+  decision: "บันทึกการตัดสินใจ",
 };
+
+export const REQUEST_STATE_LABELS: Record<RequestState, string> = {
+  involved: "เกี่ยวข้อง",
+  requested: "รอข้อมูล",
+  answered: "ตอบแล้ว",
+};
+
+export const REQUEST_STATE_STYLES: Record<RequestState, string> = {
+  involved: "bg-muted text-muted-foreground",
+  requested: "bg-amber-500 text-black",
+  answered: "bg-emerald-600 text-white",
+};
+
+export const ACTION_STATUS_LABELS: Record<ActionItemStatus, string> = {
+  open: "ยังไม่เสร็จ",
+  done: "เสร็จแล้ว",
+};
+
+export const REPEAT_LABELS: Record<RepeatUnit, string> = {
+  day: "ทุกวัน",
+  week: "ทุกสัปดาห์",
+};
+
+/** Agenda outlines for the Tech team's rituals; picking one fills the agenda. */
+export const MEETING_TEMPLATES = {
+  planning: {
+    label: "Planning",
+    agenda: "1. Priority\n2. Owner\n3. Deadline\n4. Risk",
+  },
+  rehearsal: {
+    label: "Tech rehearsal",
+    agenda: "1. Network\n2. Audio\n3. Overlay\n4. Stream\n5. Scoreboard\n6. Backup plan",
+  },
+  checkIn: {
+    label: "Event-day check-in",
+    agenda: "1. Live block ถัดไป\n2. On-call\n3. Blockers\n4. Escalation",
+  },
+  retro: {
+    label: "Retro",
+    agenda: "1. Incident\n2. Root cause\n3. Action item\n4. Owner\n5. วันติดตามผล",
+  },
+} as const;
 
 /** Change-log field names. Unknown fields fall back to their key. */
 export const FIELD_LABELS: Record<string, string> = {
@@ -137,6 +186,15 @@ export const FIELD_LABELS: Record<string, string> = {
   approvedAt: "อนุมัติ",
   duplicatedFrom: "สำเนาจาก",
   duplicatedTo: "ทำสำเนาไปที่",
+  department: "ฝ่าย",
+  requestState: "สถานะคำขอ",
+  request: "สิ่งที่ขอ",
+  contactUserId: "ผู้ตอบของฝ่าย",
+  dueAt: "กำหนดส่ง",
+  response: "คำตอบ",
+  actionItem: "Action item",
+  departmentId: "ฝ่ายที่รับผิดชอบ",
+  decision: "การตัดสินใจ",
 };
 
 export type ItemFlag = { key: string; label: string; className: string };
@@ -163,6 +221,13 @@ export function itemFlags(item: CalendarItem): ItemFlag[] {
   if (item.blockedReason) {
     flags.push({ key: "blocked", label: "Blocked", className: "bg-destructive text-white" });
   }
+  if (item.pendingRequests > 0) {
+    flags.push({
+      key: "waiting",
+      label: `รอข้อมูล ${item.pendingRequests} ฝ่าย`,
+      className: "bg-amber-200 text-amber-950 dark:bg-amber-900 dark:text-amber-100",
+    });
+  }
   if (item.riskLevel === "high") {
     flags.push({ key: "risk", label: "At risk", className: "bg-amber-500 text-black" });
   }
@@ -171,3 +236,22 @@ export function itemFlags(item: CalendarItem): ItemFlag[] {
 
 /** Live operations the run sheet and "next live block" jump look for. */
 export const LIVE_CATEGORIES: readonly CalendarCategory[] = ["match", "broadcast"];
+
+const CLOSE_OUT_LABELS: Record<string, string> = {
+  agenda: "วาระ",
+  owner: "ผู้รับผิดชอบ",
+  departments: "ฝ่ายที่เกี่ยวข้อง",
+  "decision or action item": "การตัดสินใจหรือ action item อย่างน้อยหนึ่งรายการ",
+};
+
+/**
+ * The Thai explanation for a meeting or handoff the API refused to close, or
+ * null when the error is something else.
+ */
+export function closeOutMessage(body: unknown): string | null {
+  if (!body || typeof body !== "object" || !("missing" in body)) return null;
+  const missing = (body as { missing: unknown }).missing;
+  if (!Array.isArray(missing)) return null;
+  const labels = missing.map((key) => CLOSE_OUT_LABELS[String(key)] ?? String(key));
+  return `ปิดรายการนี้ไม่ได้ ต้องมี${labels.join(", ")}ก่อน`;
+}

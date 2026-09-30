@@ -24,22 +24,34 @@ import type {
 } from "@/lib/calendar";
 import {
   ACTION_LABELS,
+  ACTION_STATUS_LABELS,
   CATEGORY_LABELS,
   FIELD_LABELS,
   GAME_LABELS,
   MODE_LABELS,
+  REQUEST_STATE_LABELS,
   RISK_LABELS,
   STATUS_LABELS,
   VISIBILITY_LABELS,
 } from "@/lib/calendar-labels";
 import { ApiError } from "@/lib/leadership";
 
+import { CoordinationPanel } from "./coordination-panel";
 import { ItemFlags } from "./item-chip";
 import { ItemForm, type ItemFormMode } from "./item-form";
 
-const TIME_FIELDS = new Set(["startAt", "endAt", "lastConfirmedAt", "archivedAt", "approvedAt"]);
+const TIME_FIELDS = new Set([
+  "startAt",
+  "endAt",
+  "lastConfirmedAt",
+  "archivedAt",
+  "approvedAt",
+  "dueAt",
+]);
 const LABELLED: Record<string, Record<string, string>> = {
-  status: STATUS_LABELS,
+  // Items and action items share `status` in the change log.
+  status: { ...STATUS_LABELS, ...ACTION_STATUS_LABELS },
+  requestState: REQUEST_STATE_LABELS,
   mode: MODE_LABELS,
   category: CATEGORY_LABELS,
   visibility: VISIBILITY_LABELS,
@@ -148,9 +160,6 @@ function ItemDetails({ item }: { item: CalendarItemDetail }) {
         {item.lastConfirmedAt ? formatBangkok(item.lastConfirmedAt, "dateTime") : "ยังไม่ยืนยัน (TBD)"}
       </Detail>
       <Detail label="การเผยแพร่">{VISIBILITY_LABELS[item.visibility]}</Detail>
-      <Detail label="ฝ่ายที่เกี่ยวข้อง">
-        {item.departments.length ? item.departments.map((d) => d.name).join(", ") : "—"}
-      </Detail>
       {item.riskLevel && <Detail label="ความเสี่ยง">{RISK_LABELS[item.riskLevel]}</Detail>}
       {item.blockedReason && (
         <Detail label="สิ่งที่ติดขัด">
@@ -419,6 +428,7 @@ export function ItemSheet({
             <>
               <Actions item={detail.data} onSelect={onSelect} onEdit={() => setEditing(true)} />
               <ItemDetails item={detail.data} />
+              <CoordinationPanel item={detail.data} />
               <section className="flex flex-col gap-2">
                 <h3 className="text-sm font-semibold">ประวัติการเปลี่ยนแปลง</h3>
                 <ChangeLog changes={detail.data.changes} departmentNames={departmentNames} />

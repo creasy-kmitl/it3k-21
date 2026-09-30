@@ -113,6 +113,14 @@ export function fakeCalendarApi(overrides: Partial<CalendarApi> = {}): CalendarA
     create: unexpected("calendar.create"),
     update: unexpected("calendar.update"),
     duplicate: unexpected("calendar.duplicate"),
+    request: unexpected("calendar.request"),
+    answer: unexpected("calendar.answer"),
+    myActionItems: async () => ({ items: [] }),
+    addActionItem: unexpected("calendar.addActionItem"),
+    updateActionItem: unexpected("calendar.updateActionItem"),
+    removeActionItem: unexpected("calendar.removeActionItem"),
+    addDecision: unexpected("calendar.addDecision"),
+    removeDecision: unexpected("calendar.removeDecision"),
     ...overrides,
   };
 }
@@ -152,6 +160,8 @@ export function calendarItem(overrides: Partial<CalendarItem> = {}): CalendarIte
     version: 1,
     updatedAt: CALENDAR_NOW,
     departmentIds: [],
+    seriesId: null,
+    pendingRequests: 0,
     tbd: false,
     canEdit: true,
     ...overrides,

@@ -37,7 +37,16 @@ function Harness({ initial }: { initial: CalendarSearch }) {
 }
 
 function detail(item: CalendarItem, overrides: Partial<CalendarItemDetail> = {}) {
-  return { ...item, departments: [], changes: [], canApprove: false, ...overrides };
+  return {
+    ...item,
+    departments: [],
+    actionItems: [],
+    decisions: [],
+    carriedOver: [],
+    changes: [],
+    canApprove: false,
+    ...overrides,
+  };
 }
 
 function setup({
@@ -229,5 +238,56 @@ describe("/staff/calendar", () => {
     await view.client.refetchQueries({ queryKey: ["calendar", "items"] });
     expect(await screen.findByText(/โหลดข้อมูลล่าสุดไม่สำเร็จ/)).toBeTruthy();
     expect(screen.getAllByText("Grand final").length).toBeGreaterThan(0);
+  });
+
+  test("explains in Thai why a meeting cannot be closed yet", async () => {
+    const item = calendarItem({ mode: "meetings", category: "planning" });
+    setup({
+      items: [item],
+      search: { item: item.id },
+      api: {
+        get: async () => detail(item),
+        update: async () => {
+          throw new ApiError(400, "Before closing, add agenda", {
+            message: "Before closing, add agenda",
+            missing: ["agenda", "decision or action item"],
+          });
+        },
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "แก้ไข" }));
+    const form = await screen.findByRole("form", { name: "แก้ไขรายการ" });
+    await choose(within(form).getByRole("combobox", { name: "สถานะ" }), "เสร็จสิ้น");
+    fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+    const alert = await within(form).findByRole("alert");
+    expect(alert.textContent).toContain("ปิดรายการนี้ไม่ได้ ต้องมีวาระ");
+    expect(alert.textContent).toContain("การตัดสินใจหรือ action item");
+  });
+
+  test("creates a weekly series", async () => {
+    const created: CalendarInput[] = [];
+    setup({
+      items: [],
+      api: {
+        create: async (json) => {
+          created.push(json);
+          return calendarItem({ title: json.title });
+        },
+        get: async () => detail(calendarItem()),
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "เพิ่มรายการ" }));
+    const form = await screen.findByRole("form", { name: "เพิ่มรายการ" });
+    fireEvent.change(within(form).getByLabelText("ชื่อรายการ"), {
+      target: { value: "Weekly sync" },
+    });
+    fireEvent.change(within(form).getByLabelText("แหล่งข้อมูล"), { target: { value: "ทีม" } });
+    await choose(within(form).getByRole("combobox", { name: "ทำซ้ำ" }), "ทุกสัปดาห์");
+    fireEvent.change(await within(form).findByLabelText("จำนวนครั้ง (รวมครั้งแรก)"), {
+      target: { value: "3" },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]?.repeat).toEqual({ every: "week", count: 3 });
   });
 });

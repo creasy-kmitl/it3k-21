@@ -8,6 +8,8 @@ import { toApiError } from "./leadership";
 
 type Client = ReturnType<typeof hc<CalendarRoutes>>;
 type Item = Client["items"][":id"];
+type Link = Item["departments"][":departmentId"];
+type Action = Client["action-items"][":id"];
 
 export type CalendarPage = InferResponseType<Client["items"]["$get"], 200>;
 export type CalendarItem = CalendarPage["items"][number];
@@ -16,6 +18,12 @@ export type CalendarChange = CalendarItemDetail["changes"][number];
 export type CalendarPerson = InferResponseType<Client["people"]["$get"], 200>["items"][number];
 export type CalendarInput = InferRequestType<Client["items"]["$post"]>["json"];
 export type CalendarUpdate = InferRequestType<Item["$patch"]>["json"];
+export type CalendarDepartmentLink = CalendarItemDetail["departments"][number];
+export type CalendarActionItem = CalendarItemDetail["actionItems"][number];
+export type CalendarDecision = CalendarItemDetail["decisions"][number];
+export type CalendarRequestInput = InferRequestType<Link["request"]["$put"]>["json"];
+export type CalendarActionInput = InferRequestType<Item["action-items"]["$post"]>["json"];
+export type CalendarActionUpdate = InferRequestType<Action["$patch"]>["json"];
 
 export type CalendarFilters = {
   modes?: CalendarMode[];
@@ -100,6 +108,54 @@ export function createCalendarApi(baseUrl: string, fetchImpl?: ClientRequestOpti
       const res = await client.items[":id"].duplicate.$post({ param: { id }, json: {} });
       if (!res.ok) throw await toApiError(res);
       return res.json();
+    },
+
+    async request(id: string, departmentId: string, json: CalendarRequestInput) {
+      const res = await client.items[":id"].departments[":departmentId"].request.$put({
+        param: { id, departmentId },
+        json,
+      });
+      if (!res.ok) throw await toApiError(res);
+    },
+
+    async answer(id: string, departmentId: string, response: string) {
+      const res = await client.items[":id"].departments[":departmentId"].answer.$post({
+        param: { id, departmentId },
+        json: { response },
+      });
+      if (!res.ok) throw await toApiError(res);
+    },
+
+    async myActionItems() {
+      const res = await client["action-items"].$get({ query: {} });
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
+
+    async addActionItem(id: string, json: CalendarActionInput) {
+      const res = await client.items[":id"]["action-items"].$post({ param: { id }, json });
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
+
+    async updateActionItem(id: string, json: CalendarActionUpdate) {
+      const res = await client["action-items"][":id"].$patch({ param: { id }, json });
+      if (!res.ok) throw await toApiError(res);
+    },
+
+    async removeActionItem(id: string) {
+      const res = await client["action-items"][":id"].$delete({ param: { id } });
+      if (!res.ok) throw await toApiError(res);
+    },
+
+    async addDecision(id: string, text: string) {
+      const res = await client.items[":id"].decisions.$post({ param: { id }, json: { text } });
+      if (!res.ok) throw await toApiError(res);
+    },
+
+    async removeDecision(id: string) {
+      const res = await client.decisions[":id"].$delete({ param: { id } });
+      if (!res.ok) throw await toApiError(res);
     },
   };
 }

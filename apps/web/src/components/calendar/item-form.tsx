@@ -5,7 +5,10 @@ import {
   type CalendarMode,
   type CalendarStatus,
   GAMES,
+  MAX_REPEAT_COUNT,
+  REPEAT_UNITS,
   RISK_LEVELS,
+  type RepeatUnit,
   statusesFor,
 } from "@it3k/db/calendar-rules";
 import { Button } from "@it3k/ui/components/button";
@@ -40,6 +43,9 @@ import type { CalendarInput, CalendarItem, CalendarItemDetail } from "@/lib/cale
 import {
   CATEGORY_LABELS,
   GAME_LABELS,
+  MEETING_TEMPLATES,
+  REPEAT_LABELS,
+  closeOutMessage,
   MODE_LABELS,
   RISK_LABELS,
   STATUS_LABELS,
@@ -96,6 +102,9 @@ const fields = z.object({
   environment: text(64),
   notes: text(4000),
   reason: text(500),
+  // Creating only: a series of copies, one per day or week.
+  repeatEvery: z.string(),
+  repeatCount: z.string(),
 });
 
 type FormValues = z.input<typeof fields>;
@@ -116,6 +125,17 @@ function formSchema(original: CalendarItemDetail | null) {
     const end = fromDatetimeLocal(values.end);
     if (start !== null && end !== null && end <= start) {
       ctx.addIssue({ code: "custom", path: ["end"], message: "เวลาสิ้นสุดต้องหลังเวลาเริ่ม" });
+    }
+    const count = Number(values.repeatCount);
+    if (
+      values.repeatEvery !== NONE &&
+      (!Number.isInteger(count) || count < 2 || count > MAX_REPEAT_COUNT)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["repeatCount"],
+        message: `ทำซ้ำได้ 2–${MAX_REPEAT_COUNT} ครั้ง`,
+      });
     }
     if (needsReason(values, original) && !values.reason.trim()) {
       ctx.addIssue({
@@ -156,6 +176,8 @@ function defaults(mode: ItemFormMode, ownerId: string): FormValues {
     environment: item?.environment ?? "",
     notes: item?.notes ?? "",
     reason: "",
+    repeatEvery: NONE,
+    repeatCount: "4",
   };
 }
 
@@ -263,7 +285,11 @@ export function ItemForm({
 }) {
   const { calendar, leadership } = useApis();
   const queryClient = useQueryClient();
-  const [formError, setFormError] = useState<{ message: string; stale: boolean }>();
+  const [formError, setFormError] = useState<{
+    message: string;
+    stale: boolean;
+    closeOut: string | null;
+  }>();
   const original = mode.kind === "edit" ? mode.item : null;
 
   const people = useQuery({
@@ -280,7 +306,20 @@ export function ItemForm({
   const save = useMutation({
     mutationFn: (values: FormValues) => {
       const body = payload(values, canApprove);
-      if (!original) return calendar.create({ ...body, confirm: values.confirm });
+      if (!original) {
+        return calendar.create({
+          ...body,
+          confirm: values.confirm,
+          ...(values.repeatEvery === NONE
+            ? {}
+            : {
+                repeat: {
+                  every: values.repeatEvery as RepeatUnit,
+                  count: Number(values.repeatCount),
+                },
+              }),
+        });
+      }
       return calendar.update(original.id, {
         ...body,
         version: original.version,
@@ -296,6 +335,7 @@ export function ItemForm({
       setFormError({
         message: error.message,
         stale: error instanceof ApiError && error.status === 409,
+        closeOut: error instanceof ApiError ? closeOutMessage(error.body) : null,
       }),
   });
 
@@ -456,6 +496,30 @@ export function ItemForm({
           {textField("source", "แหล่งข้อมูล", { description: "เช่น ตารางแข่งจากฝ่ายกีฬา v2" })}
         </div>
 
+        {!original && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <form.Field name="repeatEvery">
+              {(field) => (
+                <OptionSelect
+                  id="calendar-repeat"
+                  label="ทำซ้ำ"
+                  value={field.state.value}
+                  options={[
+                    { value: NONE, label: "ไม่ทำซ้ำ" },
+                    ...REPEAT_UNITS.map((unit) => ({ value: unit, label: REPEAT_LABELS[unit] })),
+                  ]}
+                  onChange={field.handleChange}
+                />
+              )}
+            </form.Field>
+            {values.repeatEvery !== NONE &&
+              textField("repeatCount", "จำนวนครั้ง (รวมครั้งแรก)", {
+                type: "number",
+                description: `สูงสุด ${MAX_REPEAT_COUNT} ครั้ง`,
+              })}
+          </div>
+        )}
+
         <form.Field name="confirm">
           {(field) => (
             <Field orientation="horizontal">
@@ -504,6 +568,23 @@ export function ItemForm({
         {isMeeting && (
           <FieldSet>
             <FieldLegend variant="label">การประชุมและประสานงาน</FieldLegend>
+            <OptionSelect
+              id="calendar-template"
+              label="เทมเพลตวาระ"
+              value=""
+              options={Object.entries(MEETING_TEMPLATES).map(([value, template]) => ({
+                value,
+                label: template.label,
+              }))}
+              onChange={(key) => {
+                const template = MEETING_TEMPLATES[key as keyof typeof MEETING_TEMPLATES];
+                const agenda = form.getFieldValue("agenda").trim();
+                form.setFieldValue(
+                  "agenda",
+                  agenda ? `${agenda}\n\n${template.agenda}` : template.agenda,
+                );
+              }}
+            />
             {textField("meetingLink", "ลิงก์ประชุม", { type: "url" })}
             {textField("agenda", "วาระ", { multiline: true })}
           </FieldSet>
@@ -590,7 +671,11 @@ export function ItemForm({
 
         {formError && (
           <div role="alert" className="flex flex-col gap-2 text-sm text-destructive">
-            <p>บันทึกไม่สำเร็จ: {formError.stale ? STALE_MESSAGE : formError.message}</p>
+            <p>
+              {formError.stale
+                ? `บันทึกไม่สำเร็จ: ${STALE_MESSAGE}`
+                : (formError.closeOut ?? `บันทึกไม่สำเร็จ: ${formError.message}`)}
+            </p>
             {formError.stale && onReload && (
               <Button type="button" variant="outline" size="sm" onClick={onReload}>
                 โหลดข้อมูลล่าสุด

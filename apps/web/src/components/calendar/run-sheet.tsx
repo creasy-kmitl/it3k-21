@@ -49,13 +49,7 @@ export function summarize(items: CalendarItem[], now: number): RunSheetSummary {
 
 const ENTRY = "flex w-full items-start gap-2 rounded-lg p-1 text-left hover:bg-muted/60";
 
-function Entry({
-  item,
-  onSelect,
-}: {
-  item: CalendarItem;
-  onSelect?: (item: CalendarItem) => void;
-}) {
+function Entry({ item, onSelect }: { item: CalendarItem; onSelect?: (itemId: string) => void }) {
   const content = (
     <>
       <span
@@ -79,7 +73,7 @@ function Entry({
   );
   if (onSelect) {
     return (
-      <button type="button" className={ENTRY} onClick={() => onSelect(item)}>
+      <button type="button" className={ENTRY} onClick={() => onSelect(item.id)}>
         {content}
       </button>
     );
@@ -102,7 +96,7 @@ function Slot({
 }: {
   title: string;
   items: CalendarItem[];
-  onSelect?: (item: CalendarItem) => void;
+  onSelect?: (itemId: string) => void;
 }) {
   return (
     <section className="flex flex-col gap-1" aria-label={title}>
@@ -117,13 +111,7 @@ function Slot({
 }
 
 /** `onSelect` opens items in place; without it, entries link to the calendar. */
-export function RunSheet({
-  now,
-  onSelect,
-}: {
-  now: number;
-  onSelect?: (item: CalendarItem) => void;
-}) {
+export function RunSheet({ now, onSelect }: { now: number; onSelect?: (itemId: string) => void }) {
   const { calendar } = useApis();
   const anchor = Math.floor(now / ROUND_MS) * ROUND_MS;
   const range = { from: anchor - LOOK_BACK_MS, to: anchor + LOOK_AHEAD_MS };
@@ -157,6 +145,7 @@ export function RunSheet({
       ) : (
         <RunSheetBody summary={summarize(items.data?.items ?? [], now)} onSelect={onSelect} />
       )}
+      <MyActionItems now={now} onSelect={onSelect} />
     </section>
   );
 }
@@ -166,7 +155,7 @@ function RunSheetBody({
   onSelect,
 }: {
   summary: RunSheetSummary;
-  onSelect?: (item: CalendarItem) => void;
+  onSelect?: (itemId: string) => void;
 }) {
   const one = (item: CalendarItem | null) => (item ? [item] : []);
   return (
@@ -179,5 +168,58 @@ function RunSheetBody({
         <Slot title="Blocker และความเสี่ยงสูง" items={summary.blockers} onSelect={onSelect} />
       </div>
     </div>
+  );
+}
+
+/** Open action items for the viewer or the viewer's department, soonest first. */
+function MyActionItems({ now, onSelect }: { now: number; onSelect?: (itemId: string) => void }) {
+  const { calendar } = useApis();
+  const actions = useQuery({
+    queryKey: ["calendar", "my-action-items"],
+    queryFn: () => calendar.myActionItems(),
+    refetchInterval: 60_000,
+  });
+  const items = actions.data?.items ?? [];
+  if (items.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-1" aria-label="Action items ของฉันและฝ่าย">
+      <h3 className="text-xs font-semibold text-muted-foreground">Action items ของฉันและฝ่าย</h3>
+      <ul className="flex flex-col">
+        {items.map((action) => {
+          const overdue = action.dueAt !== null && action.dueAt < now;
+          const content = (
+            <span className="flex min-w-0 flex-col">
+              <span className="font-medium">{action.title}</span>
+              <span className={cn("text-xs text-muted-foreground", overdue && "text-destructive")}>
+                {[
+                  action.dueAt &&
+                    `${overdue ? "เลยกำหนด" : "ภายใน"} ${formatBangkok(action.dueAt, "dateTime")}`,
+                  `จาก ${action.itemTitle}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </span>
+          );
+          return (
+            <li key={action.id}>
+              {onSelect ? (
+                <button type="button" className={ENTRY} onClick={() => onSelect(action.itemId)}>
+                  {content}
+                </button>
+              ) : (
+                <Link
+                  to="/staff/calendar"
+                  search={{ view: "day", date: dateKey(action.itemStartAt), item: action.itemId }}
+                  className={ENTRY}
+                >
+                  {content}
+                </Link>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

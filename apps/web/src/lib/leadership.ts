@@ -9,6 +9,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** The parsed error body, for responses that say more than `message`. */
+    readonly body: unknown = null,
   ) {
     super(message);
     this.name = "ApiError";
@@ -21,7 +23,7 @@ export async function toApiError(res: { status: number; json(): Promise<unknown>
     body && typeof body === "object" && "message" in body && typeof body.message === "string"
       ? body.message
       : `Request failed (${res.status})`;
-  return new ApiError(res.status, message);
+  return new ApiError(res.status, message, body);
 }
 
 type Client = ReturnType<typeof hc<LeadershipRoutes>>;
