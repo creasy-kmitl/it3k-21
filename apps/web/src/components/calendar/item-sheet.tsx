@@ -5,8 +5,10 @@ import { Textarea } from "@it3k/ui/components/textarea";
 import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowRight,
   Building2,
   CalendarX,
+  Check,
   CircleCheck,
   CircleDot,
   Clock,
@@ -17,11 +19,14 @@ import {
   History,
   type LucideIcon,
   MapPin,
+  MessageSquareText,
+  Minus,
   Pencil,
   Plus,
   StickyNote,
   Trash2,
   User,
+  UserRound,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -56,27 +61,63 @@ const LABELLED: Record<string, Record<string, string>> = {
   visibility: VISIBILITY_LABELS,
 };
 
-/** A change-log value in words: times in Bangkok, enums in Thai. */
+const DELETED_DEPARTMENT = "แผนกที่ถูกลบ";
+/** An account id was set: who it is means nothing to a reader of the log. */
+export const ACCOUNT_SET = Symbol("account set");
+
+/**
+ * A change-log value in words: times in Bangkok, enums in Thai. Returns null
+ * for "nothing" and ACCOUNT_SET for an account id, which the log shows as icons.
+ */
 export function describeValue(
   field: string,
   value: unknown,
   departmentNames: Map<string, string>,
-): string {
-  if (value === null || value === undefined || value === "") return "—";
+): string | null | typeof ACCOUNT_SET {
+  if (value === null || value === undefined || value === "") return null;
+  if (Array.isArray(value) && value.length === 0) return null;
   if (typeof value === "boolean") return value ? "ใช่" : "ไม่ใช่";
   if (TIME_FIELDS.has(field) && typeof value === "number") return formatBangkok(value, "dateTime");
-  if (field === "departmentId") return departmentNames.get(String(value)) ?? "?";
+  if (field === "departmentId") return departmentNames.get(String(value)) ?? DELETED_DEPARTMENT;
   if (field === "collaboratorIds" && Array.isArray(value)) {
-    return value.length
-      ? value.map((id) => departmentNames.get(String(id)) ?? "?").join(", ")
-      : "—";
+    return value.map((id) => departmentNames.get(String(id)) ?? DELETED_DEPARTMENT).join(", ");
   }
   const labels = LABELLED[field];
   if (labels && typeof value === "string") return labels[value] ?? value;
   if (Array.isArray(value)) return value.join(", ");
   // Ids of accounts mean nothing to a reader.
-  if (field.endsWith("Id")) return "✓";
+  if (field.endsWith("Id")) return ACCOUNT_SET;
   return String(value);
+}
+
+/** One side of a change: the value in words, or an icon for "nothing" and "set". */
+function ChangeValue({
+  field,
+  value,
+  departmentNames,
+}: {
+  field: string;
+  value: unknown;
+  departmentNames: Map<string, string>;
+}) {
+  const text = describeValue(field, value, departmentNames);
+  if (text === null) {
+    return (
+      <span className="inline-flex items-center">
+        <Minus aria-hidden className="size-3.5" />
+        <span className="sr-only">ไม่มี</span>
+      </span>
+    );
+  }
+  if (text === ACCOUNT_SET) {
+    return (
+      <span className="inline-flex items-center">
+        <Check aria-hidden className="size-3.5" />
+        <span className="sr-only">ระบุแล้ว</span>
+      </span>
+    );
+  }
+  return <span className="min-w-0 break-words">{text}</span>;
 }
 
 const IMPORTANT_ACTIONS = new Set(["reschedule", "cancel", "publish", "delete"]);
@@ -106,21 +147,45 @@ function ChangeLog({
               isImportantChange(change) && "border-l-amber-500",
             )}
           >
-            <p className="flex items-center gap-1.5 font-medium">
-              <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-              {ACTION_LABELS[change.action] ?? change.action} · {change.actorName ?? "ผู้ใช้ที่ถูกลบ"}
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="flex items-center gap-1.5 font-medium">
+                <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                {ACTION_LABELS[change.action] ?? change.action}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <UserRound aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                {change.actorName ?? "ผู้ใช้ที่ถูกลบ"}
+              </span>
             </p>
-            <p className="text-muted-foreground">{formatBangkok(change.createdAt, "dateTime")}</p>
-            {change.reason && <p className="mt-1">เหตุผล: {change.reason}</p>}
+            <p className="mt-0.5 flex items-center gap-1.5 text-muted-foreground">
+              <Clock aria-hidden className="size-3.5 shrink-0" />
+              {formatBangkok(change.createdAt, "dateTime")}
+            </p>
+            {change.reason && (
+              <p className="mt-1 flex items-start gap-1.5">
+                <MessageSquareText
+                  aria-hidden
+                  className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+                />
+                <span>
+                  <span className="sr-only">เหตุผล: </span>
+                  {change.reason}
+                </span>
+              </p>
+            )}
             {change.action !== "create" && (
               <ul className="mt-1 flex flex-col gap-0.5 text-muted-foreground">
                 {Object.entries(change.changes).map(([field, pair]) => {
                   const [before, after] = pair as [unknown, unknown];
                   return (
-                    <li key={field}>
-                      {FIELD_LABELS[field] ?? field}:{" "}
-                      {describeValue(field, before, departmentNames)} →{" "}
-                      {describeValue(field, after, departmentNames)}
+                    <li key={field} className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium text-foreground/80">
+                        {FIELD_LABELS[field] ?? field}
+                      </span>
+                      <ChangeValue field={field} value={before} departmentNames={departmentNames} />
+                      <ArrowRight aria-hidden className="size-3.5 shrink-0" />
+                      <span className="sr-only">เป็น</span>
+                      <ChangeValue field={field} value={after} departmentNames={departmentNames} />
                     </li>
                   );
                 })}

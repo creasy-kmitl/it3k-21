@@ -598,7 +598,11 @@ describe("/staff/calendar", () => {
           {
             id: "c3",
             action: "update",
-            changes: { collaboratorIds: [[], ["d-tech"]], status: ["draft", "confirmed"] },
+            changes: {
+              collaboratorIds: [[], ["d-tech"]],
+              status: ["draft", "confirmed"],
+              ownerId: [null, "u-art"],
+            },
             reason: null,
             actorUserId: "u-art",
             actorName: "Art Staff",
@@ -622,9 +626,18 @@ describe("/staff/calendar", () => {
       expect(panel.textContent).toContain("Hall 2");
       expect(panel.textContent).toContain("ยืมขาตั้ง");
       const history = screen.getByRole("list", { name: "ประวัติการเปลี่ยนแปลง" });
-      expect(history.textContent).toContain("ฝ่ายที่ทำงานร่วมกัน: — → Tech/Live");
-      expect(history.textContent).toContain("สถานะ: ร่าง → ยืนยันแล้ว");
-      expect(history.textContent).toContain("checklist · ผู้ใช้ที่ถูกลบ");
+      const rows = within(history).getAllByRole("listitem");
+      const row = (label: string) => defined(rows.find((li) => li.textContent?.startsWith(label)));
+      // Nothing, set and "became" are icons, with words for screen readers.
+      const collaborators = row("ฝ่ายที่ทำงานร่วมกัน");
+      expect(collaborators.textContent).toBe("ฝ่ายที่ทำงานร่วมกันไม่มีเป็นTech/Live");
+      expect(collaborators.querySelector(".lucide-minus")).not.toBeNull();
+      expect(collaborators.querySelector(".lucide-arrow-right")).not.toBeNull();
+      expect(row("สถานะ").textContent).toBe("สถานะร่างเป็นยืนยันแล้ว");
+      expect(row("ผู้รับผิดชอบ").querySelector(".lucide-check")).not.toBeNull();
+      expect(history.textContent).toContain("checklist");
+      expect(history.textContent).toContain("ผู้ใช้ที่ถูกลบ");
+      expect(history.textContent).not.toMatch(/[→—✓·]/);
     });
 
     test("says so when the item is gone", async () => {
