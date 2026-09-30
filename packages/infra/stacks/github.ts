@@ -66,12 +66,12 @@ export default Alchemy.Stack(
         // Not secret in the cryptographic sense, but keeping it here means all
         // CI configuration lives in one place instead of leaking into YAML.
         CLOUDFLARE_ACCOUNT_ID: Redacted.make(accountId),
-        BETTER_AUTH_SECRET: yield* Config.redacted("BETTER_AUTH_SECRET"),
-        GOOGLE_CLIENT_ID: Redacted.make(yield* Config.string("GOOGLE_CLIENT_ID")),
-        GOOGLE_SECRET_ID: yield* Config.redacted("GOOGLE_SECRET_ID"),
+        BETTER_AUTH_SECRET: yield* Config.Redacted("BETTER_AUTH_SECRET"),
+        GOOGLE_CLIENT_ID: Redacted.make(yield* Config.String("GOOGLE_CLIENT_ID")),
+        GOOGLE_SECRET_ID: yield* Config.Redacted("GOOGLE_SECRET_ID"),
         // Axiom credentials live in the alchemy profile store locally, so this
         // one has to be passed in explicitly when deploying this stack.
-        AXIOM_TOKEN: yield* Config.redacted("AXIOM_TOKEN"),
+        AXIOM_TOKEN: yield* Config.Redacted("AXIOM_TOKEN"),
       },
     });
   }),

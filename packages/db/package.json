@@ -14,13 +14,13 @@
   },
   "dependencies": {
     "@libsql/client": "0.18.0",
-    "drizzle-orm": "^1.0.0-rc.4",
+    "drizzle-orm": "1.0.0-rc.5-ab785fc",
     "libsql": "0.5.29",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@it3k/config": "workspace:*",
-    "drizzle-kit": "^1.0.0-rc.4",
+    "drizzle-kit": "1.0.0-rc.5-ab785fc",
     "typescript": "catalog:",
     "varlock": "catalog:"
   }

@@ -9,16 +9,16 @@
     "destroy": "alchemy destroy"
   },
   "dependencies": {
-    "drizzle-orm": "^1.0.0-rc.4",
+    "drizzle-orm": "1.0.0-rc.5-ab785fc",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@effect/platform-bun": "4.0.0-rc.112",
-    "@effect/platform-node": "4.0.0-rc.112",
+    "@effect/platform-bun": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
     "@it3k/config": "workspace:*",
-    "alchemy": "2.0.0-beta.77",
-    "drizzle-kit": "^1.0.0-rc.4",
-    "effect": "4.0.0-rc.112",
+    "alchemy": "2.0.0-beta.79",
+    "drizzle-kit": "1.0.0-rc.5-ab785fc",
+    "effect": "4.0.0-rc.118",
     "typescript": "catalog:",
     "varlock": "catalog:"
   }

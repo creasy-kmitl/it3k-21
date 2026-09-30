@@ -148,17 +148,17 @@ export const server = Cloudflare.Worker("server", {
     // here without a cycle — deriving both from the stage breaks it. Without a
     // stage there is no public hostname yet, so point at the local dev port.
     CORS_ORIGIN: hostnames ? `https://${hostnames.web}` : "http://localhost:3001",
-    BETTER_AUTH_SECRET: Config.redacted("BETTER_AUTH_SECRET"),
+    BETTER_AUTH_SECRET: Config.Redacted("BETTER_AUTH_SECRET"),
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
-    GOOGLE_CLIENT_ID: Config.string("GOOGLE_CLIENT_ID"),
-    GOOGLE_SECRET_ID: Config.redacted("GOOGLE_SECRET_ID"),
+    GOOGLE_CLIENT_ID: Config.String("GOOGLE_CLIENT_ID"),
+    GOOGLE_SECRET_ID: Config.Redacted("GOOGLE_SECRET_ID"),
     // Equal to BETTER_AUTH_URL unless this is a preview, and the plugin
     // skips proxying entirely when the two match.
     AUTH_PROXY_URL: isPreviewStage ? AUTH_RELAY_URL : Cloudflare.Worker.URL,
     // Shared across stages by design, so it is kept apart from
     // BETTER_AUTH_SECRET: a leaked relay key must not be able to sign a
     // session cookie that prod will accept.
-    OAUTH_PROXY_SECRET: Config.redacted("OAUTH_PROXY_SECRET"),
+    OAUTH_PROXY_SECRET: Config.Redacted("OAUTH_PROXY_SECRET"),
     // Only the relay redirects a browser back to a preview, so only the relay
     // trusts those hostnames. Every other stage keeps the narrow list it has
     // today. Better Auth accepts the wildcard here that Google refuses.
