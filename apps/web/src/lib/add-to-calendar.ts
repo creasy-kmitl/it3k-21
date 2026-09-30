@@ -98,11 +98,14 @@ export function outlookUrl(event: CalendarEvent, account: "personal" | "work") {
 
 /** Escapes TEXT values (RFC 5545 §3.3.11). */
 function icsText(value: string) {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/;/g, "\\;")
-    .replace(/,/g, "\\,")
-    .replace(/\r?\n/g, "\\n");
+  return (
+    value
+      .replace(/\\/g, "\\\\")
+      .replace(/;/g, "\\;")
+      .replace(/,/g, "\\,")
+      // Any line break, including a lone CR, which a client could read as a new line.
+      .replace(/\r\n|\r|\n/g, "\\n")
+  );
 }
 
 const encoder = new TextEncoder();

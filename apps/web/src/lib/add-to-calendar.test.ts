@@ -95,6 +95,17 @@ describe("icsFile", () => {
   });
 });
 
+describe("icsFile line breaks", () => {
+  test("escapes every line break in text, including a lone carriage return", () => {
+    const ics = icsFile(eventFor(item({ title: "A\rB\r\nC\nD", venue: "Hall\r1" }), ORIGIN), START);
+    // The only CRs left are the ones ending each line.
+    expect(/\r(?!\n)/.test(ics)).toBe(false);
+    const unfolded = ics.replace(/\r\n /g, "");
+    expect(unfolded).toContain("SUMMARY:A\\nB\\nC\\nD\r\n");
+    expect(unfolded).toContain("LOCATION:Hall\\n1\r\n");
+  });
+});
+
 describe("icsFileName", () => {
   test("keeps Thai titles and drops characters file systems refuse", () => {
     expect(icsFileName("ซ้อมพิธีเปิด")).toBe("ซ้อมพิธีเปิด.ics");
