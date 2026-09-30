@@ -26,7 +26,7 @@ import { Spinner } from "@it3k/ui/components/spinner";
 import { Textarea } from "@it3k/ui/components/textarea";
 import { cn } from "@it3k/ui/lib/utils";
 import { useForm, useStore } from "@tanstack/react-form";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, type LucideIcon, Save, SlidersHorizontal } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { z } from "zod";
@@ -36,13 +36,14 @@ import { useApis } from "@/lib/api-context";
 import { HOUR_MS, fromDatetimeLocal, toDatetimeLocal } from "@/lib/bangkok-time";
 import type { CalendarInput, CalendarItem, CalendarItemDetail } from "@/lib/calendar";
 import type { HintKey } from "@/lib/calendar-hints";
-import { OPTION_ICONS, STATUS_ICONS } from "@/lib/calendar-icons";
+import { STATUS_ICONS } from "@/lib/calendar-icons";
 import { STATUS_LABELS } from "@/lib/calendar-labels";
 import { ApiError, type LeadershipDepartment } from "@/lib/leadership";
 
 import { DateTimePicker } from "./date-time-picker";
 import { Hint } from "./hint";
 import { IconLabel } from "./icon-label";
+import { OwnerPicker } from "./owner-picker";
 
 export type ItemFormMode =
   | { kind: "create"; start: number; departmentId: string | null }
@@ -224,12 +225,6 @@ export function ItemForm({
   const [formError, setFormError] = useState<{ message: string; stale: boolean }>();
   const original = mode.kind === "edit" ? mode.item : null;
 
-  const people = useQuery({
-    queryKey: ["calendar", "people"],
-    queryFn: () => calendar.people(),
-    staleTime: 5 * 60_000,
-  });
-
   const form = useForm({
     defaultValues: defaults(mode),
     validators: { onSubmit: formSchema(original) },
@@ -307,17 +302,6 @@ export function ItemForm({
     );
   };
 
-  const ownerOptions: Option[] = [
-    { value: NONE, label: "ไม่ระบุ", icon: OPTION_ICONS.none },
-    ...(original?.owner && !people.data?.items.some((p) => p.id === original.owner?.id)
-      ? [{ value: original.owner.id, label: original.owner.name, icon: OPTION_ICONS.person }]
-      : []),
-    ...(people.data?.items.map((person) => ({
-      value: person.id,
-      label: person.departmentName ? `${person.name} (${person.departmentName})` : person.name,
-      icon: OPTION_ICONS.person,
-    })) ?? []),
-  ];
   const departmentOptions: Option[] = departments.map((department) => ({
     value: department.id,
     label: department.name,
@@ -458,14 +442,14 @@ export function ItemForm({
               {textField("venue", "สถานที่", { hint: "venue" })}
               <form.Field name="ownerId">
                 {(field) => (
-                  <OptionSelect
-                    id="calendar-owner"
-                    hint="owner"
-                    label="ผู้รับผิดชอบ"
-                    value={field.state.value}
-                    options={ownerOptions}
-                    onChange={field.handleChange}
-                  />
+                  <Field>
+                    <LabelRow htmlFor="calendar-owner" label="ผู้รับผิดชอบ" hint="owner" />
+                    <OwnerPicker
+                      id="calendar-owner"
+                      initial={original?.owner ?? null}
+                      onChange={(ownerId) => field.handleChange(ownerId ?? NONE)}
+                    />
+                  </Field>
                 )}
               </form.Field>
             </div>

@@ -139,6 +139,17 @@ async function pickTime(label: string, time: string) {
   );
 }
 
+/** Opens the owner search, types `text` and picks the person shown as `name`. */
+async function pickOwner(form: HTMLElement, text: string, name: string) {
+  const input = within(form).getByRole("combobox", { name: "ผู้รับผิดชอบ" });
+  input.focus();
+  fireEvent.keyDown(input, { key: "ArrowDown" });
+  fireEvent.change(input, { target: { value: text } });
+  const option = await screen.findByRole("option", { name });
+  fireEvent.pointerDown(option, { pointerType: "mouse" });
+  fireEvent.click(option);
+}
+
 const agenda = () => screen.findByRole("region", { name: /10 ตุลาคม/ });
 
 describe("department scope", () => {
@@ -335,7 +346,7 @@ describe("/staff/calendar", () => {
     fireEvent.click(within(form).getByRole("button", { name: /รายละเอียดเพิ่มเติม/ }));
     fireEvent.change(within(form).getByLabelText("สถานที่"), { target: { value: "ห้อง 301" } });
     fireEvent.change(within(form).getByLabelText("โน้ตภายใน"), { target: { value: "ยืมขาตั้ง" } });
-    await choose(within(form).getByRole("combobox", { name: "ผู้รับผิดชอบ" }), "Art Staff (Art)");
+    await pickOwner(form, "Art", "Art Staff (Art)");
     fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0]).toMatchObject({
@@ -345,6 +356,68 @@ describe("/staff/calendar", () => {
     });
     // The calendar is for staff only: nothing is published.
     expect(created[0]).not.toHaveProperty("visibility");
+  });
+
+  test("finds an owner beyond the first page by searching on the server", async () => {
+    const searched: (string | undefined)[] = [];
+    const created: CalendarInput[] = [];
+    const firstPage = Array.from({ length: 20 }, (_, i) => ({
+      id: `u-${i}`,
+      name: `Staff ${String(i).padStart(2, "0")}`,
+      departmentName: "Art",
+    }));
+    setup({
+      items: [],
+      api: {
+        people: async (q) => {
+          searched.push(q);
+          return {
+            items: q ? [{ id: "u-zz", name: "Zed Late", departmentName: "PR" }] : firstPage,
+          };
+        },
+        create: async (json) => {
+          created.push(json);
+          return calendarItem({ title: json.title });
+        },
+        get: async () => detail(calendarItem()),
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "เพิ่มรายการ" }));
+    const form = await screen.findByRole("form", { name: "เพิ่มรายการ" });
+    fireEvent.change(within(form).getByLabelText("ชื่อรายการ"), { target: { value: "X" } });
+    fireEvent.click(within(form).getByRole("button", { name: /รายละเอียดเพิ่มเติม/ }));
+    const input = within(form).getByRole("combobox", { name: "ผู้รับผิดชอบ" });
+    fireEvent.click(within(form).getByRole("button", { name: "แสดงรายชื่อ" }));
+    // The first page says there are more to find.
+    expect(await screen.findByText("แสดง 20 คนแรก พิมพ์ชื่อเพื่อค้นหาคนอื่น")).toBeTruthy();
+    await pickOwner(form, "Zed", "Zed Late (PR)");
+    await waitFor(() => expect(searched).toContain("Zed"));
+    expect((input as HTMLInputElement).value).toBe("Zed Late");
+    fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(created[0]?.ownerId).toBe("u-zz"));
+  });
+
+  test("an item's current owner shows in the picker and can be cleared", async () => {
+    const item = calendarItem({ owner: { id: "u-far", name: "Far Away" } });
+    const updates: CalendarUpdate[] = [];
+    setup({
+      items: [item],
+      search: { item: item.id },
+      api: {
+        get: async () => detail(item),
+        update: async (_id, json) => {
+          updates.push(json);
+          return item;
+        },
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "แก้ไข" }));
+    const form = await screen.findByRole("form", { name: "แก้ไขรายการ" });
+    const input = within(form).getByRole("combobox", { name: "ผู้รับผิดชอบ" }) as HTMLInputElement;
+    expect(input.value).toBe("Far Away");
+    fireEvent.click(await within(form).findByRole("button", { name: "ไม่ระบุผู้รับผิดชอบ" }));
+    fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(updates[0]?.ownerId).toBeNull());
   });
 
   test("members add to their own department and nothing is published", async () => {
