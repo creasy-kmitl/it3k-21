@@ -43,8 +43,8 @@ export const calendarItem = sqliteTable(
     // Every time is shown in Bangkok time; stored so each record says so.
     timezone: text("timezone").default(CALENDAR_TIMEZONE).notNull(),
     ownerId: text("owner_id").references(() => user.id, { onDelete: "set null" }),
-    // Who or what the data came from, e.g. "Sports schedule v3".
-    source: text("source").notNull(),
+    // Who or what the data came from, e.g. "Sports schedule v3". Optional.
+    source: text("source"),
     lastConfirmedAt: integer("last_confirmed_at", { mode: "timestamp_ms" }),
     lastConfirmedById: text("last_confirmed_by_id").references(() => user.id, {
       onDelete: "set null",

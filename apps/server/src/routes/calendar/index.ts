@@ -160,7 +160,7 @@ const itemFields = {
   startAt: epochMs,
   endAt: epochMs,
   ownerId: id,
-  source: z.string().trim().min(1).max(200),
+  source: optionalText(200),
   visibility: z.enum(CALENDAR_VISIBILITIES),
   riskLevel: z.enum(RISK_LEVELS).nullable().optional(),
   blockedReason: optionalText(500),
@@ -197,7 +197,10 @@ const createInput = z.strictObject({
   ...itemFields,
   visibility: itemFields.visibility.default("internal"),
   departmentIds: departmentIds.default([]),
-  /** Records that the details were checked against their source just now. */
+  /**
+   * Records that the details were checked just now. Any status but draft
+   * confirms on its own, so this is only needed to re-confirm new times.
+   */
   confirm: z.boolean().default(false),
   /** Saves despite clashes with other items; needs a `mitigation`. */
   acceptConflicts: z.literal(true).optional(),
@@ -619,8 +622,13 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         return c.json({ message: "Only approvers can publish items" }, 403);
       }
       const now = new Date();
-      const confirmedAt = confirm ? now : null;
-      if (approving && isTbd({ status: fields.status, lastConfirmedAt: confirmedAt })) {
+      // Choosing any status but draft is what confirms an item.
+      const confirming = confirm || fields.status !== "draft";
+      const confirmedAt = confirming ? now : null;
+      if (
+        approving &&
+        isTbd({ mode: fields.mode, status: fields.status, lastConfirmedAt: confirmedAt })
+      ) {
         return c.json({ message: "Unconfirmed (TBD) items cannot be public" }, 400);
       }
       if (approving && !canBePublic(fields)) {
@@ -683,7 +691,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
           startAt: new Date(fields.startAt + index * stepMs),
           endAt: new Date(fields.endAt + index * stepMs),
           lastConfirmedAt: confirmedAt,
-          lastConfirmedById: confirm ? actor.id : null,
+          lastConfirmedById: confirming ? actor.id : null,
           approvedAt: approving ? now : null,
           approvedById: approving ? actor.id : null,
           seriesId,
@@ -786,7 +794,9 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
           }
         }
         const rescheduled = "startAt" in changes || "endAt" in changes;
-        if (confirm) {
+        // Leaving draft confirms the item, as does an explicit re-confirm.
+        const leavingDraft = current.status === "draft" && next.status !== "draft";
+        if (confirm || leavingDraft) {
           record("lastConfirmedAt", now);
           record("lastConfirmedById", actor.id);
         } else if (rescheduled && current.lastConfirmedAt) {
@@ -843,7 +853,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         if (
           approving &&
           visibility === "public" &&
-          isTbd({ status: next.status, lastConfirmedAt })
+          isTbd({ mode: next.mode, status: next.status, lastConfirmedAt })
         ) {
           return c.json({ message: "Unconfirmed (TBD) items cannot be public" }, 400);
         }

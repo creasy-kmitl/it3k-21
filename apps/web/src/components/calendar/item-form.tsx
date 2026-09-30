@@ -141,12 +141,11 @@ const fields = z.object({
   start: z.string().refine((value) => fromDatetimeLocal(value) !== null, "กรุณาใส่เวลาเริ่ม"),
   end: z.string().refine((value) => fromDatetimeLocal(value) !== null, "กรุณาใส่เวลาสิ้นสุด"),
   ownerId: z.string().min(1, "กรุณาเลือกผู้รับผิดชอบ"),
-  source: text(200).min(1, "กรุณาระบุแหล่งข้อมูล"),
+  source: text(200),
   departmentIds: z.array(z.string()),
   riskLevel: z.string(),
   blockedReason: text(500),
   visibility: z.enum(["internal", "public"]),
-  confirm: z.boolean(),
   game: z.string(),
   matchId: text(64),
   teams: text(1000),
@@ -231,7 +230,6 @@ function defaults(mode: ItemFormMode, ownerId: string): FormValues {
     riskLevel: item?.riskLevel ?? NONE,
     blockedReason: item?.blockedReason ?? "",
     visibility: item?.visibility ?? "internal",
-    confirm: false,
     game: item?.game ?? NONE,
     matchId: item?.matchId ?? "",
     teams: item?.teams.join(", ") ?? "",
@@ -272,7 +270,7 @@ function payload(values: FormValues, canApprove: boolean): Omit<CalendarInput, "
     startAt: fromDatetimeLocal(values.start) ?? 0,
     endAt: fromDatetimeLocal(values.end) ?? 0,
     ownerId: values.ownerId,
-    source: values.source.trim(),
+    source: orNull(values.source),
     departmentIds: values.departmentIds,
     riskLevel: noneToNull<(typeof RISK_LEVELS)[number]>(values.riskLevel),
     blockedReason: orNull(values.blockedReason),
@@ -512,7 +510,6 @@ export function ItemForm({
       if (!original) {
         return calendar.create({
           ...body,
-          confirm: values.confirm,
           ...(values.repeatEvery === NONE
             ? {}
             : {
@@ -526,7 +523,6 @@ export function ItemForm({
       return calendar.update(original.id, {
         ...body,
         version: original.version,
-        ...(values.confirm ? { confirm: true as const } : {}),
         ...(needsReason(values, original) ? { reason: values.reason.trim() } : {}),
       });
     },
@@ -905,24 +901,10 @@ export function ItemForm({
             )}
           </form.Field>
           {textField("source", "แหล่งข้อมูล", {
-            description: "เช่น ตารางแข่งจากฝ่ายกีฬา v2",
+            description: "ไม่บังคับ เช่น ตารางแข่งจากฝ่ายกีฬา v2",
             hint: "source",
           })}
         </div>
-
-        <form.Field name="confirm">
-          {(field) => (
-            <Field orientation="horizontal">
-              <Checkbox
-                id="calendar-confirm"
-                checked={field.state.value}
-                onCheckedChange={(checked) => field.handleChange(checked)}
-              />
-              <FieldLabel htmlFor="calendar-confirm">ตรวจกับแหล่งข้อมูลแล้ว (ยืนยันข้อมูลตอนนี้)</FieldLabel>
-              <Hint hint="confirm" label="ยืนยันข้อมูล" />
-            </Field>
-          )}
-        </form.Field>
 
         {askReason &&
           textField("reason", "เหตุผลที่เลื่อนหรือยกเลิก", {

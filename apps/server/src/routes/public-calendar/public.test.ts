@@ -79,7 +79,9 @@ describe("public calendar", () => {
         "venue",
       ].sort(),
     );
-    expect(JSON.stringify(body)).not.toContain("081");
+    // The private note's phone number and name never leave the team.
+    expect(JSON.stringify(body)).not.toContain("081-000-0000");
+    expect(JSON.stringify(body)).not.toContain("Somchai");
     expect(body.items[0]).toMatchObject({ status: "scheduled", teams: ["Team A", "Team B"] });
   });
 
@@ -137,7 +139,8 @@ describe("public calendar", () => {
     expect(text).toStartWith("BEGIN:VCALENDAR\r\n");
     expect(text).toContain("SUMMARY:VALORANT Final\r\n");
     expect(text).toContain("LOCATION:Hall 1\\, Floor 2\r\n");
-    expect(text).not.toContain("081");
+    expect(text).not.toContain("081-000-0000");
+    expect(text).not.toContain("Somchai");
   });
 });
 

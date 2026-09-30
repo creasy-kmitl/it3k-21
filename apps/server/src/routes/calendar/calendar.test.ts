@@ -119,6 +119,34 @@ describe("access", () => {
 });
 
 describe("create", () => {
+  test("any status but draft confirms; delivery work is never TBD", async () => {
+    const confirmed = await create({ status: "confirmed" });
+    expect(confirmed).toMatchObject({ tbd: false });
+    expect(confirmed.lastConfirmedAt).not.toBeNull();
+    const draft = await create({ startAt: START + 3 * HOUR, endAt: START + 4 * HOUR });
+    expect(draft.tbd).toBe(true);
+    const task = await create({
+      mode: "delivery",
+      category: "development",
+      status: "backlog",
+      game: null,
+      matchId: null,
+      teams: null,
+    });
+    expect(task.tbd).toBe(false);
+  });
+
+  test("the source is optional", async () => {
+    const { res, body } = await send<Item & { source: string | null }>(
+      "tech-staff",
+      "POST",
+      "/items",
+      match({ source: undefined, startAt: START + 5 * HOUR, endAt: START + 6 * HOUR }),
+    );
+    expect(res.status).toBe(201);
+    expect(body.source).toBeNull();
+  });
+
   test("stores the item as TBD until it is confirmed, and logs it", async () => {
     const item = await create({ departmentIds: [await t.departmentId("กีฬา")] });
     expect(item).toMatchObject({
@@ -270,6 +298,18 @@ describe("update", () => {
     });
     expect(res.status).toBe(200);
     expect(defined((await changesOf(item.id)).at(-1), "log").action).toBe("cancel");
+  });
+
+  test("leaving draft confirms the item", async () => {
+    const item = await create();
+    const { body } = await send<Item>("tech-staff", "PATCH", `/items/${item.id}`, {
+      // Not "ready": that also needs the live checklist.
+      status: "delayed",
+      version: 1,
+    });
+    expect(body.tbd).toBe(false);
+    const [row] = await t.db.select().from(calendarItem).where(eq(calendarItem.id, item.id));
+    expect(row?.lastConfirmedById).toBe("tech-staff");
   });
 
   test("confirming stamps who and when", async () => {

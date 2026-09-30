@@ -208,8 +208,8 @@ describe("/staff/calendar", () => {
       source: "Run sheet v3",
       startAt: bangkokTime(2026, 9, 10, 18),
       endAt: bangkokTime(2026, 9, 10, 20),
-      confirm: false,
     });
+    expect(created[0]).not.toHaveProperty("confirm");
   });
 
   test("rescheduling asks for a reason before saving", async () => {
@@ -587,5 +587,44 @@ describe("/staff/calendar", () => {
         venue: null,
       });
     });
+  });
+
+  test("the source can be left empty", async () => {
+    const created: CalendarInput[] = [];
+    setup({
+      items: [],
+      api: {
+        create: async (json) => {
+          created.push(json);
+          return calendarItem({ title: json.title });
+        },
+        get: async () => detail(calendarItem()),
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "เพิ่มรายการ" }));
+    const form = await screen.findByRole("form", { name: "เพิ่มรายการ" });
+    expect(within(form).queryByRole("checkbox", { name: /ตรวจกับแหล่งข้อมูล/ })).toBeNull();
+    fireEvent.change(within(form).getByLabelText("ชื่อรายการ"), { target: { value: "Sync" } });
+    fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]?.source).toBeNull();
+  });
+
+  test("a moved item asks to re-confirm its new times", async () => {
+    const moved = calendarItem({ status: "ready", tbd: true, lastConfirmedAt: null });
+    const updates: CalendarUpdate[] = [];
+    setup({
+      items: [moved],
+      search: { item: moved.id },
+      api: {
+        get: async () => detail(moved),
+        update: async (_id, json) => {
+          updates.push(json);
+          return moved;
+        },
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "ยืนยันเวลาใหม่" }));
+    await waitFor(() => expect(updates).toEqual([{ confirm: true, version: 1 }]));
   });
 });

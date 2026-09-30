@@ -76,7 +76,7 @@ CREATE TABLE `calendar_item` (
 	`end_at` integer NOT NULL,
 	`timezone` text DEFAULT 'Asia/Bangkok' NOT NULL,
 	`owner_id` text,
-	`source` text NOT NULL,
+	`source` text,
 	`last_confirmed_at` integer,
 	`last_confirmed_by_id` text,
 	`visibility` text DEFAULT 'internal' NOT NULL,

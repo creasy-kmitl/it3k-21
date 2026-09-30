@@ -388,7 +388,7 @@ function ItemDetails({ item }: { item: CalendarItemDetail }) {
           <span className="whitespace-pre-wrap">{item.mitigation}</span>
         </Detail>
       )}
-      <Detail label="แหล่งข้อมูล">{item.source}</Detail>
+      {item.source && <Detail label="แหล่งข้อมูล">{item.source}</Detail>}
       <Detail label="ยืนยันล่าสุด">
         {item.lastConfirmedAt ? formatBangkok(item.lastConfirmedAt, "dateTime") : "ยังไม่ยืนยัน (TBD)"}
       </Detail>
@@ -529,15 +529,17 @@ function Actions({
           variant="outline"
           disabled={pending}
           onClick={() =>
-            update.mutate({
-              confirm: true,
-              // A draft that has been checked is no longer a draft.
-              ...(item.status === "draft" ? { status: "confirmed" as CalendarStatus } : {}),
-            })
+            // A draft is confirmed by leaving draft; anything else is TBD only
+            // because its times moved, so it re-confirms them.
+            update.mutate(
+              item.status === "draft"
+                ? { status: "confirmed" as CalendarStatus }
+                : { confirm: true },
+            )
           }
         >
           <CircleCheck data-icon="inline-start" />
-          ยืนยันข้อมูล
+          {item.status === "draft" ? "ยืนยันข้อมูล" : "ยืนยันเวลาใหม่"}
         </Button>
       )}
       <Button size="sm" variant="outline" disabled={pending} onClick={() => duplicate.mutate()}>

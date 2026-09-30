@@ -107,10 +107,17 @@ export const CALENDAR_CHANGE_ACTIONS = [
 export type CalendarChangeAction = (typeof CALENDAR_CHANGE_ACTIONS)[number];
 
 /**
- * Unconfirmed data is shown as TBD and must never be treated as final: a
- * draft, or anything nobody has confirmed yet.
+ * Unconfirmed schedule data is shown as TBD and must never be treated as
+ * final: a draft, or anything whose times changed since someone confirmed
+ * them. Leaving draft confirms an item, so only a reschedule needs a manual
+ * re-confirm. Delivery work is internal and never public, so it is never TBD.
  */
-export function isTbd(item: { status: CalendarStatus; lastConfirmedAt: Date | null }) {
+export function isTbd(item: {
+  mode: CalendarMode;
+  status: CalendarStatus;
+  lastConfirmedAt: Date | null;
+}) {
+  if (item.mode === "delivery") return false;
   return item.status === "draft" || item.lastConfirmedAt === null;
 }
 
