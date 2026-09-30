@@ -14,6 +14,7 @@ import type {
 } from "@/lib/calendar";
 import { ApiError } from "@/lib/leadership";
 import {
+  CALENDAR_NOW,
   calendarItem,
   choose,
   defined,
@@ -531,5 +532,190 @@ describe("/staff/calendar", () => {
     );
     expect(notes.textContent).toContain("เห็นเฉพาะทีมงานที่ล็อกอิน");
     expect(notes.textContent).toContain("ไม่แสดงในหน้าสาธารณะ");
+  });
+
+  describe("detail panel", () => {
+    function open(item: CalendarItem, overrides: Partial<CalendarItemDetail> = {}) {
+      const updates: CalendarUpdate[] = [];
+      setup({
+        items: [item],
+        search: { item: item.id },
+        api: {
+          get: async () => detail(item, overrides),
+          update: async (_id, json) => {
+            updates.push(json);
+            return item;
+          },
+        },
+      });
+      return updates;
+    }
+
+    test("cancelling a confirmed item needs a reason", async () => {
+      const updates = open(calendarItem());
+      fireEvent.click(await screen.findByRole("button", { name: "ยกเลิกรายการ" }));
+      const confirm = screen.getByRole("button", { name: "ยืนยันยกเลิกรายการ" });
+      expect(confirm.hasAttribute("disabled")).toBe(true);
+      fireEvent.change(screen.getByLabelText("เหตุผลที่ยกเลิก"), { target: { value: "ฝนตก" } });
+      fireEvent.click(confirm);
+      await waitFor(() =>
+        expect(updates).toEqual([{ status: "cancelled", reason: "ฝนตก", version: 1 }]),
+      );
+    });
+
+    test("cancelling a draft may skip the reason", async () => {
+      const updates = open(calendarItem({ status: "draft" }));
+      fireEvent.click(await screen.findByRole("button", { name: "ยกเลิกรายการ" }));
+      expect(screen.getByLabelText("เหตุผลที่ยกเลิก (ไม่บังคับ)")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "ยืนยันยกเลิกรายการ" }));
+      await waitFor(() =>
+        expect(updates).toEqual([{ status: "cancelled", reason: null, version: 1 }]),
+      );
+    });
+
+    test("a draft is confirmed in one click", async () => {
+      const updates = open(calendarItem({ status: "draft" }));
+      fireEvent.click(await screen.findByRole("button", { name: "ยืนยันรายการ" }));
+      await waitFor(() => expect(updates).toEqual([{ status: "confirmed", version: 1 }]));
+      // Drafts cannot be public, so there is nothing to publish yet.
+      expect(screen.queryByRole("button", { name: "เผยแพร่สาธารณะ" })).toBeNull();
+    });
+
+    test("publishers take a public item off the public calendar", async () => {
+      const updates = open(calendarItem({ canPublish: true, visibility: "public" }));
+      fireEvent.click(await screen.findByRole("button", { name: "เลิกเผยแพร่" }));
+      await waitFor(() => expect(updates).toEqual([{ visibility: "internal", version: 1 }]));
+    });
+
+    test("shows the details, the collaborating departments and a readable history", async () => {
+      const item = calendarItem({
+        venue: "Hall 2",
+        notes: "ยืมขาตั้ง",
+        collaborators: [{ id: "d-tech", name: "Tech/Live", icon: "monitor-play", color: "indigo" }],
+      });
+      open(item, {
+        changes: [
+          {
+            id: "c3",
+            action: "update",
+            changes: { collaboratorIds: [[], ["d-tech"]], status: ["draft", "confirmed"] },
+            reason: null,
+            actorUserId: "u-art",
+            actorName: "Art Staff",
+            createdAt: CALENDAR_NOW,
+          },
+          {
+            id: "c2",
+            // An action from before the calendar was simplified.
+            action: "checklist" as never,
+            changes: {},
+            reason: null,
+            actorUserId: "u-gone",
+            actorName: null,
+            createdAt: CALENDAR_NOW - 1,
+          },
+        ],
+      });
+      const details = await screen.findByText("ทำงานร่วมกับ");
+      const panel = defined(details.closest("dl"));
+      expect(panel.textContent).toContain("Tech/Live");
+      expect(panel.textContent).toContain("Hall 2");
+      expect(panel.textContent).toContain("ยืมขาตั้ง");
+      const history = screen.getByRole("list", { name: "ประวัติการเปลี่ยนแปลง" });
+      expect(history.textContent).toContain("ฝ่ายที่ทำงานร่วมกัน: — → Tech/Live");
+      expect(history.textContent).toContain("สถานะ: ร่าง → ยืนยันแล้ว");
+      expect(history.textContent).toContain("checklist · ผู้ใช้ที่ถูกลบ");
+    });
+
+    test("says so when the item is gone", async () => {
+      const item = calendarItem();
+      setup({
+        items: [],
+        search: { item: item.id },
+        api: {
+          get: async () => {
+            throw new ApiError(404, "Item not found");
+          },
+        },
+      });
+      expect(await screen.findByText("ไม่พบรายการนี้")).toBeTruthy();
+    });
+  });
+
+  describe("form rules", () => {
+    test("drafts cannot be made public", async () => {
+      const created: CalendarInput[] = [];
+      setup({
+        items: [],
+        viewer: { canPublishOwn: true },
+        api: {
+          create: async (json) => {
+            created.push(json);
+            return calendarItem();
+          },
+        },
+      });
+      fireEvent.click(await screen.findByRole("button", { name: "เพิ่มรายการ" }));
+      const form = await screen.findByRole("form", { name: "เพิ่มรายการ" });
+      fireEvent.change(within(form).getByLabelText("ชื่อรายการ"), { target: { value: "X" } });
+      await choose(within(form).getByRole("combobox", { name: "สถานะ" }), "ร่าง");
+      await choose(within(form).getByRole("combobox", { name: "การเผยแพร่" }), "สาธารณะ");
+      fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+      expect(await within(form).findByText("เผยแพร่สาธารณะได้เฉพาะรายการที่ยืนยันแล้ว")).toBeTruthy();
+      expect(created).toHaveLength(0);
+    });
+
+    test("an admin moving an item to a collaborator drops it from the collaborators", async () => {
+      const item = calendarItem({
+        collaborators: [{ id: "d-tech", name: "Tech/Live", icon: "monitor-play", color: "indigo" }],
+      });
+      const updates: CalendarUpdate[] = [];
+      setup({
+        items: [item],
+        myDepartmentId: null,
+        viewer: { isAdmin: true },
+        search: { item: item.id },
+        api: {
+          get: async () => detail(item),
+          update: async (_id, json) => {
+            updates.push(json);
+            return item;
+          },
+        },
+      });
+      fireEvent.click(await screen.findByRole("button", { name: "แก้ไข" }));
+      const form = await screen.findByRole("form", { name: "แก้ไขรายการ" });
+      await choose(within(form).getByRole("combobox", { name: "แผนก" }), "Tech/Live");
+      fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+      await waitFor(() => expect(updates).toHaveLength(1));
+      expect(updates[0]).toMatchObject({ departmentId: "d-tech", collaboratorIds: [] });
+    });
+
+    test("the collaborators already chosen stay ticked when editing", async () => {
+      const item = calendarItem({
+        collaborators: [{ id: "d-tech", name: "Tech/Live", icon: "monitor-play", color: "indigo" }],
+      });
+      const updates: CalendarUpdate[] = [];
+      setup({
+        items: [item],
+        search: { item: item.id },
+        api: {
+          get: async () => detail(item),
+          update: async (_id, json) => {
+            updates.push(json);
+            return item;
+          },
+        },
+      });
+      fireEvent.click(await screen.findByRole("button", { name: "แก้ไข" }));
+      const form = await screen.findByRole("form", { name: "แก้ไขรายการ" });
+      // Folded sections open themselves when something inside is filled in.
+      const group = within(form).getByRole("group", { name: "ฝ่ายที่ทำงานร่วมกัน" });
+      const tech = within(group).getByRole("checkbox", { name: "Tech/Live" });
+      expect(tech.getAttribute("aria-checked")).toBe("true");
+      fireEvent.click(tech);
+      fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+      await waitFor(() => expect(updates[0]?.collaboratorIds).toEqual([]));
+    });
   });
 });

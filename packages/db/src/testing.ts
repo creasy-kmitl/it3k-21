@@ -136,10 +136,16 @@ class SqliteD1 implements D1Database {
   }
 }
 
-export function applyMigrations(sqlite: Sqlite) {
+/**
+ * Applies the checked-in migrations in order. `from` and `before` limit it to
+ * a range of migration folder names, so a test can seed data in an older
+ * schema and then run the migrations that change it.
+ */
+export function applyMigrations(sqlite: Sqlite, range: { from?: string; before?: string } = {}) {
   const dirs = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
+    .filter((name) => (!range.from || name >= range.from) && (!range.before || name < range.before))
     .sort();
   for (const dir of dirs) {
     const source = readFileSync(join(MIGRATIONS_DIR, dir, "migration.sql"), "utf8");

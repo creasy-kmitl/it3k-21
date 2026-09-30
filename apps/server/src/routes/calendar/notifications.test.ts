@@ -104,6 +104,53 @@ describe("notifications", () => {
     expect((await inbox("reg-head")).items.map((n) => n.kind)).toEqual(["cancel", "collaboration"]);
   });
 
+  test("viceheads hear too, each department's leaders once, and removal tells nobody", async () => {
+    await t.seedUser("reg-vice", { department: "ทะเบียน", seat: "vicehead", name: "Reg Vice" });
+    await t.seedUser("art-head", { department: "Art", seat: "head", name: "Art Head" });
+    const registration = await t.departmentId("ทะเบียน");
+    const art = await t.departmentId("Art");
+    const item = await create({ collaboratorIds: [registration, art] });
+    for (const leader of ["reg-head", "reg-vice"]) {
+      expect((await inbox(leader)).items.map((n) => n.data.department)).toEqual(["ทะเบียน"]);
+    }
+    expect((await inbox("art-head")).items.map((n) => n.data.department)).toEqual(["Art"]);
+    await send("planner", "PATCH", `/items/${item.id}`, { collaboratorIds: [art], version: 1 });
+    expect((await inbox("reg-head")).items).toHaveLength(1);
+    // A later reschedule reaches only departments still on the item.
+    await send("planner", "PATCH", `/items/${item.id}`, {
+      startAt: START + HOUR,
+      endAt: START + 3 * HOUR,
+      reason: "เลื่อน",
+      version: 2,
+    });
+    expect((await inbox("reg-head")).items).toHaveLength(1);
+    expect((await inbox("art-head")).items.map((n) => n.kind)).toEqual([
+      "reschedule",
+      "collaboration",
+    ]);
+  });
+
+  test("an unchanged collaborator list sends nothing new", async () => {
+    const registration = await t.departmentId("ทะเบียน");
+    const item = await create({ collaboratorIds: [registration] });
+    await send("planner", "PATCH", `/items/${item.id}`, {
+      title: "เปลี่ยนชื่อ",
+      collaboratorIds: [registration],
+      version: 1,
+    });
+    expect((await inbox("reg-head")).items).toHaveLength(1);
+  });
+
+  test("the inbox is newest first and counts only unread", async () => {
+    await create({ title: "หนึ่ง" });
+    await create({ title: "สอง" });
+    const box = await inbox("owner");
+    expect(box.items.map((n) => n.itemTitle)).toEqual(["สอง", "หนึ่ง"]);
+    await send("owner", "POST", "/notifications/read", { ids: [box.items[0]?.id] });
+    expect((await inbox("owner")).unread).toBe(1);
+    expect((await send("owner", "POST", "/notifications/read", { ids: [] })).res.status).toBe(400);
+  });
+
   test("marking read only touches the caller's own notifications", async () => {
     await create();
     const [notice] = (await inbox("owner")).items;

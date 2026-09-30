@@ -95,6 +95,47 @@ describe("public calendar", () => {
     expect((await list()).body.items[0]).toMatchObject({ startAt: START + 40 * HOUR });
   });
 
+  test("a head's draft is never published, and a draft made from a public item leaves", async () => {
+    expect((await create({ status: "draft" })).res.status).toBe(400);
+    const item = await create();
+    await staff.request(
+      `/items/${item.body.id}`,
+      t.as("art-head", { method: "PATCH", json: { status: "draft", version: 1 } }),
+    );
+    expect((await list()).body.items).toEqual([]);
+  });
+
+  test("shows every department's published items, without collaborators", async () => {
+    await t.seedUser("reg-head", { department: "ทะเบียน", seat: "head", name: "Reg Head" });
+    const registration = await t.departmentId("ทะเบียน");
+    await create({ collaboratorIds: [registration] });
+    await staff.request(
+      "/items",
+      t.as("reg-head", {
+        method: "POST",
+        json: {
+          title: "Registration opens",
+          visibility: "public",
+          startAt: START + 50 * HOUR,
+          endAt: START + 51 * HOUR,
+        },
+      }),
+    );
+    const { body } = await list();
+    expect(body.items.map((item) => (item.department as { name: string }).name)).toEqual([
+      "Art",
+      "ทะเบียน",
+    ]);
+    expect(JSON.stringify(body)).not.toContain("collaborators");
+  });
+
+  test("takes an explicit window and refuses a backwards one", async () => {
+    await create();
+    const later = await open.request(`/?from=${START + 30 * DAY}&to=${START + 31 * DAY}`);
+    expect(((await readJson(later)) as { items: unknown[] }).items).toEqual([]);
+    expect((await open.request(`/?from=${START}&to=${START - DAY}`)).status).toBe(400);
+  });
+
   test("refuses ranges over 62 days", async () => {
     const res = await open.request(`/?from=${START}&to=${START + 63 * DAY}`);
     expect(res.status).toBe(400);
@@ -115,6 +156,27 @@ describe("public calendar", () => {
 });
 
 describe("toIcs", () => {
+  test("escapes commas, semicolons, backslashes and newlines", () => {
+    const ics = toIcs(
+      [
+        {
+          id: "x",
+          title: "A, B; C\\D",
+          startAt: Date.UTC(2026, 9, 10, 6),
+          endAt: Date.UTC(2026, 9, 10, 8),
+          venue: "Hall\nFloor 2",
+          department: { id: "d", name: "PR", icon: "megaphone", color: "fuchsia" },
+          updatedAt: Date.UTC(2026, 9, 1),
+        },
+      ],
+      Date.UTC(2026, 9, 1),
+    );
+    expect(ics).toContain("SUMMARY:A\\, B\\; C\\\\D\r\n");
+    expect(ics).toContain("LOCATION:Hall\\nFloor 2\r\n");
+    expect(ics).toContain("CATEGORIES:PR\r\n");
+    expect(ics).toEndWith("END:VCALENDAR\r\n");
+  });
+
   test("folds long Thai lines without splitting characters", () => {
     const ics = toIcs(
       [

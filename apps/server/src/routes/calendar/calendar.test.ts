@@ -469,3 +469,289 @@ describe("races", () => {
     expect(row?.title).toBe("Other");
   });
 });
+
+describe("access and validation", () => {
+  test("athletes and banned accounts are refused", async () => {
+    await t.seedUser("athlete", { role: "athlete", department: "Art" });
+    await t.seedUser("banned", { department: "Art", banned: true });
+    for (const who of ["athlete", "banned"]) {
+      expect((await send(who, "GET", range())).res.status).toBe(403);
+      expect((await send(who, "POST", "/items", entry())).res.status).toBe(403);
+    }
+    expect((await send("guest", "GET", "/people")).res.status).toBe(403);
+  });
+
+  test("a member without a department reads but cannot add", async () => {
+    await t.seedUser("floating", { name: "Floating" });
+    expect((await send<Page>("floating", "GET", range())).body).toMatchObject({
+      canCreate: false,
+      myDepartmentId: null,
+    });
+    expect((await send("floating", "POST", "/items", entry())).res.status).toBe(400);
+    expect((await send("floating", "GET", "/people")).res.status).toBe(403);
+  });
+
+  test("refuses backwards, too wide and malformed ranges", async () => {
+    for (const path of [
+      range(START, START),
+      range(START, START + 63 * 24 * HOUR),
+      "/items?from=abc&to=1",
+      `${range()}&status=live`,
+      `${range()}&departmentIds=${Array.from({ length: 31 }, (_, i) => `d${i}`).join(",")}`,
+      `${range()}&unknown=1`,
+    ]) {
+      expect((await send("art-staff", "GET", path)).res.status).toBe(400);
+    }
+  });
+
+  test("refuses bad item input", async () => {
+    for (const body of [
+      entry({ title: "   " }),
+      entry({ title: "x".repeat(201) }),
+      entry({ status: "live" }),
+      entry({ visibility: "secret" }),
+      entry({ startAt: 0 }),
+      entry({ venue: "x".repeat(121) }),
+      entry({ extra: true }),
+      entry({ collaboratorIds: [registration, registration] }),
+      entry({ collaboratorIds: Array.from({ length: 21 }, (_, i) => `d${i}`) }),
+    ]) {
+      expect((await send("art-staff", "POST", "/items", body)).res.status).toBe(400);
+    }
+  });
+
+  test("POSTs must be JSON", async () => {
+    const res = await app.request("/items", {
+      ...t.as("art-staff", { method: "POST" }),
+      body: "title=x",
+      headers: { "x-test-user": "art-staff", "content-type": "application/x-www-form-urlencoded" },
+    });
+    expect(res.status).toBe(415);
+  });
+
+  test("unknown and malformed ids", async () => {
+    const missing = crypto.randomUUID();
+    expect((await send("art-staff", "GET", `/items/${missing}`)).res.status).toBe(404);
+    expect(
+      (await send("art-staff", "PATCH", `/items/${missing}`, { title: "x", version: 1 })).res
+        .status,
+    ).toBe(404);
+    expect((await send("art-staff", "DELETE", `/items/${missing}?version=1`)).res.status).toBe(404);
+    expect((await send("art-staff", "GET", "/items/not-a-uuid")).res.status).toBe(400);
+  });
+});
+
+describe("listing", () => {
+  test("includes items spanning the window's edges and nothing outside it", async () => {
+    await create({ title: "Across the start", startAt: START - 2 * HOUR, endAt: START + HOUR });
+    await create({ title: "Before", startAt: START - 3 * HOUR, endAt: START - 2 * HOUR });
+    await create({ title: "Inside", startAt: START + HOUR, endAt: START + 2 * HOUR });
+    const { body } = await send<Page>("art-staff", "GET", range(START, START + 24 * HOUR));
+    expect(body.items.map((item) => item.title)).toEqual(["Across the start", "Inside"]);
+  });
+
+  test("filters by status, owner and search text", async () => {
+    await create({ title: "ร่างแผน", status: "draft" });
+    await create({ title: "ติดตั้งฉาก", venue: "Hall 2", ownerId: "art-head" });
+    await create({ title: "ยกเลิกแล้ว", status: "cancelled" });
+    const titles = async (query: string) =>
+      (await send<Page>("art-staff", "GET", `${range()}&${query}`)).body.items.map((i) => i.title);
+    expect((await titles("status=draft,cancelled")).sort()).toEqual(["ยกเลิกแล้ว", "ร่างแผน"]);
+    expect(await titles("ownerId=art-head")).toEqual(["ติดตั้งฉาก"]);
+    expect(await titles("q=Hall")).toEqual(["ติดตั้งฉาก"]);
+    expect(await titles(`q=${encodeURIComponent("Art Head")}`)).toEqual(["ติดตั้งฉาก"]);
+    expect(await titles(`q=${encodeURIComponent("ร่าง")}`)).toEqual(["ร่างแผน"]);
+  });
+
+  test("lists an item owned by one chosen department and shared with another once", async () => {
+    const item = await create({ collaboratorIds: [registration] });
+    const { body } = await send<Page>(
+      "reg-staff",
+      "GET",
+      `${range()}&departmentIds=${art},${registration}`,
+    );
+    expect(body.items.map((i) => i.id)).toEqual([item.id]);
+  });
+});
+
+describe("more editing rules", () => {
+  test("an edit that changes nothing saves nothing", async () => {
+    const item = await create({ venue: "Hall" });
+    const { res, body } = await send<Item>("art-staff", "PATCH", `/items/${item.id}`, {
+      title: item.title,
+      venue: "Hall",
+      version: 1,
+    });
+    expect(res.status).toBe(200);
+    expect(body.version).toBe(1);
+    expect(await changesOf(item.id)).toHaveLength(1);
+    expect((await send("art-staff", "PATCH", `/items/${item.id}`, { version: 1 })).res.status).toBe(
+      400,
+    );
+  });
+
+  test("confirming a draft is logged as a status change and needs no reason", async () => {
+    const item = await create({ status: "draft" });
+    const { body } = await send<Item>("art-staff", "PATCH", `/items/${item.id}`, {
+      status: "confirmed",
+      version: 1,
+    });
+    expect(body.status).toBe("confirmed");
+    expect((await changesOf(item.id)).at(-1)?.action).toBe("status");
+    const draft = await create({ status: "draft" });
+    const cancelled = await send("art-staff", "PATCH", `/items/${draft.id}`, {
+      status: "cancelled",
+      version: 1,
+    });
+    expect(cancelled.res.status).toBe(200);
+  });
+
+  test("the reason is kept in the change log", async () => {
+    const item = await create();
+    await send("art-staff", "PATCH", `/items/${item.id}`, {
+      startAt: START + HOUR,
+      endAt: START + 2 * HOUR,
+      reason: "ห้องไม่ว่าง",
+      version: 1,
+    });
+    expect((await changesOf(item.id)).at(-1)).toMatchObject({
+      action: "reschedule",
+      reason: "ห้องไม่ว่าง",
+      changes: { startAt: [START, START + HOUR] },
+    });
+  });
+
+  test("moving to an unknown department is refused", async () => {
+    const item = await create();
+    const { res } = await send("admin", "PATCH", `/items/${item.id}`, {
+      departmentId: "no-such-department",
+      version: 1,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("records who acted for an impersonating admin", async () => {
+    const res = await app.request("/items", {
+      method: "POST",
+      headers: {
+        "x-test-user": "art-staff",
+        "x-test-impersonated-by": "admin",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(entry()),
+    });
+    const item = (await readJson(res)) as unknown as Item;
+    expect((await changesOf(item.id))[0]).toMatchObject({
+      actorUserId: "art-staff",
+      impersonatedBy: "admin",
+    });
+  });
+});
+
+describe("more publishing rules", () => {
+  test("a vicehead and an admin publish; admins publish any department's items", async () => {
+    await t.seedUser("art-vice", { department: "Art", seat: "vicehead", name: "Art Vice" });
+    const item = await create();
+    expect(
+      (
+        await send<Item>("art-vice", "PATCH", `/items/${item.id}`, {
+          visibility: "public",
+          version: 1,
+        })
+      ).body.visibility,
+    ).toBe("public");
+    const reg = await create({ departmentId: registration, visibility: "public" }, "admin");
+    expect(reg).toMatchObject({ visibility: "public", approvedAt: expect.any(Number) });
+  });
+
+  test("only publishers take an item off the public calendar by hand", async () => {
+    const item = await create({ visibility: "public" }, "art-head");
+    expect(
+      (
+        await send("art-staff", "PATCH", `/items/${item.id}`, {
+          visibility: "internal",
+          version: 1,
+        })
+      ).res.status,
+    ).toBe(403);
+    const { body } = await send<Item>("art-head", "PATCH", `/items/${item.id}`, {
+      visibility: "internal",
+      version: 1,
+    });
+    expect(body).toMatchObject({ visibility: "internal", approvedAt: null });
+  });
+
+  test("a member may edit a public item's details without unpublishing it", async () => {
+    const item = await create({ visibility: "public" }, "art-head");
+    const { body } = await send<Item>("art-staff", "PATCH", `/items/${item.id}`, {
+      venue: "Hall 3",
+      version: 1,
+    });
+    expect(body).toMatchObject({ venue: "Hall 3", visibility: "public" });
+  });
+
+  test("a public item cannot become a draft by hand while staying public", async () => {
+    const item = await create({ visibility: "public" }, "art-head");
+    const { res } = await send("art-head", "PATCH", `/items/${item.id}`, {
+      status: "draft",
+      visibility: "public",
+      version: 1,
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("more races", () => {
+  test("an admin who lost the role mid-request cannot move an item", async () => {
+    const item = await create();
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("UPDATE user SET role = 'staff' WHERE id = 'admin'");
+    };
+    const { res } = await send("admin", "PATCH", `/items/${item.id}`, {
+      departmentId: registration,
+      version: 1,
+    });
+    expect(res.status).toBe(409);
+    const [row] = await t.db.select().from(calendarItem).where(eq(calendarItem.id, item.id));
+    expect(row?.departmentId).toBe(art);
+  });
+
+  test("an editor moved out of the department mid-delete deletes nothing", async () => {
+    const item = await create();
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("UPDATE user SET department_id = ? WHERE id = 'art-staff'", [registration]);
+    };
+    const { res } = await send("art-staff", "DELETE", `/items/${item.id}?version=1`);
+    expect(res.status).toBe(409);
+    expect(await t.db.select().from(calendarItem).where(eq(calendarItem.id, item.id))).toHaveLength(
+      1,
+    );
+    expect(await changesOf(item.id)).toHaveLength(1);
+  });
+
+  test("an editor banned mid-create writes nothing", async () => {
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("UPDATE user SET banned = 1 WHERE id = 'art-staff'");
+    };
+    expect((await send("art-staff", "POST", "/items", entry())).res.status).toBe(409);
+    expect(await t.db.select().from(calendarItem)).toEqual([]);
+  });
+
+  test("a collaborator department deleted mid-request fails cleanly", async () => {
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("DELETE FROM department WHERE id = ?", [registration]);
+    };
+    const { res } = await send(
+      "art-staff",
+      "POST",
+      "/items",
+      entry({ collaboratorIds: [registration] }),
+    );
+    expect(res.status).toBe(409);
+    expect(await t.db.select().from(calendarItem)).toEqual([]);
+  });
+});
