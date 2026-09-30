@@ -21,6 +21,8 @@ beforeEach(async () => {
   await t.seedUser("planner", { department: "กีฬา", name: "Planner" });
   await t.seedUser("owner", { department: "กีฬา", name: "Owner" });
   await t.seedUser("next-owner", { department: "กีฬา", name: "Next Owner" });
+  await t.seedUser("reg-head", { department: "ทะเบียน", seat: "head", name: "Reg Head" });
+  await t.seedUser("reg-staff", { department: "ทะเบียน", name: "Reg Staff" });
 });
 
 async function send<T = Record<string, unknown>>(
@@ -83,6 +85,23 @@ describe("notifications", () => {
     expect((await inbox("next-owner")).items.map((n) => n.kind)).toEqual(["cancel", "assignment"]);
     // The previous owner only hears about changes while they own it.
     expect((await inbox("owner")).items.map((n) => n.kind)).toEqual(["assignment"]);
+  });
+
+  test("leaders of a collaborating department hear when it is added and when the item moves", async () => {
+    const registration = await t.departmentId("ทะเบียน");
+    const item = await create({ collaboratorIds: [registration] });
+    expect((await inbox("reg-head")).items[0]).toMatchObject({
+      kind: "collaboration",
+      data: { department: "ทะเบียน", startAt: START },
+    });
+    // Only leaders are told, not every member.
+    expect((await inbox("reg-staff")).items).toEqual([]);
+    await send("planner", "PATCH", `/items/${item.id}`, {
+      status: "cancelled",
+      reason: "ฝนตก",
+      version: 1,
+    });
+    expect((await inbox("reg-head")).items.map((n) => n.kind)).toEqual(["cancel", "collaboration"]);
   });
 
   test("marking read only touches the caller's own notifications", async () => {

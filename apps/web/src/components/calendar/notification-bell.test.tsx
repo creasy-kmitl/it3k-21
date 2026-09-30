@@ -76,6 +76,9 @@ describe("describeNotification", () => {
     expect(say("assignment")).toBe('คุณเป็นผู้รับผิดชอบ "X"');
     expect(say("cancel", { reason: "ฝนตก" })).toBe('"X" ถูกยกเลิก (เหตุผล: ฝนตก)');
     expect(say("reschedule")).toBe('"X" ถูกเลื่อนเป็น เวลาใหม่');
+    expect(say("collaboration", { department: "ทะเบียน" })).toBe(
+      'ฝ่ายทะเบียนถูกเพิ่มเป็นฝ่ายที่ทำงานร่วมกันใน "X"',
+    );
     // Kinds from before the calendar was simplified still read as the title.
     expect(say("release_risk")).toBe("X");
   });

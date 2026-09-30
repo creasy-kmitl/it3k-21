@@ -35,6 +35,7 @@ export const ACTION_LABELS: Record<CalendarChangeAction, string> & Record<string
 export const FIELD_LABELS: Record<string, string> = {
   title: "ชื่อรายการ",
   departmentId: "แผนก",
+  collaboratorIds: "ฝ่ายที่ทำงานร่วมกัน",
   status: "สถานะ",
   startAt: "เริ่ม",
   endAt: "สิ้นสุด",
@@ -58,6 +59,8 @@ export function describeNotification(notice: NoticeLike): string {
   switch (notice.kind) {
     case "assignment":
       return `คุณเป็นผู้รับผิดชอบ "${title}"${when(data.startAt) ? ` เริ่ม ${when(data.startAt)}` : ""}`;
+    case "collaboration":
+      return `ฝ่าย${String(data.department ?? "")}ถูกเพิ่มเป็นฝ่ายที่ทำงานร่วมกันใน "${title}"${when(data.startAt) ? ` เริ่ม ${when(data.startAt)}` : ""}`;
     case "reschedule":
       return `"${title}" ถูกเลื่อนเป็น ${when(data.startAt) ?? "เวลาใหม่"}${reason}`;
     case "cancel":

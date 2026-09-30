@@ -8,7 +8,7 @@ import {
   calendarItem,
   canBePublic,
 } from "@it3k/db/schema/calendar";
-import { department, departmentAppearance } from "@it3k/db/schema/department";
+import { department } from "@it3k/db/schema/department";
 import { hasRole } from "@it3k/auth/permissions";
 import { type SQL, and, desc, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import { Hono } from "hono";
@@ -33,6 +33,18 @@ import {
   stillDepartmentPublisher,
 } from "../../policies/calendar";
 import { containsAny } from "../leadership";
+import {
+  type DepartmentLook,
+  collaboratorIdList,
+  collaboratorIds,
+  collaboratorWrites,
+  collaboratorsProblem,
+  currentCollaborators,
+  describeCollaborators,
+  involvesAny,
+  leadersOf,
+  loadDepartments,
+} from "./collaborators";
 import { createNotificationRoutes, notify } from "./notifications";
 import {
   type Change,
@@ -71,8 +83,8 @@ const listQuery = z
   .strictObject({
     from: z.coerce.number().pipe(epochMs),
     to: z.coerce.number().pipe(epochMs),
-    /** Omitted means every department. */
-    departmentIds: csvOf(id, 50).optional(),
+    /** Items owned by or worked on with these departments; omitted means every department. */
+    departmentIds: csvOf(id, 30).optional(),
     status: csvOf(z.enum(CALENDAR_STATUSES), CALENDAR_STATUSES.length).optional(),
     ownerId: id.optional(),
     q: searchText.optional(),
@@ -94,6 +106,8 @@ const itemFields = {
   notes: optionalText(4000),
   ownerId: id.nullable().optional(),
   visibility: z.enum(CALENDAR_VISIBILITIES),
+  /** Departments working on the item alongside the one that owns it. */
+  collaboratorIds,
 };
 
 const createInput = z.strictObject({
@@ -102,6 +116,7 @@ const createInput = z.strictObject({
   departmentId: itemFields.departmentId.optional(),
   status: itemFields.status.default("confirmed"),
   visibility: itemFields.visibility.default("internal"),
+  collaboratorIds: itemFields.collaboratorIds.default([]),
 });
 
 const updateInput = z
@@ -115,6 +130,7 @@ const updateInput = z
     notes: itemFields.notes,
     ownerId: itemFields.ownerId,
     visibility: itemFields.visibility.optional(),
+    collaboratorIds: itemFields.collaboratorIds.optional(),
     reason: optionalText(500),
     /** The version the client read; a newer one means someone else saved first. */
     version: z.number().int().min(1),
@@ -145,9 +161,7 @@ function selectItems(db: Database) {
     .select({
       item: calendarItem,
       ownerName: user.name,
-      departmentName: department.name,
-      departmentIcon: department.icon,
-      departmentColor: department.color,
+      collaboratorIds: collaboratorIdList,
     })
     .from(calendarItem)
     .innerJoin(department, eq(department.id, calendarItem.departmentId))
@@ -157,16 +171,15 @@ function selectItems(db: Database) {
 type ItemRow = Awaited<ReturnType<ReturnType<typeof selectItems>["all"]>>[number];
 
 /** An item as the API returns it. Times are epoch milliseconds (UTC). */
-function toItem(row: ItemRow, actor: CurrentUser) {
+function toItem(row: ItemRow, actor: CurrentUser, departments: Map<string, DepartmentLook>) {
   const { item } = row;
+  const owner = departments.get(item.departmentId);
+  if (!owner) throw new Error(`Department ${item.departmentId} is missing`);
   return {
     id: item.id,
-    department: departmentAppearance({
-      id: item.departmentId,
-      name: row.departmentName,
-      icon: row.departmentIcon,
-      color: row.departmentColor,
-    }),
+    department: owner,
+    /** Departments working on it too; they see it but do not edit it. */
+    collaborators: describeCollaborators(row.collaboratorIds, departments),
     title: item.title,
     status: item.status,
     startAt: item.startAt.getTime(),
@@ -188,7 +201,7 @@ export type CalendarItem = ReturnType<typeof toItem>;
 
 async function findItem(db: Database, itemId: string, actor: CurrentUser) {
   const [row] = await selectItems(db).where(eq(calendarItem.id, itemId));
-  return row ? toItem(row, actor) : null;
+  return row ? toItem(row, actor, await loadDepartments(db)) : null;
 }
 
 /** Picks the one action that best describes a change, most significant first. */
@@ -198,6 +211,33 @@ function actionFor(changes: Change, explicitlyPublished: boolean): CalendarChang
   if (explicitlyPublished) return "publish";
   if ("status" in changes) return "status";
   return "update";
+}
+
+/**
+ * Tells the head and vicehead of each newly added department that it is
+ * working on the item, naming the department so each notice reads on its own.
+ */
+async function inviteNotices(
+  db: Database,
+  actor: CurrentUser,
+  itemId: string,
+  itemTitle: string,
+  startAt: number,
+  departmentIds: string[],
+) {
+  if (departmentIds.length === 0) return [];
+  const [leaders, departments] = await Promise.all([
+    leadersOf(db, departmentIds),
+    loadDepartments(db),
+  ]);
+  return departmentIds.flatMap((departmentId) =>
+    notify(db, actor, leaders.get(departmentId) ?? [], {
+      kind: "collaboration",
+      itemId,
+      itemTitle,
+      data: { department: departments.get(departmentId)?.name ?? "", startAt },
+    }),
+  );
 }
 
 export const createCalendarRoutes = (deps: RouteDeps) =>
@@ -214,7 +254,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         gt(calendarItem.endAt, new Date(query.from)),
       ];
       if (query.departmentIds?.length) {
-        filters.push(inArray(calendarItem.departmentId, query.departmentIds));
+        filters.push(involvesAny(c.var.db, query.departmentIds));
       }
       if (query.status?.length) filters.push(inArray(calendarItem.status, query.status));
       if (query.ownerId) filters.push(eq(calendarItem.ownerId, query.ownerId));
@@ -225,9 +265,10 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         .where(and(...filters))
         .orderBy(calendarItem.startAt, calendarItem.id)
         .limit(LIST_LIMIT + 1);
+      const departments = await loadDepartments(c.var.db);
       return c.json(
         {
-          items: rows.slice(0, LIST_LIMIT).map((row) => toItem(row, c.var.user)),
+          items: rows.slice(0, LIST_LIMIT).map((row) => toItem(row, c.var.user, departments)),
           truncated: rows.length > LIST_LIMIT,
           canCreate: canCreateItems(c.var.user),
           /** The viewer's own department, which the calendar opens on. */
@@ -314,8 +355,11 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       if (!(await departmentExists(db, departmentId))) {
         return c.json({ message: "Department not found" }, 400);
       }
-      const invalid = input.ownerId ? await ownerProblem(db, input.ownerId) : null;
+      const invalid =
+        (input.ownerId ? await ownerProblem(db, input.ownerId) : null) ??
+        (await collaboratorsProblem(db, input.collaboratorIds, departmentId));
       if (invalid) return c.json({ message: invalid }, 400);
+      const collaborators = [...input.collaboratorIds].sort();
 
       const now = new Date();
       const itemId = crypto.randomUUID();
@@ -337,6 +381,15 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         const after = comparable(value);
         if (after !== null) logged[key] = [null, after];
       }
+      if (collaborators.length > 0) logged.collaboratorIds = [null, collaborators];
+      const invited = await inviteNotices(
+        db,
+        actor,
+        itemId,
+        values.title,
+        input.startAt,
+        collaborators,
+      );
       try {
         await db.batch([
           abortUnless(
@@ -347,7 +400,9 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
               : stillDepartmentEditor(departmentId),
           ),
           db.insert(calendarItem).values({ id: itemId, ...values, createdById: actor.id }),
+          ...collaboratorWrites(db, itemId, collaborators, []),
           logChange(db, actor, itemId, "create", logged),
+          ...invited,
           ...notify(db, actor, [values.ownerId], {
             kind: "assignment",
             itemId,
@@ -367,7 +422,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
 
     .patch("/items/:id", validate("param", idParam), validate("json", updateInput), async (c) => {
       const { id: itemId } = c.req.valid("param");
-      const { version, reason, ...fields } = c.req.valid("json");
+      const { version, reason, collaboratorIds: requested, ...fields } = c.req.valid("json");
       const db = c.var.db;
       const actor = c.var.user;
       const [current] = await db.select().from(calendarItem).where(eq(calendarItem.id, itemId));
@@ -415,6 +470,17 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         return c.json({ message: "Department not found" }, 400);
       }
 
+      const before = await currentCollaborators(db, itemId);
+      // A department an item moves to owns it now, so it stops being a collaborator.
+      const after = (requested ?? before).filter((d) => !moving || d !== next.departmentId).sort();
+      if (requested) {
+        const invalid = await collaboratorsProblem(db, requested, next.departmentId);
+        if (invalid) return c.json({ message: invalid }, 400);
+      }
+      if (!same(before, after)) changes.collaboratorIds = [before, after];
+      const added = after.filter((d) => !before.includes(d));
+      const removed = before.filter((d) => !after.includes(d));
+
       const now = new Date();
       const publishing = "visibility" in changes;
       const visibility = set.visibility ?? current.visibility;
@@ -453,7 +519,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
 
       const ownerId = "ownerId" in set ? (set.ownerId ?? null) : current.ownerId;
       const itemTitle = set.title ?? current.title;
-      const notices = [];
+      const notices = await inviteNotices(db, actor, itemId, itemTitle, next.startAt, added);
       if ("ownerId" in changes && ownerId) {
         notices.push(
           ...notify(db, actor, [ownerId], {
@@ -465,8 +531,10 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         );
       }
       if (moved) {
+        // Leaders of departments still working on it hear why it moved too.
+        const leaders = [...(await leadersOf(db, after)).values()].flat();
         notices.push(
-          ...notify(db, actor, [current.ownerId, ownerId], {
+          ...notify(db, actor, [current.ownerId, ownerId, ...leaders], {
             kind: action,
             itemId,
             itemTitle,
@@ -499,6 +567,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
             .set({ ...set, version: sql`${calendarItem.version} + 1`, updatedAt: now })
             .where(and(eq(calendarItem.id, itemId), eq(calendarItem.version, version)))
             .returning({ id: calendarItem.id }),
+          ...collaboratorWrites(db, itemId, added, removed),
           logChange(db, actor, itemId, action, changes, reason ?? null),
           ...notices,
         ]);

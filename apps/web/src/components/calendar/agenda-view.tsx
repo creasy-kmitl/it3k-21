@@ -72,7 +72,10 @@ export function AgendaView({
                       {item.title}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {item.department.name} · {STATUS_LABELS[item.status]}
+                      {item.department.name}
+                      {item.collaborators.length > 0 &&
+                        ` ร่วมกับ ${item.collaborators.map((d) => d.name).join(", ")}`}{" "}
+                      · {STATUS_LABELS[item.status]}
                       {item.venue && ` · ${item.venue}`}
                       {item.owner && ` · ${item.owner.name}`}
                     </span>

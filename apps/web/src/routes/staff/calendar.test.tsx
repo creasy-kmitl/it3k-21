@@ -259,7 +259,43 @@ describe("/staff/calendar", () => {
       venue: null,
       ownerId: null,
       notes: null,
+      collaboratorIds: [],
     });
+  });
+
+  test("names the departments working on an item with the owner", async () => {
+    const created: CalendarInput[] = [];
+    setup({
+      items: [
+        calendarItem({
+          title: "ลงทะเบียนนักกีฬา",
+          collaborators: [
+            { id: "d-tech", name: "Tech/Live", icon: "monitor-play", color: "indigo" },
+          ],
+        }),
+      ],
+      api: {
+        create: async (json) => {
+          created.push(json);
+          return calendarItem({ title: json.title });
+        },
+        get: async () => detail(calendarItem()),
+      },
+    });
+    const day = await agenda();
+    expect(day.textContent).toContain("Art ร่วมกับ Tech/Live");
+
+    fireEvent.click(screen.getByRole("button", { name: "เพิ่มรายการ" }));
+    const form = await screen.findByRole("form", { name: "เพิ่มรายการ" });
+    fireEvent.change(within(form).getByLabelText("ชื่อรายการ"), { target: { value: "ซ้อมใหญ่" } });
+    fireEvent.click(within(form).getByRole("button", { name: /รายละเอียดเพิ่มเติม/ }));
+    const collaborators = within(form).getByRole("group", { name: "ฝ่ายที่ทำงานร่วมกัน" });
+    // The owning department is not offered as its own collaborator.
+    expect(within(collaborators).queryByRole("checkbox", { name: "Art" })).toBeNull();
+    fireEvent.click(within(collaborators).getByRole("checkbox", { name: "Tech/Live" }));
+    fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]?.collaboratorIds).toEqual(["d-tech"]);
   });
 
   test("the optional details and publishing are there when wanted", async () => {

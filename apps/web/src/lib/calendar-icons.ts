@@ -16,6 +16,7 @@ import {
   CircleCheck,
   CircleX,
   Globe,
+  Handshake,
   History,
   Layers,
   List,
@@ -56,6 +57,7 @@ export const FALLBACK_ACTION_ICON: LucideIcon = History;
 
 export const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
   assignment: UserPlus,
+  collaboration: Handshake,
   reschedule: CalendarSync,
   cancel: CalendarX,
 };

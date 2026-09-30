@@ -1,6 +1,7 @@
 import { CALENDAR_STATUSES, type CalendarStatus } from "@it3k/db/calendar-rules";
 import { Badge } from "@it3k/ui/components/badge";
 import { Button } from "@it3k/ui/components/button";
+import { Checkbox } from "@it3k/ui/components/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
@@ -69,6 +70,7 @@ const fields = z.object({
   venue: text(120),
   ownerId: z.string(),
   notes: text(4000),
+  collaboratorIds: z.array(z.string()),
   visibility: z.enum(["internal", "public"]),
   reason: text(500),
 });
@@ -122,6 +124,7 @@ function defaults(mode: ItemFormMode): FormValues {
     venue: item?.venue ?? "",
     ownerId: item?.owner?.id ?? NONE,
     notes: item?.notes ?? "",
+    collaboratorIds: item?.collaborators.map((department) => department.id) ?? [],
     visibility: item?.visibility ?? "internal",
     reason: "",
   };
@@ -139,6 +142,8 @@ function payload(values: FormValues, canPublish: boolean): CalendarInput {
     venue: orNull(values.venue),
     ownerId: values.ownerId === NONE ? null : values.ownerId,
     notes: orNull(values.notes),
+    // The owning department is never also a collaborator.
+    collaboratorIds: values.collaboratorIds.filter((id) => id !== values.departmentId),
     ...(canPublish ? { visibility: values.visibility } : {}),
   };
 }
@@ -336,10 +341,11 @@ export function ItemForm({
   }));
   const ownDepartment = departments.find((d) => d.id === values.departmentId);
 
-  const optionalFilled = OPTIONAL_FIELDS.filter((name) => {
-    const value = values[name];
-    return value.trim() !== "" && value !== NONE;
-  }).length;
+  const optionalFilled =
+    OPTIONAL_FIELDS.filter((name) => {
+      const value = values[name];
+      return value.trim() !== "" && value !== NONE;
+    }).length + (values.collaboratorIds.length > 0 ? 1 : 0);
   const optionalInvalid = OPTIONAL_FIELDS.some(
     (name) => (fieldMeta[name]?.errors?.length ?? 0) > 0,
   );
@@ -367,7 +373,14 @@ export function ItemForm({
                   label="แผนก"
                   value={field.state.value}
                   options={departmentOptions}
-                  onChange={field.handleChange}
+                  onChange={(next) => {
+                    field.handleChange(next);
+                    // The new owner stops being a collaborator.
+                    form.setFieldValue(
+                      "collaboratorIds",
+                      form.getFieldValue("collaboratorIds").filter((id) => id !== next),
+                    );
+                  }}
                   invalid={!field.state.meta.isValid}
                   errors={field.state.meta.errors}
                 />
@@ -472,6 +485,45 @@ export function ItemForm({
                 )}
               </form.Field>
             </div>
+            <form.Field name="collaboratorIds">
+              {(field) => (
+                <fieldset
+                  className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0"
+                  aria-label="ฝ่ายที่ทำงานร่วมกัน"
+                >
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm font-medium">ฝ่ายที่ทำงานร่วมกัน</span>
+                    <Hint hint="collaborators" label="ฝ่ายที่ทำงานร่วมกัน" />
+                  </div>
+                  <div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
+                    {departments
+                      .filter((department) => department.id !== values.departmentId)
+                      .map((department) => {
+                        const id = `calendar-collaborator-${department.id}`;
+                        const checked = field.state.value.includes(department.id);
+                        return (
+                          <Field key={department.id} orientation="horizontal">
+                            <Checkbox
+                              id={id}
+                              checked={checked}
+                              onCheckedChange={(next) =>
+                                field.handleChange(
+                                  next
+                                    ? [...field.state.value, department.id]
+                                    : field.state.value.filter((value) => value !== department.id),
+                                )
+                              }
+                            />
+                            <FieldLabel htmlFor={id} className="font-normal">
+                              <DepartmentLabel department={department} />
+                            </FieldLabel>
+                          </Field>
+                        );
+                      })}
+                  </div>
+                </fieldset>
+              )}
+            </form.Field>
             {textField("notes", "โน้ตภายใน", { multiline: true, hint: "notes" })}
           </CollapsibleContent>
         </Collapsible>

@@ -13,6 +13,7 @@ import {
   Eye,
   EyeOff,
   Globe,
+  Handshake,
   History,
   type LucideIcon,
   MapPin,
@@ -65,6 +66,11 @@ export function describeValue(
   if (typeof value === "boolean") return value ? "ใช่" : "ไม่ใช่";
   if (TIME_FIELDS.has(field) && typeof value === "number") return formatBangkok(value, "dateTime");
   if (field === "departmentId") return departmentNames.get(String(value)) ?? "?";
+  if (field === "collaboratorIds" && Array.isArray(value)) {
+    return value.length
+      ? value.map((id) => departmentNames.get(String(id)) ?? "?").join(", ")
+      : "—";
+  }
   const labels = LABELLED[field];
   if (labels && typeof value === "string") return labels[value] ?? value;
   if (Array.isArray(value)) return value.join(", ");
@@ -160,6 +166,15 @@ function ItemDetails({ item }: { item: CalendarItemDetail }) {
       <Detail label="แผนก" icon={Building2} hint="department">
         <DepartmentBadge department={item.department} />
       </Detail>
+      {item.collaborators.length > 0 && (
+        <Detail label="ทำงานร่วมกับ" icon={Handshake} hint="collaborators">
+          <span className="flex flex-wrap gap-1">
+            {item.collaborators.map((department) => (
+              <DepartmentBadge key={department.id} department={department} />
+            ))}
+          </span>
+        </Detail>
+      )}
       <Detail label="สถานะ" icon={CircleDot} hint="status">
         <IconLabel icon={STATUS_ICONS[item.status]}>{STATUS_LABELS[item.status]}</IconLabel>
       </Detail>

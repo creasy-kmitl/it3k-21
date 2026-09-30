@@ -31,7 +31,11 @@ export function ItemChip({
       type="button"
       onClick={() => onSelect(item)}
       style={style}
-      aria-label={`${item.title} ${formatRange(item.startAt, item.endAt)} ${item.department.name}${draft ? ` (${STATUS_LABELS.draft})` : ""}`}
+      aria-label={`${item.title} ${formatRange(item.startAt, item.endAt)} ${item.department.name}${
+        item.collaborators.length > 0
+          ? ` ร่วมกับ ${item.collaborators.map((d) => d.name).join(", ")}`
+          : ""
+      }${draft ? ` (${STATUS_LABELS.draft})` : ""}`}
       className={cn(
         "flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-md border-l-4 border-l-current px-1.5 py-1 text-left text-xs transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         departmentTint(item),
@@ -50,7 +54,10 @@ export function ItemChip({
       </span>
       <span className="flex w-full min-w-0 items-center gap-1">
         {Icon && <Icon aria-hidden className="size-3 shrink-0" />}
-        <span className="truncate">{item.department.name}</span>
+        <span className="truncate">
+          {item.department.name}
+          {item.collaborators.length > 0 && ` +${item.collaborators.length}`}
+        </span>
         {draft && <span className="shrink-0 opacity-80">· {STATUS_LABELS.draft}</span>}
       </span>
     </button>

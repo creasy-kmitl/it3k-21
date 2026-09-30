@@ -128,6 +128,7 @@ export function calendarItem(overrides: Partial<CalendarItem> = {}): CalendarIte
   return {
     id: crypto.randomUUID(),
     department: ART_DEPARTMENT,
+    collaborators: [],
     title: "ประชุมออกแบบฉาก",
     status: "confirmed",
     startAt: CALENDAR_NOW + 60 * 60 * 1000,

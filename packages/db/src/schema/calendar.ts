@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 import {
   CALENDAR_CHANGE_ACTIONS,
@@ -63,6 +63,30 @@ export const calendarItem = sqliteTable(
       sql`${table.visibility} IN (${inList(CALENDAR_VISIBILITIES)})`,
     ),
     check("calendar_item_time_check", sql`${table.endAt} > ${table.startAt}`),
+  ],
+);
+
+/**
+ * Departments that work on an item alongside the one that owns it. They see
+ * it on their calendar; only the owning department edits it.
+ */
+export const calendarItemCollaborator = sqliteTable(
+  "calendar_item_collaborator",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    itemId: text("item_id")
+      .notNull()
+      .references(() => calendarItem.id, { onDelete: "cascade" }),
+    departmentId: text("department_id")
+      .notNull()
+      .references(() => department.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("calendar_item_collaborator_uidx").on(table.itemId, table.departmentId),
+    index("calendar_item_collaborator_department_id_idx").on(table.departmentId),
   ],
 );
 

@@ -22,6 +22,7 @@ type Item = {
   approvedAt: number | null;
   version: number;
   department: { id: string; name: string; icon: string; color: string };
+  collaborators: { id: string; name: string }[];
   owner: { id: string; name: string } | null;
   venue: string | null;
   notes: string | null;
@@ -300,6 +301,74 @@ describe("editing", () => {
       version: 1,
     });
     expect(res.status).toBe(409);
+  });
+});
+
+describe("collaborating departments", () => {
+  test("show the item on their calendar but cannot edit it", async () => {
+    const item = await create({ collaboratorIds: [registration] });
+    expect(item.collaborators).toEqual([
+      expect.objectContaining({ id: registration, name: "ทะเบียน" }),
+    ]);
+    const { body } = await send<Page>(
+      "reg-staff",
+      "GET",
+      `${range()}&departmentIds=${registration}`,
+    );
+    expect(body.items.map((i) => i.id)).toEqual([item.id]);
+    expect(body.items[0]).toMatchObject({ canEdit: false });
+    const edit = await send("reg-staff", "PATCH", `/items/${item.id}`, { title: "X", version: 1 });
+    expect(edit.res.status).toBe(403);
+  });
+
+  test("the owning department adds and removes them, and the log says so", async () => {
+    const item = await create();
+    const { body } = await send<Item>("art-staff", "PATCH", `/items/${item.id}`, {
+      collaboratorIds: [registration],
+      version: 1,
+    });
+    expect(body.collaborators.map((d) => d.id)).toEqual([registration]);
+    const cleared = await send<Item>("art-staff", "PATCH", `/items/${item.id}`, {
+      collaboratorIds: [],
+      version: 2,
+    });
+    expect(cleared.body.collaborators).toEqual([]);
+    const [, added, dropped] = await changesOf(item.id);
+    expect(added?.changes).toEqual({ collaboratorIds: [[], [registration]] });
+    expect(dropped?.changes).toEqual({ collaboratorIds: [[registration], []] });
+  });
+
+  test("refuses the owning department and unknown departments", async () => {
+    for (const ids of [[art], ["no-such-department"]]) {
+      const { res } = await send("art-staff", "POST", "/items", entry({ collaboratorIds: ids }));
+      expect(res.status).toBe(400);
+    }
+  });
+
+  test("an item moved to a collaborator is owned by it, no longer shared with it", async () => {
+    const item = await create({ collaboratorIds: [registration] });
+    const { body } = await send<Item>("admin", "PATCH", `/items/${item.id}`, {
+      departmentId: registration,
+      version: 1,
+    });
+    expect(body.department.id).toBe(registration);
+    expect(body.collaborators).toEqual([]);
+  });
+
+  test("a collaborator change based on an old version is refused", async () => {
+    const item = await create();
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("UPDATE calendar_item SET version = 2 WHERE id = ?", [item.id]);
+    };
+    const { res } = await send("art-staff", "PATCH", `/items/${item.id}`, {
+      collaboratorIds: [registration],
+      version: 1,
+    });
+    expect(res.status).toBe(409);
+    expect((await send<Item>("art-staff", "GET", `/items/${item.id}`)).body.collaborators).toEqual(
+      [],
+    );
   });
 });
 
