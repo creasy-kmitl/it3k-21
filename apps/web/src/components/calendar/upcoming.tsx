@@ -1,3 +1,4 @@
+import type { CalendarStatus } from "@it3k/db/calendar-rules";
 import { Button } from "@it3k/ui/components/button";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -31,6 +32,9 @@ export function Upcoming({ now, departmentId }: { now: number; departmentId: str
     from: anchor,
     to: anchor + LOOK_AHEAD_MS,
     departmentIds: departmentId ? [departmentId] : undefined,
+    // Filtered by the API before its 500-item limit, so cancellations
+    // cannot crowd out what is still on.
+    statuses: ["draft", "confirmed"] as CalendarStatus[],
   };
   const items = useQuery({
     queryKey: ["calendar", "items", range],

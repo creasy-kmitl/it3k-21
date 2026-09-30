@@ -70,6 +70,8 @@ describe("<Upcoming />", () => {
     expect(link.getAttribute("href")).toContain("/staff/calendar?");
     expect(link.getAttribute("href")).toContain("view=day");
     expect(queries[0]?.departmentIds).toEqual(["d-art"]);
+    // Cancellations are left out by the API, before its limit, not after.
+    expect(queries[0]?.statuses).toEqual(["draft", "confirmed"]);
     expect((queries[0]?.to ?? 0) - (queries[0]?.from ?? 0)).toBe(7 * 24 * HOUR);
   });
 
