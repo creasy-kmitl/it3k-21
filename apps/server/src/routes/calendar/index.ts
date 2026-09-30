@@ -2,11 +2,9 @@ import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
 import {
   CALENDAR_STATUSES,
-  CALENDAR_VISIBILITIES,
   type CalendarChangeAction,
   calendarChange,
   calendarItem,
-  canBePublic,
 } from "@it3k/db/schema/calendar";
 import { department } from "@it3k/db/schema/department";
 import { hasRole } from "@it3k/auth/permissions";
@@ -27,10 +25,8 @@ import { validate } from "../../middleware/validation";
 import {
   canCreateItems,
   canEditDepartment,
-  canPublishDepartment,
   stillAdmin,
   stillDepartmentEditor,
-  stillDepartmentPublisher,
 } from "../../policies/calendar";
 import { containsAny } from "../leadership";
 import {
@@ -56,7 +52,6 @@ import {
   idParam,
   itemIsAsRead,
   logChange,
-  ms,
   optionalText,
   ownerProblem,
   same,
@@ -105,7 +100,6 @@ const itemFields = {
   venue: optionalText(120),
   notes: optionalText(4000),
   ownerId: id.nullable().optional(),
-  visibility: z.enum(CALENDAR_VISIBILITIES),
   /** Departments working on the item alongside the one that owns it. */
   collaboratorIds,
 };
@@ -115,7 +109,6 @@ const createInput = z.strictObject({
   /** Defaults to the creator's own department. */
   departmentId: itemFields.departmentId.optional(),
   status: itemFields.status.default("confirmed"),
-  visibility: itemFields.visibility.default("internal"),
   collaboratorIds: itemFields.collaboratorIds.default([]),
 });
 
@@ -129,7 +122,6 @@ const updateInput = z
     venue: itemFields.venue,
     notes: itemFields.notes,
     ownerId: itemFields.ownerId,
-    visibility: itemFields.visibility.optional(),
     collaboratorIds: itemFields.collaboratorIds.optional(),
     reason: optionalText(500),
     /** The version the client read; a newer one means someone else saved first. */
@@ -188,12 +180,9 @@ function toItem(row: ItemRow, actor: CurrentUser, departments: Map<string, Depar
     venue: item.venue,
     notes: item.notes,
     owner: item.ownerId ? { id: item.ownerId, name: row.ownerName ?? "" } : null,
-    visibility: item.visibility,
-    approvedAt: ms(item.approvedAt),
     version: item.version,
     updatedAt: item.updatedAt.getTime(),
     canEdit: canEditDepartment(actor, item.departmentId),
-    canPublish: canPublishDepartment(actor, item.departmentId),
   };
 }
 
@@ -205,10 +194,9 @@ async function findItem(db: Database, itemId: string, actor: CurrentUser) {
 }
 
 /** Picks the one action that best describes a change, most significant first. */
-function actionFor(changes: Change, explicitlyPublished: boolean): CalendarChangeAction {
+function actionFor(changes: Change): CalendarChangeAction {
   if (changes.status?.[1] === "cancelled") return "cancel";
   if ("startAt" in changes || "endAt" in changes) return "reschedule";
-  if (explicitlyPublished) return "publish";
   if ("status" in changes) return "status";
   return "update";
 }
@@ -274,10 +262,6 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
           /** The viewer's own department, which the calendar opens on. */
           myDepartmentId: c.var.user.departmentId,
           isAdmin: hasRole(c.var.user.role, "admin"),
-          /** Whether the viewer may publish their own department's items. */
-          canPublishOwn:
-            c.var.user.departmentId !== null &&
-            canPublishDepartment(c.var.user, c.var.user.departmentId),
         },
         200,
       );
@@ -345,13 +329,6 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       }
       const problem = timeProblem(input);
       if (problem) return c.json({ message: problem }, 400);
-      const publishing = input.visibility === "public";
-      if (publishing && !canPublishDepartment(actor, departmentId)) {
-        return c.json({ message: "Only the department's head or vicehead can publish" }, 403);
-      }
-      if (publishing && !canBePublic(input)) {
-        return c.json({ message: "Only confirmed items can be public" }, 400);
-      }
       if (!(await departmentExists(db, departmentId))) {
         return c.json({ message: "Department not found" }, 400);
       }
@@ -361,7 +338,6 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       if (invalid) return c.json({ message: invalid }, 400);
       const collaborators = [...input.collaboratorIds].sort();
 
-      const now = new Date();
       const itemId = crypto.randomUUID();
       const values = {
         departmentId,
@@ -372,9 +348,6 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         venue: input.venue ?? null,
         notes: input.notes ?? null,
         ownerId: input.ownerId ?? null,
-        visibility: input.visibility,
-        approvedAt: publishing ? now : null,
-        approvedById: publishing ? actor.id : null,
       };
       const logged: Change = {};
       for (const [key, value] of Object.entries(values)) {
@@ -392,13 +365,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       );
       try {
         await db.batch([
-          abortUnless(
-            db,
-            actor.id,
-            publishing
-              ? stillDepartmentPublisher(departmentId)
-              : stillDepartmentEditor(departmentId),
-          ),
+          abortUnless(db, actor.id, stillDepartmentEditor(departmentId)),
           db.insert(calendarItem).values({ id: itemId, ...values, createdById: actor.id }),
           ...collaboratorWrites(db, itemId, collaborators, []),
           logChange(db, actor, itemId, "create", logged),
@@ -482,24 +449,6 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       const removed = before.filter((d) => !after.includes(d));
 
       const now = new Date();
-      const publishing = "visibility" in changes;
-      const visibility = set.visibility ?? current.visibility;
-      if (publishing && !canPublishDepartment(actor, next.departmentId)) {
-        return c.json({ message: "Only the department's head or vicehead can publish" }, 403);
-      }
-      if (visibility === "public" && !canBePublic(next)) {
-        // Asking for public, even unchanged, alongside a status that cannot be is a mistake.
-        if (publishing || fields.visibility === "public") {
-          return c.json({ message: "Only confirmed items can be public" }, 400);
-        }
-        // Leaving confirmed takes the item off the public calendar.
-        record("visibility", "internal");
-      }
-      if ("visibility" in changes) {
-        const nowPublic = set.visibility === "public";
-        record("approvedAt", nowPublic ? now : null);
-        record("approvedById", nowPublic ? actor.id : null);
-      }
 
       if (Object.keys(changes).length === 0) {
         const item = await findItem(db, itemId, actor);
@@ -507,7 +456,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         return c.json(item, 200);
       }
 
-      const action = actionFor(changes, publishing);
+      const action = actionFor(changes);
       const moved = action === "reschedule" || action === "cancel";
       // A confirmed plan that moves or is called off needs a reason for the people on it.
       if (moved && current.status === "confirmed" && !reason) {
@@ -556,9 +505,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
             db,
             actor.id,
             and(
-              publishing
-                ? stillDepartmentPublisher(current.departmentId)
-                : stillDepartmentEditor(current.departmentId),
+              stillDepartmentEditor(current.departmentId),
               moving ? stillAdmin() : undefined,
               itemIsAsRead(db, itemId, version),
             ) ?? sql`1`,

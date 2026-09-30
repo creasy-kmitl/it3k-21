@@ -137,12 +137,9 @@ export function calendarItem(overrides: Partial<CalendarItem> = {}): CalendarIte
     venue: null,
     notes: null,
     owner: { id: "u-art", name: "Art Staff" },
-    visibility: "internal",
-    approvedAt: null,
     version: 1,
     updatedAt: CALENDAR_NOW,
     canEdit: true,
-    canPublish: false,
     ...overrides,
   };
 }

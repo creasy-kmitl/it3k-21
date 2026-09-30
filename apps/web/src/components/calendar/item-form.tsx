@@ -36,8 +36,8 @@ import { useApis } from "@/lib/api-context";
 import { HOUR_MS, fromDatetimeLocal, toDatetimeLocal } from "@/lib/bangkok-time";
 import type { CalendarInput, CalendarItem, CalendarItemDetail } from "@/lib/calendar";
 import type { HintKey } from "@/lib/calendar-hints";
-import { OPTION_ICONS, STATUS_ICONS, VISIBILITY_ICONS } from "@/lib/calendar-icons";
-import { STATUS_LABELS, VISIBILITY_LABELS } from "@/lib/calendar-labels";
+import { OPTION_ICONS, STATUS_ICONS } from "@/lib/calendar-icons";
+import { STATUS_LABELS } from "@/lib/calendar-labels";
 import { ApiError, type LeadershipDepartment } from "@/lib/leadership";
 
 import { DateTimePicker } from "./date-time-picker";
@@ -52,7 +52,6 @@ export type ItemFormMode =
 export type CalendarViewer = {
   departmentId: string | null;
   isAdmin: boolean;
-  canPublishOwn: boolean;
 };
 
 const NONE = "__none__";
@@ -71,7 +70,6 @@ const fields = z.object({
   ownerId: z.string(),
   notes: text(4000),
   collaboratorIds: z.array(z.string()),
-  visibility: z.enum(["internal", "public"]),
   reason: text(500),
 });
 
@@ -94,13 +92,6 @@ function formSchema(original: CalendarItemDetail | null) {
     const end = fromDatetimeLocal(values.end);
     if (start !== null && end !== null && end <= start) {
       ctx.addIssue({ code: "custom", path: ["end"], message: "เวลาสิ้นสุดต้องหลังเวลาเริ่ม" });
-    }
-    if (values.visibility === "public" && values.status !== "confirmed") {
-      ctx.addIssue({
-        code: "custom",
-        path: ["visibility"],
-        message: "เผยแพร่สาธารณะได้เฉพาะรายการที่ยืนยันแล้ว",
-      });
     }
     if (needsReason(values, original) && !values.reason.trim()) {
       ctx.addIssue({
@@ -125,14 +116,13 @@ function defaults(mode: ItemFormMode): FormValues {
     ownerId: item?.owner?.id ?? NONE,
     notes: item?.notes ?? "",
     collaboratorIds: item?.collaborators.map((department) => department.id) ?? [],
-    visibility: item?.visibility ?? "internal",
     reason: "",
   };
 }
 
 const orNull = (value: string) => value.trim() || null;
 
-function payload(values: FormValues, canPublish: boolean): CalendarInput {
+function payload(values: FormValues): CalendarInput {
   return {
     title: values.title.trim(),
     departmentId: values.departmentId,
@@ -144,7 +134,6 @@ function payload(values: FormValues, canPublish: boolean): CalendarInput {
     notes: orNull(values.notes),
     // The owning department is never also a collaborator.
     collaboratorIds: values.collaboratorIds.filter((id) => id !== values.departmentId),
-    ...(canPublish ? { visibility: values.visibility } : {}),
   };
 }
 
@@ -257,15 +246,10 @@ export function ItemForm({
     { errors?: unknown[] } | undefined
   >;
   const askReason = needsReason(values, original);
-  const canPublish =
-    viewer.isAdmin ||
-    (original
-      ? original.canPublish
-      : viewer.canPublishOwn && values.departmentId === viewer.departmentId);
 
   const save = useMutation({
     mutationFn: (values: FormValues) => {
-      const body = payload(values, canPublish);
+      const body = payload(values);
       if (!original) return calendar.create(body);
       // Only admins move items; everyone else leaves the department alone.
       const { departmentId, ...rest } = body;
@@ -527,26 +511,6 @@ export function ItemForm({
             {textField("notes", "โน้ตภายใน", { multiline: true, hint: "notes" })}
           </CollapsibleContent>
         </Collapsible>
-        {canPublish && (
-          <form.Field name="visibility">
-            {(field) => (
-              <OptionSelect
-                id="calendar-visibility"
-                hint="visibility"
-                label="การเผยแพร่"
-                value={field.state.value}
-                options={(["internal", "public"] as const).map((value) => ({
-                  value,
-                  label: VISIBILITY_LABELS[value],
-                  icon: VISIBILITY_ICONS[value],
-                }))}
-                onChange={(next) => field.handleChange(next as "internal" | "public")}
-                invalid={!field.state.meta.isValid}
-                errors={field.state.meta.errors}
-              />
-            )}
-          </form.Field>
-        )}
         {formError && (
           <div role="alert" className="flex flex-col gap-2 text-sm text-destructive">
             <p>

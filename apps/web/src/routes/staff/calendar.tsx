@@ -227,7 +227,6 @@ export function CalendarPage({
   const viewer = {
     departmentId: items.data?.myDepartmentId ?? myDepartmentId,
     isAdmin: items.data?.isAdmin ?? false,
-    canPublishOwn: items.data?.canPublishOwn ?? false,
   };
   const showSkeleton = items.isPending || (items.isPlaceholderData && items.isFetching);
   const departmentName = (id: string | null | undefined) =>

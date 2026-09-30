@@ -12,9 +12,6 @@ import {
   CircleCheck,
   CircleDot,
   Clock,
-  Eye,
-  EyeOff,
-  Globe,
   Handshake,
   History,
   type LucideIcon,
@@ -36,18 +33,8 @@ import { useApis } from "@/lib/api-context";
 import { formatBangkok, formatRange } from "@/lib/bangkok-time";
 import type { CalendarChange, CalendarItemDetail, CalendarUpdate } from "@/lib/calendar";
 import type { HintKey } from "@/lib/calendar-hints";
-import {
-  ACTION_ICONS,
-  FALLBACK_ACTION_ICON,
-  STATUS_ICONS,
-  VISIBILITY_ICONS,
-} from "@/lib/calendar-icons";
-import {
-  ACTION_LABELS,
-  FIELD_LABELS,
-  STATUS_LABELS,
-  VISIBILITY_LABELS,
-} from "@/lib/calendar-labels";
+import { ACTION_ICONS, FALLBACK_ACTION_ICON, STATUS_ICONS } from "@/lib/calendar-icons";
+import { ACTION_LABELS, FIELD_LABELS, STATUS_LABELS } from "@/lib/calendar-labels";
 import { ApiError, type LeadershipDepartment } from "@/lib/leadership";
 
 import { Hint } from "./hint";
@@ -55,10 +42,9 @@ import { IconLabel } from "./icon-label";
 import { type CalendarViewer, ItemForm, type ItemFormMode } from "./item-form";
 import { SideDrawer } from "./side-drawer";
 
-const TIME_FIELDS = new Set(["startAt", "endAt", "approvedAt"]);
+const TIME_FIELDS = new Set(["startAt", "endAt"]);
 const LABELLED: Record<string, Record<string, string>> = {
   status: STATUS_LABELS,
-  visibility: VISIBILITY_LABELS,
 };
 
 const DELETED_DEPARTMENT = "แผนกที่ถูกลบ";
@@ -120,9 +106,9 @@ function ChangeValue({
   return <span className="min-w-0 break-words">{text}</span>;
 }
 
-const IMPORTANT_ACTIONS = new Set(["reschedule", "cancel", "publish", "delete"]);
+const IMPORTANT_ACTIONS = new Set(["reschedule", "cancel", "delete"]);
 
-/** Moves, cancellations, publishing and handovers: the changes to spot first. */
+/** Moves, cancellations, deletions and handovers: the changes to spot first. */
 export function isImportantChange(change: Pick<CalendarChange, "action" | "changes">) {
   if (IMPORTANT_ACTIONS.has(change.action)) return true;
   return "ownerId" in change.changes;
@@ -242,11 +228,6 @@ function ItemDetails({ item }: { item: CalendarItemDetail }) {
       )}
       <Detail label="สถานะ" icon={CircleDot} hint="status">
         <IconLabel icon={STATUS_ICONS[item.status]}>{STATUS_LABELS[item.status]}</IconLabel>
-      </Detail>
-      <Detail label="การเผยแพร่" icon={Eye} hint="visibility">
-        <IconLabel icon={VISIBILITY_ICONS[item.visibility]}>
-          {VISIBILITY_LABELS[item.visibility]}
-        </IconLabel>
       </Detail>
       {item.venue && (
         <Detail label="สถานที่" icon={MapPin}>
@@ -404,23 +385,6 @@ function Actions({
         >
           <CircleCheck data-icon="inline-start" />
           ยืนยันรายการ
-        </Button>
-      )}
-      {item.canPublish && (item.status === "confirmed" || item.visibility === "public") && (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={pending}
-          onClick={() =>
-            update.mutate({ visibility: item.visibility === "public" ? "internal" : "public" })
-          }
-        >
-          {item.visibility === "public" ? (
-            <EyeOff data-icon="inline-start" />
-          ) : (
-            <Globe data-icon="inline-start" />
-          )}
-          {item.visibility === "public" ? "เลิกเผยแพร่" : "เผยแพร่สาธารณะ"}
         </Button>
       )}
       {item.status !== "cancelled" && (

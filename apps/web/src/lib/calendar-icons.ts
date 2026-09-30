@@ -3,7 +3,6 @@
 import type {
   CalendarChangeAction,
   CalendarStatus,
-  CalendarVisibility,
   NotificationKind,
 } from "@it3k/db/calendar-rules";
 import {
@@ -15,13 +14,11 @@ import {
   CalendarX,
   CircleCheck,
   CircleX,
-  Globe,
   Handshake,
   History,
   Layers,
   List,
   ListFilter,
-  Lock,
   type LucideIcon,
   Minus,
   PencilLine,
@@ -49,7 +46,6 @@ export const ACTION_ICONS: Record<CalendarChangeAction, LucideIcon> &
   reschedule: CalendarSync,
   status: Layers,
   cancel: CalendarX,
-  publish: Globe,
   delete: Trash2,
 };
 
@@ -66,11 +62,6 @@ export const STATUS_ICONS: Record<CalendarStatus, LucideIcon> = {
   draft: PencilLine,
   confirmed: CircleCheck,
   cancelled: CircleX,
-};
-
-export const VISIBILITY_ICONS: Record<CalendarVisibility, LucideIcon> = {
-  internal: Lock,
-  public: Globe,
 };
 
 /** Options that mean "none", "all", a person or a department. */

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { calendarChange, calendarItem, leadership } from "@it3k/db/schema/index";
+import { calendarChange, calendarItem } from "@it3k/db/schema/index";
 import { eq, sql } from "drizzle-orm";
 
 import { createTestContext, readJson } from "../../testing";
@@ -18,8 +18,6 @@ type Item = {
   status: string;
   startAt: number;
   endAt: number;
-  visibility: string;
-  approvedAt: number | null;
   version: number;
   department: { id: string; name: string; icon: string; color: string };
   collaborators: { id: string; name: string }[];
@@ -27,7 +25,6 @@ type Item = {
   venue: string | null;
   notes: string | null;
   canEdit: boolean;
-  canPublish: boolean;
 };
 
 type Page = {
@@ -117,15 +114,13 @@ describe("reading", () => {
       canCreate: true,
       myDepartmentId: art,
       isAdmin: false,
-      canPublishOwn: false,
     });
-    expect(own.body.items[0]).toMatchObject({ canEdit: true, canPublish: false });
-    const head = await send<Page>("art-head", "GET", range());
-    expect(head.body).toMatchObject({ canPublishOwn: true });
-    expect(head.body.items[0]).toMatchObject({ canEdit: true, canPublish: true });
+    expect(own.body.items[0]).toMatchObject({ canEdit: true });
+    expect((await send<Page>("art-head", "GET", range())).body.items[0]).toMatchObject({
+      canEdit: true,
+    });
     expect((await send<Page>("reg-staff", "GET", range())).body.items[0]).toMatchObject({
       canEdit: false,
-      canPublish: false,
     });
     expect((await send<Page>("admin", "GET", range())).body).toMatchObject({
       canCreate: true,
@@ -156,7 +151,6 @@ describe("creating", () => {
     const item = await create();
     expect(item).toMatchObject({
       status: "confirmed",
-      visibility: "internal",
       department: { id: art, name: "Art" },
       owner: null,
       venue: null,
@@ -372,42 +366,6 @@ describe("collaborating departments", () => {
   });
 });
 
-describe("publishing", () => {
-  test("the department's head publishes; members and other heads cannot", async () => {
-    const item = await create();
-    expect(
-      (await send("art-staff", "PATCH", `/items/${item.id}`, { visibility: "public", version: 1 }))
-        .res.status,
-    ).toBe(403);
-    const { body } = await send<Item>("art-head", "PATCH", `/items/${item.id}`, {
-      visibility: "public",
-      version: 1,
-    });
-    expect(body).toMatchObject({ visibility: "public", approvedAt: expect.any(Number) });
-    expect((await changesOf(item.id)).at(-1)?.action).toBe("publish");
-  });
-
-  test("drafts cannot be public", async () => {
-    const { res } = await send(
-      "art-head",
-      "POST",
-      "/items",
-      entry({ status: "draft", visibility: "public" }),
-    );
-    expect(res.status).toBe(400);
-  });
-
-  test("leaving confirmed takes an item off the public calendar", async () => {
-    const item = await create({ visibility: "public" }, "art-head");
-    const { body } = await send<Item>("art-staff", "PATCH", `/items/${item.id}`, {
-      status: "cancelled",
-      reason: "ยกเลิก",
-      version: 1,
-    });
-    expect(body).toMatchObject({ status: "cancelled", visibility: "internal", approvedAt: null });
-  });
-});
-
 describe("deleting", () => {
   test("removes the item and keeps its history", async () => {
     const item = await create();
@@ -434,24 +392,6 @@ describe("races", () => {
     const [row] = await t.db.select().from(calendarItem).where(eq(calendarItem.id, item.id));
     expect(row).toMatchObject({ title: item.title, version: 1 });
     expect(await changesOf(item.id)).toHaveLength(1);
-  });
-
-  test("a head who lost the seat mid-request cannot publish", async () => {
-    const item = await create();
-    t.hooks.beforeBatch = () => {
-      t.hooks.beforeBatch = undefined;
-      t.sqlite.run("DELETE FROM leadership WHERE user_id = 'art-head'");
-    };
-    const { res } = await send("art-head", "PATCH", `/items/${item.id}`, {
-      visibility: "public",
-      version: 1,
-    });
-    expect(res.status).toBe(409);
-    const [row] = await t.db.select().from(calendarItem).where(eq(calendarItem.id, item.id));
-    expect(row?.visibility).toBe("internal");
-    expect(await t.db.select().from(leadership).where(eq(leadership.userId, "art-head"))).toEqual(
-      [],
-    );
   });
 
   test("an edit saved by someone else mid-request wins", async () => {
@@ -509,7 +449,8 @@ describe("access and validation", () => {
       entry({ title: "   " }),
       entry({ title: "x".repeat(201) }),
       entry({ status: "live" }),
-      entry({ visibility: "secret" }),
+      // Nothing is published any more: the calendar is for staff only.
+      entry({ visibility: "public" }),
       entry({ startAt: 0 }),
       entry({ venue: "x".repeat(121) }),
       entry({ extra: true }),
@@ -645,59 +586,6 @@ describe("more editing rules", () => {
       actorUserId: "art-staff",
       impersonatedBy: "admin",
     });
-  });
-});
-
-describe("more publishing rules", () => {
-  test("a vicehead and an admin publish; admins publish any department's items", async () => {
-    await t.seedUser("art-vice", { department: "Art", seat: "vicehead", name: "Art Vice" });
-    const item = await create();
-    expect(
-      (
-        await send<Item>("art-vice", "PATCH", `/items/${item.id}`, {
-          visibility: "public",
-          version: 1,
-        })
-      ).body.visibility,
-    ).toBe("public");
-    const reg = await create({ departmentId: registration, visibility: "public" }, "admin");
-    expect(reg).toMatchObject({ visibility: "public", approvedAt: expect.any(Number) });
-  });
-
-  test("only publishers take an item off the public calendar by hand", async () => {
-    const item = await create({ visibility: "public" }, "art-head");
-    expect(
-      (
-        await send("art-staff", "PATCH", `/items/${item.id}`, {
-          visibility: "internal",
-          version: 1,
-        })
-      ).res.status,
-    ).toBe(403);
-    const { body } = await send<Item>("art-head", "PATCH", `/items/${item.id}`, {
-      visibility: "internal",
-      version: 1,
-    });
-    expect(body).toMatchObject({ visibility: "internal", approvedAt: null });
-  });
-
-  test("a member may edit a public item's details without unpublishing it", async () => {
-    const item = await create({ visibility: "public" }, "art-head");
-    const { body } = await send<Item>("art-staff", "PATCH", `/items/${item.id}`, {
-      venue: "Hall 3",
-      version: 1,
-    });
-    expect(body).toMatchObject({ venue: "Hall 3", visibility: "public" });
-  });
-
-  test("a public item cannot become a draft by hand while staying public", async () => {
-    const item = await create({ visibility: "public" }, "art-head");
-    const { res } = await send("art-head", "PATCH", `/items/${item.id}`, {
-      status: "draft",
-      visibility: "public",
-      version: 1,
-    });
-    expect(res.status).toBe(400);
   });
 });
 

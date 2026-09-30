@@ -49,7 +49,6 @@ describe("<Upcoming />", () => {
           canCreate: true,
           myDepartmentId: departmentId,
           isAdmin: false,
-          canPublishOwn: false,
         };
       },
     });

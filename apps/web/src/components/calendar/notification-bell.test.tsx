@@ -85,7 +85,7 @@ describe("describeNotification", () => {
 });
 
 describe("isImportantChange", () => {
-  test("flags moves, cancellations, publishing and handovers", () => {
+  test("flags moves, cancellations and handovers", () => {
     expect(isImportantChange({ action: "reschedule", changes: {} })).toBe(true);
     expect(isImportantChange({ action: "cancel", changes: {} })).toBe(true);
     expect(isImportantChange({ action: "update", changes: { ownerId: ["a", "b"] } })).toBe(true);

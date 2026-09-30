@@ -9,7 +9,6 @@ import { env } from "./env.server";
 import type { RouteDeps } from "./middleware/current-user";
 import { createCalendarRoutes } from "./routes/calendar";
 import { createDepartmentRoutes } from "./routes/departments";
-import { createPublicCalendarRoutes } from "./routes/public-calendar";
 import { createUserRoutes } from "./routes/users";
 import { createLeadershipRoutes, recordContactReveal } from "./routes/leadership";
 import { createAuth, getDb } from "./services";
@@ -65,8 +64,6 @@ app.route(
 );
 
 app.route("/api/calendar", createCalendarRoutes(deps));
-// No sign-in: approved, confirmed live operations only.
-app.route("/api/public/calendar", createPublicCalendarRoutes(deps));
 
 app.get("/", (c) => {
   return c.text("OK");

@@ -13,6 +13,7 @@ import {
 } from "./index";
 
 const MINIMAL_CALENDAR = "20260930083849_minimal_calendar";
+const STAFF_ONLY = "20260930094427_staff_only_calendar";
 const START = Date.UTC(2026, 9, 10, 6);
 const HOUR = 60 * 60 * 1000;
 
@@ -83,7 +84,7 @@ describe("migrating the Tech/Live calendar to the minimal one", () => {
     oldItem("e-cancelled", "cancelled");
     oldItem("f-rolled-back", "rolled_back", { mode: "delivery", category: "release" });
     oldItem("g-completed", "completed");
-    applyMigrations(sqlite, { from: MINIMAL_CALENDAR });
+    applyMigrations(sqlite, { from: MINIMAL_CALENDAR, before: STAFF_ONLY });
 
     const techLive = sqlite.query("SELECT id FROM department WHERE code = 'tech-live'").get() as {
       id: string;
@@ -106,7 +107,7 @@ describe("migrating the Tech/Live calendar to the minimal one", () => {
     oldItem("a-public", "live", { visibility: "public", approved_at: START, approved_by_id: "u1" });
     oldItem("b-draft-public", "draft", { visibility: "public", approved_at: START });
     oldItem("c-archived", "confirmed", { archived_at: START });
-    applyMigrations(sqlite, { from: MINIMAL_CALENDAR });
+    applyMigrations(sqlite, { from: MINIMAL_CALENDAR, before: STAFF_ONLY });
 
     expect(rows().map((row) => [row.id, row.visibility, row.approved_at])).toEqual([
       ["a-public", "public", START],
@@ -129,7 +130,7 @@ describe("migrating the Tech/Live calendar to the minimal one", () => {
     sqlite.run(
       "INSERT INTO calendar_notification (id, user_id, item_id, kind, item_title, data) VALUES ('n', 'u1', 'a', 'request', 'a', '{}')",
     );
-    applyMigrations(sqlite, { from: MINIMAL_CALENDAR });
+    applyMigrations(sqlite, { from: MINIMAL_CALENDAR, before: STAFF_ONLY });
 
     for (const gone of [
       "calendar_item_department",
@@ -178,7 +179,6 @@ describe("calendar schema", () => {
   test("refuses unknown statuses and items that end before they start", async () => {
     await expect(insertItem({ status: "live" as never })).rejects.toThrow();
     await expect(insertItem({ endAt: new Date(START) })).rejects.toThrow();
-    await expect(insertItem({ visibility: "secret" as never })).rejects.toThrow();
   });
 
   test("names each collaborating department once per item", async () => {
@@ -233,5 +233,53 @@ describe("calendar schema", () => {
     await t.db.delete(user).where(eq(user.id, "u1"));
     const [row] = await t.db.select().from(calendarItem).where(eq(calendarItem.id, item.id));
     expect(row).toMatchObject({ ownerId: null, createdById: null });
+  });
+});
+
+describe("dropping publishing when the calendar became staff-only", () => {
+  test("keeps every item, collaborator and notification, and drops the columns", () => {
+    const sqlite = new Sqlite(":memory:", { strict: true });
+    sqlite.run("PRAGMA foreign_keys = ON");
+    applyMigrations(sqlite, { before: STAFF_ONLY });
+    sqlite.run("INSERT INTO user (id, name, email) VALUES ('u1', 'U1', 'u1@example.com')");
+    const art = sqlite.query("SELECT id FROM department WHERE name = 'Art'").get() as {
+      id: string;
+    };
+    const pr = sqlite.query("SELECT id FROM department WHERE name = 'PR'").get() as { id: string };
+    sqlite.run(
+      `INSERT INTO calendar_item (id, department_id, title, status, start_at, end_at, owner_id, visibility, approved_at, approved_by_id, version)
+       VALUES ('a', ?, 'Public one', 'confirmed', ?, ?, 'u1', 'public', ?, 'u1', 3)`,
+      [art.id, START, START + HOUR, START],
+    );
+    sqlite.run(
+      "INSERT INTO calendar_item_collaborator (id, item_id, department_id) VALUES ('c', 'a', ?)",
+      [pr.id],
+    );
+    sqlite.run(
+      "INSERT INTO calendar_notification (id, user_id, item_id, kind, item_title, data) VALUES ('n', 'u1', 'a', 'collaboration', 'Public one', '{}')",
+    );
+    applyMigrations(sqlite, { from: STAFF_ONLY });
+
+    expect(sqlite.query("SELECT id, title, owner_id, version FROM calendar_item").all()).toEqual([
+      { id: "a", title: "Public one", owner_id: "u1", version: 3 },
+    ]);
+    expect(sqlite.query("SELECT id, item_id FROM calendar_item_collaborator").all()).toEqual([
+      { id: "c", item_id: "a" },
+    ]);
+    expect(sqlite.query("SELECT id FROM calendar_notification").all()).toEqual([{ id: "n" }]);
+    const columns = (
+      sqlite.query("PRAGMA table_info(calendar_item)").all() as { name: string }[]
+    ).map((column) => column.name);
+    expect(columns).not.toContain("visibility");
+    expect(columns).not.toContain("approved_at");
+    expect(sqlite.query("SELECT name FROM sqlite_master WHERE name LIKE '__keep%'").all()).toEqual(
+      [],
+    );
+    expect(sqlite.query("PRAGMA foreign_key_check").all()).toEqual([]);
+    // The collaborators still follow their item.
+    sqlite.run("DELETE FROM calendar_item WHERE id = 'a'");
+    expect(sqlite.query("SELECT count(*) AS n FROM calendar_item_collaborator").get()).toEqual({
+      n: 0,
+    });
   });
 });

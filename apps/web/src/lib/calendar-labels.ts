@@ -1,8 +1,4 @@
-import type {
-  CalendarChangeAction,
-  CalendarStatus,
-  CalendarVisibility,
-} from "@it3k/db/calendar-rules";
+import type { CalendarChangeAction, CalendarStatus } from "@it3k/db/calendar-rules";
 
 import { formatBangkok } from "./bangkok-time";
 
@@ -10,11 +6,6 @@ export const STATUS_LABELS: Record<CalendarStatus, string> = {
   draft: "ร่าง",
   confirmed: "ยืนยันแล้ว",
   cancelled: "ยกเลิก",
-};
-
-export const VISIBILITY_LABELS: Record<CalendarVisibility, string> = {
-  internal: "ภายในทีม",
-  public: "สาธารณะ",
 };
 
 /**
@@ -27,7 +18,6 @@ export const ACTION_LABELS: Record<CalendarChangeAction, string> & Record<string
   reschedule: "เลื่อนเวลา",
   status: "เปลี่ยนสถานะ",
   cancel: "ยกเลิก",
-  publish: "เปลี่ยนการเผยแพร่",
   delete: "ลบรายการ",
 };
 
@@ -42,9 +32,6 @@ export const FIELD_LABELS: Record<string, string> = {
   ownerId: "ผู้รับผิดชอบ",
   venue: "สถานที่",
   notes: "โน้ตภายใน",
-  visibility: "การเผยแพร่",
-  approvedAt: "อนุมัติเผยแพร่",
-  approvedById: "ผู้อนุมัติ",
 };
 
 type NoticeLike = { kind: string; itemTitle: string; data: Record<string, unknown> };

@@ -5,7 +5,6 @@ import {
   CALENDAR_CHANGE_ACTIONS,
   CALENDAR_STATUSES,
   CALENDAR_TIMEZONE,
-  CALENDAR_VISIBILITIES,
   NOTIFICATION_KINDS,
 } from "../calendar-rules";
 import { user } from "./auth";
@@ -37,12 +36,8 @@ export const calendarItem = sqliteTable(
     // Every time is shown in Bangkok time; stored so each record says so.
     timezone: text("timezone").default(CALENDAR_TIMEZONE).notNull(),
     venue: text("venue"),
-    // Internal only: never part of a public view.
     notes: text("notes"),
     ownerId: text("owner_id").references(() => user.id, { onDelete: "set null" }),
-    visibility: text("visibility", { enum: CALENDAR_VISIBILITIES }).default("internal").notNull(),
-    approvedAt: integer("approved_at", { mode: "timestamp_ms" }),
-    approvedById: text("approved_by_id").references(() => user.id, { onDelete: "set null" }),
     // Bumped by every write, so an edit based on an old read is refused.
     version: integer("version").default(1).notNull(),
     createdById: text("created_by_id").references(() => user.id, { onDelete: "set null" }),
@@ -58,10 +53,6 @@ export const calendarItem = sqliteTable(
     index("calendar_item_owner_id_idx").on(table.ownerId),
     index("calendar_item_department_id_idx").on(table.departmentId, table.startAt),
     check("calendar_item_status_check", sql`${table.status} IN (${inList(CALENDAR_STATUSES)})`),
-    check(
-      "calendar_item_visibility_check",
-      sql`${table.visibility} IN (${inList(CALENDAR_VISIBILITIES)})`,
-    ),
     check("calendar_item_time_check", sql`${table.endAt} > ${table.startAt}`),
   ],
 );

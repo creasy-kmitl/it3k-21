@@ -55,7 +55,7 @@ function detail(item: CalendarItem, overrides: Partial<CalendarItemDetail> = {})
   return { ...item, changes: [], ...overrides };
 }
 
-type Viewer = { canCreate?: boolean; isAdmin?: boolean; canPublishOwn?: boolean };
+type Viewer = { canCreate?: boolean; isAdmin?: boolean };
 
 function setup({
   items,
@@ -80,7 +80,6 @@ function setup({
         canCreate: viewer.canCreate ?? true,
         myDepartmentId,
         isAdmin: viewer.isAdmin ?? false,
-        canPublishOwn: viewer.canPublishOwn ?? false,
       };
     },
     ...api,
@@ -299,11 +298,10 @@ describe("/staff/calendar", () => {
     expect(created[0]?.collaboratorIds).toEqual(["d-tech"]);
   });
 
-  test("the optional details and publishing are there when wanted", async () => {
+  test("the optional details are there when wanted", async () => {
     const created: CalendarInput[] = [];
     setup({
       items: [],
-      viewer: { canPublishOwn: true },
       api: {
         create: async (json) => {
           created.push(json);
@@ -319,22 +317,23 @@ describe("/staff/calendar", () => {
     fireEvent.change(within(form).getByLabelText("สถานที่"), { target: { value: "ห้อง 301" } });
     fireEvent.change(within(form).getByLabelText("โน้ตภายใน"), { target: { value: "ยืมขาตั้ง" } });
     await choose(within(form).getByRole("combobox", { name: "ผู้รับผิดชอบ" }), "Art Staff (Art)");
-    await choose(within(form).getByRole("combobox", { name: "การเผยแพร่" }), "สาธารณะ");
     fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0]).toMatchObject({
       venue: "ห้อง 301",
       notes: "ยืมขาตั้ง",
       ownerId: "u-art",
-      visibility: "public",
     });
+    // The calendar is for staff only: nothing is published.
+    expect(created[0]).not.toHaveProperty("visibility");
   });
 
-  test("members who cannot publish are not offered it", async () => {
+  test("members add to their own department and nothing is published", async () => {
     setup({ items: [] });
     fireEvent.click(await screen.findByRole("button", { name: "เพิ่มรายการ" }));
     const form = await screen.findByRole("form", { name: "เพิ่มรายการ" });
     expect(within(form).queryByRole("combobox", { name: "การเผยแพร่" })).toBeNull();
+    expect(form.textContent).not.toContain("สาธารณะ");
     // Members add to their own department only, so it is shown, not chosen.
     expect(within(form).queryByRole("combobox", { name: "แผนก" })).toBeNull();
   });
@@ -460,24 +459,6 @@ describe("/staff/calendar", () => {
     await waitFor(() => expect(removed).toEqual([[item.id, 3]]));
   });
 
-  test("publishers publish confirmed items from the detail panel", async () => {
-    const item = calendarItem({ canPublish: true });
-    const updates: CalendarUpdate[] = [];
-    setup({
-      items: [item],
-      search: { item: item.id },
-      api: {
-        get: async () => detail(item),
-        update: async (_id, json) => {
-          updates.push(json);
-          return item;
-        },
-      },
-    });
-    fireEvent.click(await screen.findByRole("button", { name: "เผยแพร่สาธารณะ" }));
-    await waitFor(() => expect(updates).toEqual([{ visibility: "public", version: 1 }]));
-  });
-
   test("keeps showing the last data when a refresh fails", async () => {
     let fail = false;
     const item = calendarItem({ title: "Grand final" });
@@ -492,7 +473,6 @@ describe("/staff/calendar", () => {
             canCreate: false,
             myDepartmentId: "d-art",
             isAdmin: false,
-            canPublishOwn: false,
           };
         },
       },
@@ -531,7 +511,6 @@ describe("/staff/calendar", () => {
       defined(document.querySelector<HTMLElement>('[data-slot="popover-content"][data-open]')),
     );
     expect(notes.textContent).toContain("เห็นเฉพาะทีมงานที่ล็อกอิน");
-    expect(notes.textContent).toContain("ไม่แสดงในหน้าสาธารณะ");
   });
 
   describe("detail panel", () => {
@@ -577,14 +556,6 @@ describe("/staff/calendar", () => {
       const updates = open(calendarItem({ status: "draft" }));
       fireEvent.click(await screen.findByRole("button", { name: "ยืนยันรายการ" }));
       await waitFor(() => expect(updates).toEqual([{ status: "confirmed", version: 1 }]));
-      // Drafts cannot be public, so there is nothing to publish yet.
-      expect(screen.queryByRole("button", { name: "เผยแพร่สาธารณะ" })).toBeNull();
-    });
-
-    test("publishers take a public item off the public calendar", async () => {
-      const updates = open(calendarItem({ canPublish: true, visibility: "public" }));
-      fireEvent.click(await screen.findByRole("button", { name: "เลิกเผยแพร่" }));
-      await waitFor(() => expect(updates).toEqual([{ visibility: "internal", version: 1 }]));
     });
 
     test("shows the details, the collaborating departments and a readable history", async () => {
@@ -656,28 +627,6 @@ describe("/staff/calendar", () => {
   });
 
   describe("form rules", () => {
-    test("drafts cannot be made public", async () => {
-      const created: CalendarInput[] = [];
-      setup({
-        items: [],
-        viewer: { canPublishOwn: true },
-        api: {
-          create: async (json) => {
-            created.push(json);
-            return calendarItem();
-          },
-        },
-      });
-      fireEvent.click(await screen.findByRole("button", { name: "เพิ่มรายการ" }));
-      const form = await screen.findByRole("form", { name: "เพิ่มรายการ" });
-      fireEvent.change(within(form).getByLabelText("ชื่อรายการ"), { target: { value: "X" } });
-      await choose(within(form).getByRole("combobox", { name: "สถานะ" }), "ร่าง");
-      await choose(within(form).getByRole("combobox", { name: "การเผยแพร่" }), "สาธารณะ");
-      fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
-      expect(await within(form).findByText("เผยแพร่สาธารณะได้เฉพาะรายการที่ยืนยันแล้ว")).toBeTruthy();
-      expect(created).toHaveLength(0);
-    });
-
     test("an admin moving an item to a collaborator drops it from the collaborators", async () => {
       const item = calendarItem({
         collaborators: [{ id: "d-tech", name: "Tech/Live", icon: "monitor-play", color: "indigo" }],
