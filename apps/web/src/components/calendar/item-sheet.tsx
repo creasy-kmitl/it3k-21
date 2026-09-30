@@ -37,6 +37,7 @@ import { ACTION_ICONS, FALLBACK_ACTION_ICON, STATUS_ICONS } from "@/lib/calendar
 import { ACTION_LABELS, FIELD_LABELS, STATUS_LABELS } from "@/lib/calendar-labels";
 import { ApiError, type LeadershipDepartment } from "@/lib/leadership";
 
+import { AddToCalendar } from "./add-to-calendar";
 import { Hint } from "./hint";
 import { IconLabel } from "./icon-label";
 import { type CalendarViewer, ItemForm, type ItemFormMode } from "./item-form";
@@ -301,7 +302,14 @@ function Actions({
     onSettled: (_data, error) => refreshOnConflict(error),
   });
 
-  if (!item.canEdit) return null;
+  // Everyone who can read an item can copy it into their own calendar.
+  if (!item.canEdit) {
+    return (
+      <div className="flex flex-wrap gap-2">
+        <AddToCalendar item={item} />
+      </div>
+    );
+  }
   const pending = update.isPending || remove.isPending;
   // Only a confirmed plan needs a reason to be called off, as on the server.
   const cancelNeedsReason = item.status === "confirmed";
@@ -393,6 +401,7 @@ function Actions({
           ยกเลิกรายการ
         </Button>
       )}
+      <AddToCalendar item={item} />
       <Button size="sm" variant="ghost" disabled={pending} onClick={() => setAsking("delete")}>
         <Trash2 data-icon="inline-start" />
         ลบ
