@@ -62,10 +62,10 @@
     "vite-plus": "catalog:"
   },
   "overrides": {
-    "@effect/platform-node-shared": "4.0.0-rc.118",
-    "@effect/sql-d1": "4.0.0-rc.118",
-    "@effect/sql-sqlite-do": "4.0.0-rc.118",
-    "@effect/vitest": "4.0.0-rc.118",
+    "@effect/platform-node-shared": "4.0.0-rc.117",
+    "@effect/sql-d1": "4.0.0-rc.117",
+    "@effect/sql-sqlite-do": "4.0.0-rc.117",
+    "@effect/vitest": "4.0.0-rc.117",
     "vite": "catalog:",
     "vitest": "5.0.1"
   },
