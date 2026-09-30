@@ -156,6 +156,30 @@ function ChecklistPanel({ item }: { item: CalendarItemDetail }) {
   );
 }
 
+const IMPORTANT_ACTIONS = new Set(["reschedule", "cancel", "release_approval", "publish"]);
+const IMPORTANT_FIELDS = [
+  "ownerId",
+  "onCallOwnerId",
+  "scoreboardOperatorId",
+  "monitoringOwnerId",
+  "venue",
+  "streamPlatform",
+  "conflicts",
+];
+const IMPORTANT_STATUSES = new Set(["live", "released", "rolled_back", "delayed"]);
+
+/**
+ * Changes that touch a live block, the people on it, the venue or stream,
+ * or a release: the ones to spot first when reading the history.
+ */
+export function isImportantChange(change: Pick<CalendarChange, "action" | "changes">) {
+  if (IMPORTANT_ACTIONS.has(change.action)) return true;
+  const fields = Object.keys(change.changes);
+  if (fields.some((field) => IMPORTANT_FIELDS.includes(field))) return true;
+  const status = (change.changes as Record<string, [unknown, unknown]>).status?.[1];
+  return typeof status === "string" && IMPORTANT_STATUSES.has(status);
+}
+
 function ChangeLog({
   changes,
   departmentNames,
@@ -166,9 +190,18 @@ function ChangeLog({
   return (
     <ol className="flex flex-col gap-3" aria-label="ประวัติการเปลี่ยนแปลง">
       {changes.map((change) => (
-        <li key={change.id} className="border-l-2 pl-3 text-xs">
-          <p className="font-medium">
+        <li
+          key={change.id}
+          className={cn(
+            "border-l-2 pl-3 text-xs",
+            isImportantChange(change) && "border-l-amber-500",
+          )}
+        >
+          <p className="flex items-center gap-1.5 font-medium">
             {ACTION_LABELS[change.action]} · {change.actorName ?? "ผู้ใช้ที่ถูกลบ"}
+            {isImportantChange(change) && (
+              <span className="rounded-full bg-amber-500 px-1.5 text-[10px] text-black">สำคัญ</span>
+            )}
           </p>
           <p className="text-muted-foreground">{formatBangkok(change.createdAt, "dateTime")}</p>
           {change.reason && <p className="mt-1">เหตุผล: {change.reason}</p>}

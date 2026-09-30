@@ -116,6 +116,8 @@ export function fakeCalendarApi(overrides: Partial<CalendarApi> = {}): CalendarA
     request: unexpected("calendar.request"),
     check: unexpected("calendar.check"),
     search: async () => ({ items: [] }),
+    notifications: async () => ({ items: [], unread: 0, attention: [] }),
+    markRead: unexpected("calendar.markRead"),
     addDependency: unexpected("calendar.addDependency"),
     removeDependency: unexpected("calendar.removeDependency"),
     answer: unexpected("calendar.answer"),

@@ -16,6 +16,7 @@ import {
   LIVE_CHECKLIST,
 } from "@it3k/db/calendar-rules";
 
+import { formatBangkok } from "./bangkok-time";
 import type { CalendarItem } from "./calendar";
 
 export const MODE_LABELS: Record<CalendarMode, string> = {
@@ -372,4 +373,47 @@ export function closeOutMessage(body: unknown): string | null {
   }
   const labels = missing.map((key) => CLOSE_OUT_LABELS[String(key)] ?? String(key));
   return `ปิดรายการนี้ไม่ได้ ต้องมี${labels.join(", ")}ก่อน`;
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  ownerId: "ผู้รับผิดชอบ",
+  onCallOwnerId: "on-call",
+  scoreboardOperatorId: "คนคุม scoreboard",
+  monitoringOwnerId: "ผู้ดูแลการ monitor",
+};
+
+type NoticeLike = { kind: string; itemTitle: string; data: Record<string, unknown> };
+
+const when = (value: unknown) =>
+  typeof value === "number" ? formatBangkok(value, "dateTime") : null;
+
+/** A notification in one Thai sentence. */
+export function describeNotification(notice: NoticeLike): string {
+  const { data, itemTitle: title } = notice;
+  const reason = typeof data.reason === "string" && data.reason ? ` (เหตุผล: ${data.reason})` : "";
+  switch (notice.kind) {
+    case "assignment": {
+      const role = ROLE_LABELS[String(data.role ?? "ownerId")] ?? "ผู้รับผิดชอบ";
+      const series = typeof data.series === "number" ? ` ทั้งชุด ${data.series} ครั้ง` : "";
+      return `คุณเป็น${role}ของ "${title}"${series}${when(data.startAt) ? ` เริ่ม ${when(data.startAt)}` : ""}`;
+    }
+    case "reschedule":
+      return `"${title}" ถูกเลื่อนเป็น ${when(data.startAt) ?? "เวลาใหม่"}${reason}`;
+    case "cancel":
+      return `"${title}" ถูกยกเลิก${reason}`;
+    case "dependency":
+      return data.change === "cancel"
+        ? `"${title}" ที่งานของคุณรออยู่ถูกยกเลิก${reason}`
+        : `"${title}" ที่งานของคุณรออยู่ถูกเลื่อนเป็น ${when(data.startAt) ?? "เวลาใหม่"}${reason}`;
+    case "request":
+      return `ฝ่าย${String(data.department ?? "")}ถูกขอข้อมูลใน "${title}": ${String(data.request ?? "")}${when(data.dueAt) ? ` ภายใน ${when(data.dueAt)}` : ""}`;
+    case "action_item":
+      return `คุณได้รับ action item "${String(data.title ?? "")}" จาก "${title}"${when(data.dueAt) ? ` ภายใน ${when(data.dueAt)}` : ""}`;
+    case "release_risk":
+      return data.approvalWithdrawn
+        ? `การอนุมัติ release "${title}" ถูกถอน เพราะแผนเปลี่ยน`
+        : `release "${title}" ทับช่วงไลฟ์: ${Array.isArray(data.conflicts) ? data.conflicts.join(", ") : ""}`;
+    default:
+      return title;
+  }
 }

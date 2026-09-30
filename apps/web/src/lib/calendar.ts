@@ -29,6 +29,9 @@ export type CalendarSearchResult = InferResponseType<
   Client["search"]["$get"],
   200
 >["items"][number];
+export type CalendarInbox = InferResponseType<Client["notifications"]["$get"], 200>;
+export type CalendarNotification = CalendarInbox["items"][number];
+export type CalendarAttention = CalendarInbox["attention"][number];
 export type CalendarChecklistEntry = NonNullable<CalendarItemDetail["checklist"]>[number];
 export type CalendarChecklistInput = InferRequestType<Item["checklist"][":key"]["$put"]>["json"];
 
@@ -174,6 +177,19 @@ export function createCalendarApi(baseUrl: string, fetchImpl?: ClientRequestOpti
 
     async removeDependency(id: string) {
       const res = await client.dependencies[":id"].$delete({ param: { id } });
+      if (!res.ok) throw await toApiError(res);
+    },
+
+    async notifications() {
+      const res = await client.notifications.$get();
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
+
+    async markRead(ids: string[] | "all") {
+      const res = await client.notifications.read.$post({
+        json: ids === "all" ? { all: true } : { ids },
+      });
       if (!res.ok) throw await toApiError(res);
     },
 

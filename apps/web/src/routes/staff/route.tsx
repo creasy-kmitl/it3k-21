@@ -12,6 +12,7 @@ import { cn } from "@it3k/ui/lib/utils";
 import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-router";
 
 import { AppSidebar } from "@/components/app-sidebar";
+import { NotificationBell } from "@/components/calendar/notification-bell";
 import { authClient } from "@/lib/auth-client";
 import { clearCacheOnUserChange } from "@/lib/query-cache";
 
@@ -78,6 +79,7 @@ function AuthLayout() {
                   </BreadcrumbList>
                 </Breadcrumb>
               )}
+              <NotificationBell />
             </div>
           </header>
           <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
