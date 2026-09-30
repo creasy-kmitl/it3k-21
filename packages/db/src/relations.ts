@@ -34,6 +34,30 @@ export const relations = defineRelations(schema, (r) => ({
       optional: false,
     }),
   },
+  calendarItem: {
+    owner: r.one.user({
+      from: r.calendarItem.ownerId,
+      to: r.user.id,
+    }),
+    collaborators: r.many.calendarItemCollaborator(),
+    department: r.one.department({
+      from: r.calendarItem.departmentId,
+      to: r.department.id,
+      optional: false,
+    }),
+  },
+  calendarItemCollaborator: {
+    item: r.one.calendarItem({
+      from: r.calendarItemCollaborator.itemId,
+      to: r.calendarItem.id,
+      optional: false,
+    }),
+    department: r.one.department({
+      from: r.calendarItemCollaborator.departmentId,
+      to: r.department.id,
+      optional: false,
+    }),
+  },
   session: {
     user: r.one.user({
       from: r.session.userId,

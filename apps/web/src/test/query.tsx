@@ -6,6 +6,7 @@ import type { RouteComponent } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { ApiProvider, type Apis } from "@/lib/api-context";
+import type { CalendarApi, CalendarItem } from "@/lib/calendar";
 import type { LeadershipApi, LeadershipPage, LeadershipSummary } from "@/lib/leadership";
 import type { UsersApi } from "@/lib/users";
 
@@ -54,7 +55,11 @@ export function renderRoute(
   if (!Page) throw new Error("Route has no component");
   return renderWithQuery(
     <ApiProvider
-      value={{ leadership: apis.leadership ?? fakeApi(), users: apis.users ?? fakeUsersApi() }}
+      value={{
+        leadership: apis.leadership ?? fakeApi(),
+        users: apis.users ?? fakeUsersApi(),
+        calendar: apis.calendar ?? fakeCalendarApi(),
+      }}
     >
       <Page />
     </ApiProvider>,
@@ -96,4 +101,45 @@ export function summary(overrides: Partial<LeadershipSummary> = {}): LeadershipS
 
 export function page(items: LeadershipSummary[], overrides: Partial<LeadershipPage> = {}) {
   return { items, page: 1, hasMore: false, canCreate: false, ...overrides };
+}
+
+export function fakeCalendarApi(overrides: Partial<CalendarApi> = {}): CalendarApi {
+  return {
+    list: unexpected("calendar.list"),
+    get: unexpected("calendar.get"),
+    people: async () => ({
+      items: [{ id: "u-art", name: "Art Staff", departmentName: "Art" }],
+    }),
+    create: unexpected("calendar.create"),
+    update: unexpected("calendar.update"),
+    remove: unexpected("calendar.remove"),
+    notifications: async () => ({ items: [], unread: 0, nextCursor: null }),
+    markRead: unexpected("calendar.markRead"),
+    ...overrides,
+  };
+}
+
+// 2026-10-10 13:00 Bangkok time.
+export const CALENDAR_NOW = Date.UTC(2026, 9, 10, 6);
+
+export const ART_DEPARTMENT = { id: "d-art", name: "Art", icon: "palette", color: "rose" } as const;
+
+export function calendarItem(overrides: Partial<CalendarItem> = {}): CalendarItem {
+  return {
+    id: crypto.randomUUID(),
+    department: ART_DEPARTMENT,
+    collaborators: [],
+    title: "ประชุมออกแบบฉาก",
+    status: "confirmed",
+    startAt: CALENDAR_NOW + 60 * 60 * 1000,
+    endAt: CALENDAR_NOW + 3 * 60 * 60 * 1000,
+    timezone: "Asia/Bangkok",
+    venue: null,
+    notes: null,
+    owner: { id: "u-art", name: "Art Staff" },
+    version: 1,
+    updatedAt: CALENDAR_NOW,
+    canEdit: true,
+    ...overrides,
+  };
 }

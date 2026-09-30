@@ -18,9 +18,25 @@ const SITE_TITLE = "IT3Kings";
 const SITE_DESCRIPTION =
   "มหกรรมแข่งขันกีฬาสานสัมพันธ์ของนักศึกษาด้านเทคโนโลยีสารสนเทศจาก 3 สถาบันพระจอมเกล้า (มจธ., มจพ. และ สจล.)";
 
+/**
+ * Preloads for the fonts the first paint needs. Client-only pages (`ssr:
+ * false`, e.g. /staff and /login) paint nothing until their JavaScript runs,
+ * so a preload there sits unused and browsers warn about it; they skip it.
+ */
+export function fontPreloads(matches: readonly { ssr?: boolean | "data-only" }[]) {
+  if (matches.some((match) => match.ssr === false)) return [];
+  return PRELOAD_FONTS.map((href) => ({
+    rel: "preload",
+    href,
+    as: "font",
+    type: "font/woff2",
+    crossOrigin: "anonymous" as const,
+  }));
+}
+
 export const Route = createRootRouteWithContext<RouterAppContext>()({
   loader: () => ({ origin: getOrigin() }),
-  head: ({ loaderData }) => {
+  head: ({ loaderData, matches }) => {
     const ogImage = `${loaderData?.origin ?? ""}/og.png`;
 
     return {
@@ -57,13 +73,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
           rel: "stylesheet",
           href: appCss,
         },
-        ...PRELOAD_FONTS.map((href) => ({
-          rel: "preload",
-          href,
-          as: "font",
-          type: "font/woff2",
-          crossOrigin: "anonymous" as const,
-        })),
+        ...fontPreloads(matches),
         { rel: "icon", href: "/favicon.ico", sizes: "48x48" },
         { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
         { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },

@@ -7,6 +7,7 @@ import { cors } from "hono/cors";
 
 import { env } from "./env.server";
 import type { RouteDeps } from "./middleware/current-user";
+import { createCalendarRoutes } from "./routes/calendar";
 import { createDepartmentRoutes } from "./routes/departments";
 import { createUserRoutes } from "./routes/users";
 import { createLeadershipRoutes, recordContactReveal } from "./routes/leadership";
@@ -61,6 +62,8 @@ app.route(
     audit: async (c, event) => recordContactReveal(c.var.log, event),
   }),
 );
+
+app.route("/api/calendar", createCalendarRoutes(deps));
 
 app.get("/", (c) => {
   return c.text("OK");
