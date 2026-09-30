@@ -287,10 +287,7 @@ async function findItem(db: Database, itemId: string, actor: CurrentUser) {
 
 /** The owner must be a staff member or admin. */
 async function ownerProblem(db: Database, ownerId: string): Promise<string | null> {
-  const [owner] = await db
-    .select({ role: user.role })
-    .from(user)
-    .where(eq(user.id, ownerId));
+  const [owner] = await db.select({ role: user.role }).from(user).where(eq(user.id, ownerId));
   if (!owner) return "Owner not found";
   const roles = (owner.role ?? "").split(",").map((role) => role.trim());
   if (!roles.includes("staff") && !roles.includes("admin")) return "The owner must be a member";

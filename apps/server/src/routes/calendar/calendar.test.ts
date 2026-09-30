@@ -138,7 +138,12 @@ describe("create", () => {
   });
 
   test("rejects categories and statuses from another mode", async () => {
-    const wrongCategory = await send("tech-staff", "POST", "/items", match({ category: "release" }));
+    const wrongCategory = await send(
+      "tech-staff",
+      "POST",
+      "/items",
+      match({ category: "release" }),
+    );
     expect(wrongCategory.res.status).toBe(400);
     const wrongStatus = await send("tech-staff", "POST", "/items", match({ status: "released" }));
     expect(wrongStatus.res.status).toBe(400);
@@ -187,7 +192,11 @@ describe("list", () => {
     await send("tech-staff", "PATCH", `/items/${inside.id}`, { archived: true, version: 1 });
     const visible = await send<{ items: Item[] }>("tech-staff", "GET", range());
     expect(visible.body.items.map((item) => item.id)).toEqual([spanning.id]);
-    const all = await send<{ items: Item[] }>("tech-staff", "GET", `${range()}&includeArchived=true`);
+    const all = await send<{ items: Item[] }>(
+      "tech-staff",
+      "GET",
+      `${range()}&includeArchived=true`,
+    );
     expect(all.body.items).toHaveLength(2);
   });
 
@@ -354,9 +363,7 @@ describe("races", () => {
     const item = await create();
     t.hooks.beforeBatch = () => {
       t.hooks.beforeBatch = undefined;
-      t.sqlite.run("UPDATE calendar_item SET version = 2, title = 'Other' WHERE id = ?", [
-        item.id,
-      ]);
+      t.sqlite.run("UPDATE calendar_item SET version = 2, title = 'Other' WHERE id = ?", [item.id]);
     };
     const { res } = await send("tech-staff", "PATCH", `/items/${item.id}`, {
       title: "Mine",
