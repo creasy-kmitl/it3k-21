@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "f0f60533-b7a9-45a0-b648-3ad29ea469a7",
+  "id": "759bc467-e4a6-42eb-a96d-380633fb9f26",
   "prevIds": [
     "f830fd90-f191-4873-86fb-9e50f0448861"
   ],
@@ -39,7 +39,15 @@
       "entityType": "tables"
     },
     {
+      "name": "calendar_action_item",
+      "entityType": "tables"
+    },
+    {
       "name": "calendar_change",
+      "entityType": "tables"
+    },
+    {
+      "name": "calendar_decision",
       "entityType": "tables"
     },
     {
@@ -738,6 +746,126 @@
       "generated": null,
       "name": "id",
       "entityType": "columns",
+      "table": "calendar_action_item"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "item_id",
+      "entityType": "columns",
+      "table": "calendar_action_item"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "title",
+      "entityType": "columns",
+      "table": "calendar_action_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "owner_id",
+      "entityType": "columns",
+      "table": "calendar_action_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "department_id",
+      "entityType": "columns",
+      "table": "calendar_action_item"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "due_at",
+      "entityType": "columns",
+      "table": "calendar_action_item"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'open'",
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "calendar_action_item"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "done_at",
+      "entityType": "columns",
+      "table": "calendar_action_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "done_by_id",
+      "entityType": "columns",
+      "table": "calendar_action_item"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "1",
+      "generated": null,
+      "name": "version",
+      "entityType": "columns",
+      "table": "calendar_action_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_by_id",
+      "entityType": "columns",
+      "table": "calendar_action_item"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "(cast(unixepoch('subsecond') * 1000 as integer))",
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "calendar_action_item"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
       "table": "calendar_change"
     },
     {
@@ -809,6 +937,56 @@
       "name": "created_at",
       "entityType": "columns",
       "table": "calendar_change"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "calendar_decision"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "item_id",
+      "entityType": "columns",
+      "table": "calendar_decision"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "text",
+      "entityType": "columns",
+      "table": "calendar_decision"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_by_id",
+      "entityType": "columns",
+      "table": "calendar_decision"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "(cast(unixepoch('subsecond') * 1000 as integer))",
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "calendar_decision"
     },
     {
       "type": "text",
@@ -1101,6 +1279,16 @@
       "table": "calendar_item"
     },
     {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "series_id",
+      "entityType": "columns",
+      "table": "calendar_item"
+    },
+    {
       "type": "integer",
       "notNull": true,
       "autoincrement": false,
@@ -1167,6 +1355,76 @@
       "default": null,
       "generated": null,
       "name": "department_id",
+      "entityType": "columns",
+      "table": "calendar_item_department"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'involved'",
+      "generated": null,
+      "name": "state",
+      "entityType": "columns",
+      "table": "calendar_item_department"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "request",
+      "entityType": "columns",
+      "table": "calendar_item_department"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "contact_user_id",
+      "entityType": "columns",
+      "table": "calendar_item_department"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "due_at",
+      "entityType": "columns",
+      "table": "calendar_item_department"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "response",
+      "entityType": "columns",
+      "table": "calendar_item_department"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "answered_at",
+      "entityType": "columns",
+      "table": "calendar_item_department"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "answered_by_id",
       "entityType": "columns",
       "table": "calendar_item_department"
     },
@@ -1262,6 +1520,111 @@
     },
     {
       "columns": [
+        "item_id"
+      ],
+      "tableTo": "calendar_item",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_calendar_action_item_item_id_calendar_item_id_fk",
+      "entityType": "fks",
+      "table": "calendar_action_item"
+    },
+    {
+      "columns": [
+        "owner_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_calendar_action_item_owner_id_user_id_fk",
+      "entityType": "fks",
+      "table": "calendar_action_item"
+    },
+    {
+      "columns": [
+        "department_id"
+      ],
+      "tableTo": "department",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_calendar_action_item_department_id_department_id_fk",
+      "entityType": "fks",
+      "table": "calendar_action_item"
+    },
+    {
+      "columns": [
+        "done_by_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_calendar_action_item_done_by_id_user_id_fk",
+      "entityType": "fks",
+      "table": "calendar_action_item"
+    },
+    {
+      "columns": [
+        "created_by_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_calendar_action_item_created_by_id_user_id_fk",
+      "entityType": "fks",
+      "table": "calendar_action_item"
+    },
+    {
+      "columns": [
+        "item_id"
+      ],
+      "tableTo": "calendar_item",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_calendar_decision_item_id_calendar_item_id_fk",
+      "entityType": "fks",
+      "table": "calendar_decision"
+    },
+    {
+      "columns": [
+        "created_by_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_calendar_decision_created_by_id_user_id_fk",
+      "entityType": "fks",
+      "table": "calendar_decision"
+    },
+    {
+      "columns": [
         "owner_id"
       ],
       "tableTo": "user",
@@ -1352,6 +1715,36 @@
     },
     {
       "columns": [
+        "contact_user_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_calendar_item_department_contact_user_id_user_id_fk",
+      "entityType": "fks",
+      "table": "calendar_item_department"
+    },
+    {
+      "columns": [
+        "answered_by_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_calendar_item_department_answered_by_id_user_id_fk",
+      "entityType": "fks",
+      "table": "calendar_item_department"
+    },
+    {
+      "columns": [
         "id"
       ],
       "nameExplicit": false,
@@ -1427,8 +1820,26 @@
         "id"
       ],
       "nameExplicit": false,
+      "name": "calendar_action_item_pk",
+      "table": "calendar_action_item",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
       "name": "calendar_change_pk",
       "table": "calendar_change",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "calendar_decision_pk",
+      "table": "calendar_decision",
       "entityType": "pks"
     },
     {
@@ -1628,6 +2039,56 @@
         {
           "value": "item_id",
           "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "calendar_action_item_item_id_idx",
+      "entityType": "indexes",
+      "table": "calendar_action_item"
+    },
+    {
+      "columns": [
+        {
+          "value": "owner_id",
+          "isExpression": false
+        },
+        {
+          "value": "status",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "calendar_action_item_owner_id_idx",
+      "entityType": "indexes",
+      "table": "calendar_action_item"
+    },
+    {
+      "columns": [
+        {
+          "value": "department_id",
+          "isExpression": false
+        },
+        {
+          "value": "status",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "calendar_action_item_department_id_idx",
+      "entityType": "indexes",
+      "table": "calendar_action_item"
+    },
+    {
+      "columns": [
+        {
+          "value": "item_id",
+          "isExpression": false
         },
         {
           "value": "created_at",
@@ -1640,6 +2101,24 @@
       "name": "calendar_change_item_id_idx",
       "entityType": "indexes",
       "table": "calendar_change"
+    },
+    {
+      "columns": [
+        {
+          "value": "item_id",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "calendar_decision_item_id_idx",
+      "entityType": "indexes",
+      "table": "calendar_decision"
     },
     {
       "columns": [
@@ -1694,6 +2173,24 @@
       "where": null,
       "origin": "manual",
       "name": "calendar_item_mode_idx",
+      "entityType": "indexes",
+      "table": "calendar_item"
+    },
+    {
+      "columns": [
+        {
+          "value": "series_id",
+          "isExpression": false
+        },
+        {
+          "value": "start_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "calendar_item_series_id_idx",
       "entityType": "indexes",
       "table": "calendar_item"
     },
@@ -1769,6 +2266,12 @@
       "table": "leadership_social"
     },
     {
+      "value": "\"status\" IN ('open', 'done')",
+      "name": "calendar_action_item_status_check",
+      "entityType": "checks",
+      "table": "calendar_action_item"
+    },
+    {
       "value": "\"mode\" IN ('operations', 'coordination', 'delivery', 'meetings')",
       "name": "calendar_item_mode_check",
       "entityType": "checks",
@@ -1809,6 +2312,12 @@
       "name": "calendar_item_time_check",
       "entityType": "checks",
       "table": "calendar_item"
+    },
+    {
+      "value": "\"state\" IN ('involved', 'requested', 'answered')",
+      "name": "calendar_item_department_state_check",
+      "entityType": "checks",
+      "table": "calendar_item_department"
     }
   ],
   "renames": []

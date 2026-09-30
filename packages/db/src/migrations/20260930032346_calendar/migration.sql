@@ -1,3 +1,24 @@
+CREATE TABLE `calendar_action_item` (
+	`id` text PRIMARY KEY,
+	`item_id` text NOT NULL,
+	`title` text NOT NULL,
+	`owner_id` text,
+	`department_id` text,
+	`due_at` integer,
+	`status` text DEFAULT 'open' NOT NULL,
+	`done_at` integer,
+	`done_by_id` text,
+	`version` integer DEFAULT 1 NOT NULL,
+	`created_by_id` text,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	CONSTRAINT `fk_calendar_action_item_item_id_calendar_item_id_fk` FOREIGN KEY (`item_id`) REFERENCES `calendar_item`(`id`) ON DELETE CASCADE,
+	CONSTRAINT `fk_calendar_action_item_owner_id_user_id_fk` FOREIGN KEY (`owner_id`) REFERENCES `user`(`id`) ON DELETE SET NULL,
+	CONSTRAINT `fk_calendar_action_item_department_id_department_id_fk` FOREIGN KEY (`department_id`) REFERENCES `department`(`id`) ON DELETE SET NULL,
+	CONSTRAINT `fk_calendar_action_item_done_by_id_user_id_fk` FOREIGN KEY (`done_by_id`) REFERENCES `user`(`id`) ON DELETE SET NULL,
+	CONSTRAINT `fk_calendar_action_item_created_by_id_user_id_fk` FOREIGN KEY (`created_by_id`) REFERENCES `user`(`id`) ON DELETE SET NULL,
+	CONSTRAINT "calendar_action_item_status_check" CHECK("status" IN ('open', 'done'))
+);
+--> statement-breakpoint
 CREATE TABLE `calendar_change` (
 	`id` text PRIMARY KEY,
 	`item_id` text NOT NULL,
@@ -7,6 +28,16 @@ CREATE TABLE `calendar_change` (
 	`changes` text NOT NULL,
 	`reason` text,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE `calendar_decision` (
+	`id` text PRIMARY KEY,
+	`item_id` text NOT NULL,
+	`text` text NOT NULL,
+	`created_by_id` text,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	CONSTRAINT `fk_calendar_decision_item_id_calendar_item_id_fk` FOREIGN KEY (`item_id`) REFERENCES `calendar_item`(`id`) ON DELETE CASCADE,
+	CONSTRAINT `fk_calendar_decision_created_by_id_user_id_fk` FOREIGN KEY (`created_by_id`) REFERENCES `user`(`id`) ON DELETE SET NULL
 );
 --> statement-breakpoint
 CREATE TABLE `calendar_item` (
@@ -39,6 +70,7 @@ CREATE TABLE `calendar_item` (
 	`feature` text,
 	`environment` text,
 	`archived_at` integer,
+	`series_id` text,
 	`version` integer DEFAULT 1 NOT NULL,
 	`created_by_id` text,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
@@ -60,14 +92,29 @@ CREATE TABLE `calendar_item_department` (
 	`id` text PRIMARY KEY,
 	`item_id` text NOT NULL,
 	`department_id` text NOT NULL,
+	`state` text DEFAULT 'involved' NOT NULL,
+	`request` text,
+	`contact_user_id` text,
+	`due_at` integer,
+	`response` text,
+	`answered_at` integer,
+	`answered_by_id` text,
 	CONSTRAINT `fk_calendar_item_department_item_id_calendar_item_id_fk` FOREIGN KEY (`item_id`) REFERENCES `calendar_item`(`id`) ON DELETE CASCADE,
-	CONSTRAINT `fk_calendar_item_department_department_id_department_id_fk` FOREIGN KEY (`department_id`) REFERENCES `department`(`id`) ON DELETE CASCADE
+	CONSTRAINT `fk_calendar_item_department_department_id_department_id_fk` FOREIGN KEY (`department_id`) REFERENCES `department`(`id`) ON DELETE CASCADE,
+	CONSTRAINT `fk_calendar_item_department_contact_user_id_user_id_fk` FOREIGN KEY (`contact_user_id`) REFERENCES `user`(`id`) ON DELETE SET NULL,
+	CONSTRAINT `fk_calendar_item_department_answered_by_id_user_id_fk` FOREIGN KEY (`answered_by_id`) REFERENCES `user`(`id`) ON DELETE SET NULL,
+	CONSTRAINT "calendar_item_department_state_check" CHECK("state" IN ('involved', 'requested', 'answered'))
 );
 --> statement-breakpoint
+CREATE INDEX `calendar_action_item_item_id_idx` ON `calendar_action_item` (`item_id`);--> statement-breakpoint
+CREATE INDEX `calendar_action_item_owner_id_idx` ON `calendar_action_item` (`owner_id`,`status`);--> statement-breakpoint
+CREATE INDEX `calendar_action_item_department_id_idx` ON `calendar_action_item` (`department_id`,`status`);--> statement-breakpoint
 CREATE INDEX `calendar_change_item_id_idx` ON `calendar_change` (`item_id`,`created_at`);--> statement-breakpoint
+CREATE INDEX `calendar_decision_item_id_idx` ON `calendar_decision` (`item_id`,`created_at`);--> statement-breakpoint
 CREATE INDEX `calendar_item_start_at_idx` ON `calendar_item` (`start_at`);--> statement-breakpoint
 CREATE INDEX `calendar_item_end_at_idx` ON `calendar_item` (`end_at`);--> statement-breakpoint
 CREATE INDEX `calendar_item_owner_id_idx` ON `calendar_item` (`owner_id`);--> statement-breakpoint
 CREATE INDEX `calendar_item_mode_idx` ON `calendar_item` (`mode`);--> statement-breakpoint
+CREATE INDEX `calendar_item_series_id_idx` ON `calendar_item` (`series_id`,`start_at`);--> statement-breakpoint
 CREATE UNIQUE INDEX `calendar_item_department_uidx` ON `calendar_item_department` (`item_id`,`department_id`);--> statement-breakpoint
 CREATE INDEX `calendar_item_department_department_id_idx` ON `calendar_item_department` (`department_id`);

@@ -4,6 +4,7 @@ import { department } from "@it3k/db/schema/department";
 import { leadership } from "@it3k/db/schema/leadership";
 import { type SQL, sql } from "drizzle-orm";
 
+import type { CurrentUser } from "../middleware/current-user";
 import type { Actor } from "./leadership";
 
 const TECH_LIVE = "tech-live";
@@ -48,4 +49,36 @@ export function stillCalendarEditor(): SQL {
 /** SQL twin of canApproveCalendar, for abortUnless on the actor's row. */
 export function stillCalendarApprover(): SQL {
   return sql`(${notBanned()} and (${roleIncludes("admin")} or (${roleIncludes("staff")} and ${inTechLive()} and ${holdsTechLiveSeat()})))`;
+}
+
+/**
+ * Members of an involved department answer what Tech/Live asked of it;
+ * editors may record an answer on the department's behalf.
+ */
+export function canAnswerRequest(actor: CurrentUser | null, departmentId: string): boolean {
+  if (canEditCalendar(actor)) return true;
+  return !!actor && !actor.banned && isMember(actor.role) && actor.departmentId === departmentId;
+}
+
+/** Editors, the assignee and the assigned department may tick an action item off. */
+export function canCompleteActionItem(
+  actor: CurrentUser | null,
+  action: { ownerId: string | null; departmentId: string | null },
+): boolean {
+  if (canEditCalendar(actor)) return true;
+  if (!actor || actor.banned || !isMember(actor.role)) return false;
+  return (
+    action.ownerId === actor.id ||
+    (action.departmentId !== null && action.departmentId === actor.departmentId)
+  );
+}
+
+/** SQL: the actor is still an unbanned member. */
+export function stillMember(): SQL {
+  return sql`(${notBanned()} and (${roleIncludes("admin")} or ${roleIncludes("staff")}))`;
+}
+
+/** SQL: the actor is still an unbanned member of this department. */
+export function stillInDepartment(departmentId: string): SQL {
+  return sql`(${stillMember()} and ${user.departmentId} = ${departmentId})`;
 }

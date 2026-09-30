@@ -8,17 +8,19 @@ import {
   CATEGORIES_BY_MODE,
   type CalendarChangeAction,
   GAMES,
+  MAX_REPEAT_COUNT,
+  REPEAT_UNITS,
   RISK_LEVELS,
   calendarChange,
   calendarItem,
   calendarItemDepartment,
   isTbd,
+  needsCloseOut,
   statusesFor,
 } from "@it3k/db/schema/calendar";
 import { department } from "@it3k/db/schema/department";
 import { type SQL, and, desc, eq, exists, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { createMiddleware } from "hono/factory";
 import { z } from "zod";
 
 import {
@@ -26,7 +28,6 @@ import {
   type CurrentUserEnv,
   type RouteDeps,
   abortUnless,
-  constraintError,
   requireJsonPosts,
   requireMember,
   requireUser,
@@ -39,6 +40,30 @@ import {
   stillCalendarEditor,
 } from "../../policies/calendar";
 import { containsAny } from "../leadership";
+import {
+  closeOutProblems,
+  createCoordinationRoutes,
+  hasMeetingRecord,
+  loadCoordination,
+} from "./coordination";
+import {
+  type Change,
+  STALE_MESSAGE,
+  comparable,
+  conflictResponse,
+  departmentsProblem,
+  editorOnly,
+  epochMs,
+  id,
+  idParam,
+  itemIsAsRead,
+  logChange,
+  ms,
+  optionalText,
+  ownerProblem,
+  same,
+  searchText,
+} from "./shared";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Widest window one list request may cover: a month view plus its edges. */
@@ -48,41 +73,12 @@ const MAX_ITEM_MS = 31 * DAY_MS;
 export const LIST_LIMIT = 500;
 const PEOPLE_LIMIT = 20;
 const CHANGE_LOG_LIMIT = 50;
-const MAX_QUERY_CODE_POINTS = 64;
-
-const STALE_MESSAGE = "This item changed while you were editing; reload and try again";
-
-const epochMs = z
-  .number()
-  .int()
-  .min(Date.UTC(2020, 0, 1))
-  .max(Date.UTC(2100, 0, 1));
-const id = z.string().min(1).max(64);
-const idParam = z.strictObject({ id: z.uuid() });
-
-const searchText = z
-  .string()
-  .trim()
-  .refine((q) => [...q].length <= MAX_QUERY_CODE_POINTS, {
-    message: `Search is limited to ${MAX_QUERY_CODE_POINTS} characters`,
-  });
-
 /** A comma-separated query value, e.g. `?mode=operations,delivery`. */
 const csvOf = <const T extends readonly [string, ...string[]]>(values: T) =>
   z
     .string()
     .transform((value) => value.split(",").filter(Boolean))
     .pipe(z.array(z.enum(values)).max(values.length));
-
-/** Trimmed optional text where blank means "none". */
-const optionalText = (max: number) =>
-  z
-    .string()
-    .trim()
-    .max(max)
-    .transform((value) => value || null)
-    .nullable()
-    .optional();
 
 /** Links must be https so the calendar never renders javascript: or data: links. */
 const optionalLink = z
@@ -163,6 +159,13 @@ const createInput = z.strictObject({
   departmentIds: departmentIds.default([]),
   /** Records that the details were checked against their source just now. */
   confirm: z.boolean().default(false),
+  /** Creates a series: this item plus `count - 1` copies, one per day or week. */
+  repeat: z
+    .strictObject({
+      every: z.enum(REPEAT_UNITS),
+      count: z.number().int().min(2).max(MAX_REPEAT_COUNT),
+    })
+    .optional(),
 });
 
 const updateInput = z
@@ -228,16 +231,21 @@ const departmentIdList = sql<
   string | null
 >`(select group_concat(${calendarItemDepartment.departmentId}) from ${calendarItemDepartment} where ${calendarItemDepartment.itemId} = ${calendarItem.id})`;
 
+const pendingRequests = sql<number>`(select count(*) from ${calendarItemDepartment} where ${calendarItemDepartment.itemId} = ${calendarItem.id} and ${calendarItemDepartment.state} = 'requested')`;
+
 function selectItems(db: Database) {
   return db
-    .select({ item: calendarItem, ownerName: user.name, departmentIds: departmentIdList })
+    .select({
+      item: calendarItem,
+      ownerName: user.name,
+      departmentIds: departmentIdList,
+      pendingRequests,
+    })
     .from(calendarItem)
     .leftJoin(user, eq(user.id, calendarItem.ownerId));
 }
 
 type ItemRow = Awaited<ReturnType<ReturnType<typeof selectItems>["all"]>>[number];
-
-const ms = (date: Date | null) => (date ? date.getTime() : null);
 
 /** An item as the API returns it. Times are epoch milliseconds (UTC). */
 function toItem(row: ItemRow, actor: CurrentUser) {
@@ -273,6 +281,9 @@ function toItem(row: ItemRow, actor: CurrentUser) {
     version: item.version,
     updatedAt: item.updatedAt.getTime(),
     departmentIds: row.departmentIds ? row.departmentIds.split(",") : [],
+    seriesId: item.seriesId,
+    /** Departments that still owe Tech/Live an answer. */
+    pendingRequests: Number(row.pendingRequests),
     tbd: isTbd(item),
     canEdit: canEditCalendar(actor),
   };
@@ -285,34 +296,6 @@ async function findItem(db: Database, itemId: string, actor: CurrentUser) {
   return row ? toItem(row, actor) : null;
 }
 
-/** The owner must be a staff member or admin. */
-async function ownerProblem(db: Database, ownerId: string): Promise<string | null> {
-  const [owner] = await db.select({ role: user.role }).from(user).where(eq(user.id, ownerId));
-  if (!owner) return "Owner not found";
-  const roles = (owner.role ?? "").split(",").map((role) => role.trim());
-  if (!roles.includes("staff") && !roles.includes("admin")) return "The owner must be a member";
-  return null;
-}
-
-async function departmentsProblem(db: Database, ids: string[]): Promise<string | null> {
-  if (ids.length === 0) return null;
-  const rows = await db
-    .select({ id: department.id })
-    .from(department)
-    .where(inArray(department.id, ids));
-  return rows.length === ids.length ? null : "Department not found";
-}
-
-/** Same item, same version: nobody saved in between. For abortUnless. */
-function itemIsAsRead(db: Database, itemId: string, version: number) {
-  return exists(
-    db
-      .select({ id: calendarItem.id })
-      .from(calendarItem)
-      .where(and(eq(calendarItem.id, itemId), eq(calendarItem.version, version))),
-  );
-}
-
 function insertDepartments(db: Database, itemId: string, ids: string[]) {
   return ids.length > 0
     ? [
@@ -322,17 +305,6 @@ function insertDepartments(db: Database, itemId: string, ids: string[]) {
       ]
     : [];
 }
-
-type Change = Record<string, [unknown, unknown]>;
-
-/** Stored values in the shape the change log and the API use. */
-function comparable(value: unknown) {
-  if (value instanceof Date) return value.getTime();
-  if (value === undefined) return null;
-  return value;
-}
-
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** Picks the one action that best describes a change, most significant first. */
 function actionFor(changes: Change): CalendarChangeAction {
@@ -344,22 +316,6 @@ function actionFor(changes: Change): CalendarChangeAction {
   if (Object.keys(changes).every((key) => key.startsWith("lastConfirmed"))) return "confirm";
   return "update";
 }
-
-function conflictResponse(error: unknown) {
-  const kind = constraintError(error);
-  if (kind === "stale") return { message: STALE_MESSAGE, status: 409 as const };
-  if (kind === "foreign-key") {
-    return { message: "The owner or a department no longer exists", status: 409 as const };
-  }
-  return null;
-}
-
-const editorOnly = createMiddleware<CurrentUserEnv>(async (c, next) => {
-  if (!canEditCalendar(c.var.user)) {
-    return c.json({ message: "Forbidden" }, 403);
-  }
-  await next();
-});
 
 export const createCalendarRoutes = (deps: RouteDeps) =>
   new Hono<CurrentUserEnv>()
@@ -436,12 +392,11 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       const db = c.var.db;
       const item = await findItem(db, itemId, c.var.user);
       if (!item) return c.json({ message: "Item not found" }, 404);
-      const departments = await db
-        .select({ id: department.id, name: department.name })
-        .from(calendarItemDepartment)
-        .innerJoin(department, eq(department.id, calendarItemDepartment.departmentId))
-        .where(eq(calendarItemDepartment.itemId, itemId))
-        .orderBy(department.createdAt, department.name);
+      const coordination = await loadCoordination(
+        db,
+        { id: item.id, seriesId: item.seriesId, startAt: new Date(item.startAt) },
+        c.var.user,
+      );
       const changes = await db
         .select({
           id: calendarChange.id,
@@ -461,7 +416,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       return c.json(
         {
           ...item,
-          departments,
+          ...coordination,
           changes: changes.map((change) => ({
             ...change,
             createdAt: change.createdAt.getTime(),
@@ -490,7 +445,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
     })
 
     .post("/items", editorOnly, validate("json", createInput), async (c) => {
-      const { departmentIds: ids, confirm, ...fields } = c.req.valid("json");
+      const { departmentIds: ids, confirm, repeat, ...fields } = c.req.valid("json");
       const db = c.var.db;
       const actor = c.var.user;
       const problem = itemProblem(fields);
@@ -508,40 +463,43 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         (await ownerProblem(db, fields.ownerId)) ?? (await departmentsProblem(db, ids));
       if (invalid) return c.json({ message: invalid }, 400);
 
-      const itemId = crypto.randomUUID();
-      const values = {
-        ...fields,
-        startAt: new Date(fields.startAt),
-        endAt: new Date(fields.endAt),
-        lastConfirmedAt: confirmedAt,
-        lastConfirmedById: confirm ? actor.id : null,
-        approvedAt: approving ? now : null,
-        approvedById: approving ? actor.id : null,
-      };
-      const logged: Change = {};
-      for (const [key, value] of Object.entries({ ...values, departmentIds: ids })) {
-        const after = comparable(value);
-        if (after !== null) logged[key] = [null, after];
-      }
+      // Bangkok has no daylight saving, so a day is always 24 hours.
+      const stepMs = repeat?.every === "week" ? 7 * DAY_MS : DAY_MS;
+      const seriesId = repeat ? crypto.randomUUID() : null;
+      const itemIds = Array.from({ length: repeat?.count ?? 1 }, () => crypto.randomUUID());
+      const writes = itemIds.flatMap((itemId, index) => {
+        const values = {
+          ...fields,
+          startAt: new Date(fields.startAt + index * stepMs),
+          endAt: new Date(fields.endAt + index * stepMs),
+          lastConfirmedAt: confirmedAt,
+          lastConfirmedById: confirm ? actor.id : null,
+          approvedAt: approving ? now : null,
+          approvedById: approving ? actor.id : null,
+          seriesId,
+        };
+        const logged: Change = {};
+        for (const [key, value] of Object.entries({ ...values, departmentIds: ids })) {
+          const after = comparable(value);
+          if (after !== null) logged[key] = [null, after];
+        }
+        return [
+          db.insert(calendarItem).values({ id: itemId, ...values, createdById: actor.id }),
+          ...insertDepartments(db, itemId, ids),
+          logChange(db, actor, itemId, "create", logged),
+        ];
+      });
       try {
         await db.batch([
           abortUnless(db, actor.id, approving ? stillCalendarApprover() : stillCalendarEditor()),
-          db.insert(calendarItem).values({ id: itemId, ...values, createdById: actor.id }),
-          ...insertDepartments(db, itemId, ids),
-          db.insert(calendarChange).values({
-            itemId,
-            actorUserId: actor.id,
-            impersonatedBy: actor.impersonatedBy,
-            action: "create",
-            changes: logged,
-          }),
+          ...writes,
         ]);
       } catch (error) {
         const conflict = conflictResponse(error);
         if (conflict) return c.json({ message: conflict.message }, conflict.status);
         throw error;
       }
-      const item = await findItem(db, itemId, actor);
+      const item = await findItem(db, itemIds[0] ?? "", actor);
       if (!item) throw new Error("Created item is missing");
       return c.json(item, 201);
     })
@@ -653,6 +611,21 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
           (departmentsChanged && ids ? await departmentsProblem(db, ids) : null);
         if (invalid) return c.json({ message: invalid }, 400);
 
+        const closing =
+          next.status === "completed" && current.status !== "completed" && needsCloseOut(next);
+        if (closing) {
+          const missing = await closeOutProblems(db, itemId, {
+            agenda: "agenda" in set ? (set.agenda ?? null) : current.agenda,
+            ownerId: "ownerId" in set ? (set.ownerId ?? null) : current.ownerId,
+            departmentCount: departmentsChanged && ids ? ids.length : currentIds.length,
+          });
+          if (missing.length > 0) {
+            return c.json({ message: `Before closing, add ${missing.join(", ")}`, missing }, 400);
+          }
+        }
+        const added = departmentsChanged && ids ? ids.filter((d) => !currentIds.includes(d)) : [];
+        const removed = departmentsChanged && ids ? currentIds.filter((d) => !ids.includes(d)) : [];
+
         let updated: { id: string }[];
         try {
           const results = await db.batch([
@@ -662,6 +635,8 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
               and(
                 approving ? stillCalendarApprover() : stillCalendarEditor(),
                 itemIsAsRead(db, itemId, version),
+                // Decisions and action items live outside the item's version.
+                closing ? hasMeetingRecord(db, itemId) : undefined,
               ) ?? sql`1`,
             ),
             db
@@ -669,22 +644,21 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
               .set({ ...set, version: sql`${calendarItem.version} + 1`, updatedAt: now })
               .where(and(eq(calendarItem.id, itemId), eq(calendarItem.version, version)))
               .returning({ id: calendarItem.id }),
-            ...(departmentsChanged && ids
+            // Departments that stay keep their request and answer.
+            ...(removed.length > 0
               ? [
                   db
                     .delete(calendarItemDepartment)
-                    .where(eq(calendarItemDepartment.itemId, itemId)),
-                  ...insertDepartments(db, itemId, ids),
+                    .where(
+                      and(
+                        eq(calendarItemDepartment.itemId, itemId),
+                        inArray(calendarItemDepartment.departmentId, removed),
+                      ),
+                    ),
                 ]
               : []),
-            db.insert(calendarChange).values({
-              itemId,
-              actorUserId: actor.id,
-              impersonatedBy: actor.impersonatedBy,
-              action,
-              changes,
-              reason: reason ?? null,
-            }),
+            ...insertDepartments(db, itemId, added),
+            logChange(db, actor, itemId, action, changes, reason ?? null),
           ]);
           updated = results[1] as { id: string }[];
         } catch (error) {
@@ -726,13 +700,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         } = source;
         const itemId = crypto.randomUUID();
         const log = (target: string, key: string, value: string) =>
-          db.insert(calendarChange).values({
-            itemId: target,
-            actorUserId: actor.id,
-            impersonatedBy: actor.impersonatedBy,
-            action: "duplicate",
-            changes: { [key]: [null, value] },
-          });
+          logChange(db, actor, target, "duplicate", { [key]: [null, value] });
         try {
           await db.batch([
             abortUnless(
@@ -750,6 +718,8 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
               approvedAt: null,
               approvedById: null,
               archivedAt: null,
+              // A copy stands alone, outside the source's series.
+              seriesId: null,
               createdById: actor.id,
             }),
             ...insertDepartments(db, itemId, ids),
@@ -765,6 +735,8 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         if (!item) throw new Error("Duplicated item is missing");
         return c.json(item, 201);
       },
-    );
+    )
+
+    .route("/", createCoordinationRoutes());
 
 export type CalendarRoutes = ReturnType<typeof createCalendarRoutes>;

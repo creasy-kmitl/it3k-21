@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 import {
+  ACTION_ITEM_STATUSES,
   CALENDAR_CATEGORIES,
   CALENDAR_CHANGE_ACTIONS,
   CALENDAR_MODES,
@@ -9,6 +10,7 @@ import {
   CALENDAR_TIMEZONE,
   CALENDAR_VISIBILITIES,
   GAMES,
+  REQUEST_STATES,
   RISK_LEVELS,
 } from "../calendar-rules";
 import { user } from "./auth";
@@ -64,6 +66,8 @@ export const calendarItem = sqliteTable(
     feature: text("feature"),
     environment: text("environment"),
     archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
+    // Shared by the items of one recurring ritual, e.g. a weekly sync.
+    seriesId: text("series_id"),
     // Bumped by every write, so an edit based on an old read is refused.
     version: integer("version").default(1).notNull(),
     createdById: text("created_by_id").references(() => user.id, { onDelete: "set null" }),
@@ -78,6 +82,7 @@ export const calendarItem = sqliteTable(
     index("calendar_item_end_at_idx").on(table.endAt),
     index("calendar_item_owner_id_idx").on(table.ownerId),
     index("calendar_item_mode_idx").on(table.mode),
+    index("calendar_item_series_id_idx").on(table.seriesId, table.startAt),
     check("calendar_item_mode_check", sql`${table.mode} IN (${inList(CALENDAR_MODES)})`),
     check(
       "calendar_item_category_check",
@@ -100,7 +105,10 @@ export const calendarItem = sqliteTable(
   ],
 );
 
-/** The departments an item involves or depends on. */
+/**
+ * The departments an item involves or depends on, and what each one owes:
+ * Tech/Live states the request, the department answers it.
+ */
 export const calendarItemDepartment = sqliteTable(
   "calendar_item_department",
   {
@@ -113,11 +121,75 @@ export const calendarItemDepartment = sqliteTable(
     departmentId: text("department_id")
       .notNull()
       .references(() => department.id, { onDelete: "cascade" }),
+    state: text("state", { enum: REQUEST_STATES }).default("involved").notNull(),
+    // What Tech/Live needs from the department.
+    request: text("request"),
+    // Who in the department is expected to answer.
+    contactUserId: text("contact_user_id").references(() => user.id, { onDelete: "set null" }),
+    dueAt: integer("due_at", { mode: "timestamp_ms" }),
+    response: text("response"),
+    answeredAt: integer("answered_at", { mode: "timestamp_ms" }),
+    answeredById: text("answered_by_id").references(() => user.id, { onDelete: "set null" }),
   },
   (table) => [
     uniqueIndex("calendar_item_department_uidx").on(table.itemId, table.departmentId),
     index("calendar_item_department_department_id_idx").on(table.departmentId),
+    check(
+      "calendar_item_department_state_check",
+      sql`${table.state} IN (${inList(REQUEST_STATES)})`,
+    ),
   ],
+);
+
+/** Follow-ups from a meeting or handoff, linked back to where they came from. */
+export const calendarActionItem = sqliteTable(
+  "calendar_action_item",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    itemId: text("item_id")
+      .notNull()
+      .references(() => calendarItem.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    ownerId: text("owner_id").references(() => user.id, { onDelete: "set null" }),
+    departmentId: text("department_id").references(() => department.id, {
+      onDelete: "set null",
+    }),
+    dueAt: integer("due_at", { mode: "timestamp_ms" }),
+    status: text("status", { enum: ACTION_ITEM_STATUSES }).default("open").notNull(),
+    doneAt: integer("done_at", { mode: "timestamp_ms" }),
+    doneById: text("done_by_id").references(() => user.id, { onDelete: "set null" }),
+    version: integer("version").default(1).notNull(),
+    createdById: text("created_by_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("calendar_action_item_item_id_idx").on(table.itemId),
+    index("calendar_action_item_owner_id_idx").on(table.ownerId, table.status),
+    index("calendar_action_item_department_id_idx").on(table.departmentId, table.status),
+    check(
+      "calendar_action_item_status_check",
+      sql`${table.status} IN (${inList(ACTION_ITEM_STATUSES)})`,
+    ),
+  ],
+);
+
+/** What a meeting decided. */
+export const calendarDecision = sqliteTable(
+  "calendar_decision",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    itemId: text("item_id")
+      .notNull()
+      .references(() => calendarItem.id, { onDelete: "cascade" }),
+    text: text("text").notNull(),
+    createdById: text("created_by_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (table) => [index("calendar_decision_item_id_idx").on(table.itemId, table.createdAt)],
 );
 
 // Append-only change log: who changed what, from what, to what, and why.

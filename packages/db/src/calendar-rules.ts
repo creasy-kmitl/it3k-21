@@ -93,6 +93,11 @@ export const CALENDAR_CHANGE_ACTIONS = [
   "duplicate",
   "confirm",
   "publish",
+  // Coordination: department requests, action items and decisions.
+  "request",
+  "answer",
+  "action_item",
+  "decision",
 ] as const;
 export type CalendarChangeAction = (typeof CALENDAR_CHANGE_ACTIONS)[number];
 
@@ -102,4 +107,32 @@ export type CalendarChangeAction = (typeof CALENDAR_CHANGE_ACTIONS)[number];
  */
 export function isTbd(item: { status: CalendarStatus; lastConfirmedAt: Date | null }) {
   return item.status === "draft" || item.lastConfirmedAt === null;
+}
+
+/**
+ * What an involved department owes: nothing yet (`involved`), information or
+ * work Tech/Live is waiting on (`requested`), or its answer (`answered`).
+ */
+export const REQUEST_STATES = ["involved", "requested", "answered"] as const;
+export type RequestState = (typeof REQUEST_STATES)[number];
+
+export const ACTION_ITEM_STATUSES = ["open", "done"] as const;
+export type ActionItemStatus = (typeof ACTION_ITEM_STATUSES)[number];
+
+/** Recurring rituals: a daily check-in or a weekly sync, created as a series of items. */
+export const REPEAT_UNITS = ["day", "week"] as const;
+export type RepeatUnit = (typeof REPEAT_UNITS)[number];
+export const MAX_REPEAT_COUNT = 26;
+
+/**
+ * Meetings and handoffs must leave a trace: before one is marked completed it
+ * needs an agenda, an owner, the departments involved and at least one
+ * decision or action item.
+ */
+export function needsCloseOut(item: { mode: CalendarMode; category: CalendarCategory }) {
+  return (
+    item.mode === "meetings" ||
+    item.category === "cross_team_meeting" ||
+    item.category === "handoff"
+  );
 }
