@@ -488,7 +488,8 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         return c.json({ message: "Only the department's head or vicehead can publish" }, 403);
       }
       if (visibility === "public" && !canBePublic(next)) {
-        if (publishing) {
+        // Asking for public, even unchanged, alongside a status that cannot be is a mistake.
+        if (publishing || fields.visibility === "public") {
           return c.json({ message: "Only confirmed items can be public" }, 400);
         }
         // Leaving confirmed takes the item off the public calendar.
