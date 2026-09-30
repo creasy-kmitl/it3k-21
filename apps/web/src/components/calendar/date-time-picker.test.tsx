@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 
 import { defined } from "@/test/query";
@@ -48,8 +48,22 @@ describe("DateTimePicker", () => {
     render(<Harness initial="2026-10-10T18:30" onValue={(v) => values.push(v)} />);
     expect(screen.getByRole("button", { name: "เริ่ม" }).textContent).toContain("10 ต.ค. 2569");
     await openAndPick(12);
-    fireEvent.change(screen.getByLabelText("เวลาเริ่ม"), { target: { value: "09:05" } });
-    expect(values).toEqual(["2026-10-12T18:30", "2026-10-12T09:05"]);
+    fireEvent.click(screen.getByRole("button", { name: "เวลาเริ่ม 18:30" }));
+    const popover = await waitFor(() =>
+      defined(document.querySelector<HTMLElement>('[data-slot="popover-content"][data-open]')),
+    );
+    fireEvent.click(
+      within(within(popover).getByRole("group", { name: "ชั่วโมง" })).getByRole("button", {
+        name: "09",
+      }),
+    );
+    fireEvent.click(
+      within(within(popover).getByRole("group", { name: "นาที" })).getByRole("button", {
+        name: "05",
+      }),
+    );
+    // The hour applies at once; the minute completes the pick.
+    expect(values).toEqual(["2026-10-12T18:30", "2026-10-12T09:30", "2026-10-12T09:05"]);
   });
 
   test("shows and picks Bangkok days whatever the device's time zone", async () => {

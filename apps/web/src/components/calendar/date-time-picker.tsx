@@ -1,7 +1,7 @@
 import { Button } from "@it3k/ui/components/button";
 import { Calendar } from "@it3k/ui/components/calendar";
-import { Input } from "@it3k/ui/components/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@it3k/ui/components/popover";
+import { TimePicker } from "@it3k/ui/components/time-picker";
 import { CalendarIcon } from "lucide-react";
 import { useState } from "react";
 import { th } from "react-day-picker/locale";
@@ -33,7 +33,7 @@ function bangkokToday() {
 /**
  * A Bangkok date and time as a `YYYY-MM-DDTHH:mm` value (the same shape as
  * `<input type="datetime-local">`): a calendar popover for the day and a time
- * field for the hour and minute.
+ * picker for the hour and minute.
  */
 export function DateTimePicker({
   id,
@@ -98,17 +98,14 @@ export function DateTimePicker({
           />
         </PopoverContent>
       </Popover>
-      <Input
-        type="time"
-        aria-label={`เวลา${label}`}
+      <TimePicker
+        // The label replaces the button text for screen readers, so it repeats the time.
+        aria-label={`เวลา${label} ${timePart || "ยังไม่เลือก"}`}
+        aria-invalid={invalid}
         className="w-28 shrink-0"
         value={timePart}
-        aria-invalid={invalid}
         onBlur={onBlur}
-        onChange={(e) => {
-          if (!e.target.value) return;
-          onChange(`${datePart || fromPickerDay(bangkokToday())}T${e.target.value.slice(0, 5)}`);
-        }}
+        onValueChange={(time) => onChange(`${datePart || fromPickerDay(bangkokToday())}T${time}`)}
       />
     </div>
   );

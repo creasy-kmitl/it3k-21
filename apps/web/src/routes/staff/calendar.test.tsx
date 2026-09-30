@@ -102,6 +102,31 @@ async function pickDay(form: HTMLElement, label: string, day: number) {
   );
 }
 
+/** Opens the time picker whose label starts with `label` and picks `time` (HH:mm). */
+async function pickTime(label: string, time: string) {
+  const [hour, minute] = time.split(":");
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${label}`) }));
+  const popover = await waitFor(() =>
+    defined(
+      document.querySelector<HTMLElement>('[data-slot="popover-content"][data-open]'),
+      "open popover",
+    ),
+  );
+  fireEvent.click(
+    within(within(popover).getByRole("group", { name: "ชั่วโมง" })).getByRole("button", {
+      name: hour,
+    }),
+  );
+  fireEvent.click(
+    within(within(popover).getByRole("group", { name: "นาที" })).getByRole("button", {
+      name: minute,
+    }),
+  );
+  await waitFor(() =>
+    expect(document.querySelector('[data-slot="popover-content"][data-open]')).toBeNull(),
+  );
+}
+
 const agenda = () => screen.findByRole("region", { name: /10 ตุลาคม/ });
 
 describe("/staff/calendar", () => {
@@ -169,9 +194,9 @@ describe("/staff/calendar", () => {
       target: { value: "Run sheet v3" },
     });
     await pickDay(form, "เริ่ม", 10);
-    fireEvent.change(within(form).getByLabelText("เวลาเริ่ม"), { target: { value: "18:00" } });
+    await pickTime("เวลาเริ่ม", "18:00");
     await pickDay(form, "สิ้นสุด", 10);
-    fireEvent.change(within(form).getByLabelText("เวลาสิ้นสุด"), { target: { value: "20:00" } });
+    await pickTime("เวลาสิ้นสุด", "20:00");
     fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0]).toMatchObject({
@@ -203,8 +228,8 @@ describe("/staff/calendar", () => {
     });
     fireEvent.click(await screen.findByRole("button", { name: "แก้ไข" }));
     const form = await screen.findByRole("form", { name: "แก้ไขรายการ" });
-    fireEvent.change(within(form).getByLabelText("เวลาเริ่ม"), { target: { value: "15:00" } });
-    fireEvent.change(within(form).getByLabelText("เวลาสิ้นสุด"), { target: { value: "17:00" } });
+    await pickTime("เวลาเริ่ม", "15:00");
+    await pickTime("เวลาสิ้นสุด", "17:00");
     fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
     expect(await within(form).findByText("กรุณาบอกเหตุผลที่เลื่อนหรือยกเลิก")).toBeTruthy();
     expect(updates).toHaveLength(0);
