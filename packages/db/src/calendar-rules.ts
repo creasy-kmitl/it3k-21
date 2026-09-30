@@ -98,6 +98,8 @@ export const CALENDAR_CHANGE_ACTIONS = [
   "answer",
   "action_item",
   "decision",
+  // Live readiness.
+  "checklist",
 ] as const;
 export type CalendarChangeAction = (typeof CALENDAR_CHANGE_ACTIONS)[number];
 
@@ -136,3 +138,40 @@ export function needsCloseOut(item: { mode: CalendarMode; category: CalendarCate
     item.category === "handoff"
   );
 }
+
+/** What must be checked before a match, broadcast or technical check goes live. */
+export const LIVE_CHECKLIST = [
+  "network",
+  "audio",
+  "overlay",
+  "stream",
+  "scoreboard",
+  "backup",
+  "times",
+] as const;
+export type LiveChecklistKey = (typeof LIVE_CHECKLIST)[number];
+
+const LIVE_CHECKLIST_CATEGORIES: readonly CalendarCategory[] = [
+  "match",
+  "broadcast",
+  "technical_check",
+];
+
+export function needsLiveChecklist(item: { category: CalendarCategory }) {
+  return LIVE_CHECKLIST_CATEGORIES.includes(item.category);
+}
+
+/** Statuses that claim an item is ready to go live, so the checklist must be done. */
+export const READY_STATUSES: readonly CalendarStatus[] = ["ready", "live"];
+
+/**
+ * Items that hold people, rooms and streams for a fixed slot, so they can
+ * clash. Long-running delivery work (design, development…) does not.
+ */
+export function holdsASlot(item: { mode: CalendarMode }) {
+  return item.mode !== "delivery";
+}
+
+/** What two items can clash over. */
+export const CONFLICT_KINDS = ["person", "venue", "stream"] as const;
+export type ConflictKind = (typeof CONFLICT_KINDS)[number];

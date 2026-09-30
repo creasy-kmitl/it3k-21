@@ -91,7 +91,8 @@ describe("access", () => {
     expect((await send("art-staff", "POST", "/items", match())).res.status).toBe(403);
     expect((await send("art-head", "POST", "/items", match())).res.status).toBe(403);
     await create({}, "tech-staff");
-    await create({}, "admin");
+    // A later slot, so the two matches do not clash over the same owner.
+    await create({ startAt: START + 3 * HOUR, endAt: START + 5 * HOUR }, "admin");
   });
 
   test("reports what the caller may do", async () => {
@@ -133,7 +134,12 @@ describe("create", () => {
     expect(log).toMatchObject({ action: "create", actorUserId: "tech-staff" });
     expect(defined(log, "log").changes.title).toEqual([null, "VALORANT รอบรองชนะเลิศ"]);
 
-    const confirmed = await create({ status: "confirmed", confirm: true });
+    const confirmed = await create({
+      status: "confirmed",
+      confirm: true,
+      startAt: START + 3 * HOUR,
+      endAt: START + 5 * HOUR,
+    });
     expect(confirmed.tbd).toBe(false);
   });
 

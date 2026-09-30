@@ -10,6 +10,7 @@ import {
   CALENDAR_TIMEZONE,
   CALENDAR_VISIBILITIES,
   GAMES,
+  LIVE_CHECKLIST,
   REQUEST_STATES,
   RISK_LEVELS,
 } from "../calendar-rules";
@@ -61,6 +62,13 @@ export const calendarItem = sqliteTable(
     venue: text("venue"),
     streamPlatform: text("stream_platform"),
     scoreboardUrl: text("scoreboard_url"),
+    // Who answers when a live block goes wrong.
+    onCallOwnerId: text("on_call_owner_id").references(() => user.id, { onDelete: "set null" }),
+    scoreboardOperatorId: text("scoreboard_operator_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    // How a clash the editor accepted will be handled.
+    mitigation: text("mitigation"),
     meetingLink: text("meeting_link"),
     agenda: text("agenda"),
     feature: text("feature"),
@@ -172,6 +180,28 @@ export const calendarActionItem = sqliteTable(
       "calendar_action_item_status_check",
       sql`${table.status} IN (${inList(ACTION_ITEM_STATUSES)})`,
     ),
+  ],
+);
+
+/** A live item's readiness checklist; a missing row means not checked yet. */
+export const calendarChecklistItem = sqliteTable(
+  "calendar_checklist_item",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    itemId: text("item_id")
+      .notNull()
+      .references(() => calendarItem.id, { onDelete: "cascade" }),
+    key: text("key", { enum: LIVE_CHECKLIST }).notNull(),
+    checked: integer("checked", { mode: "boolean" }).default(false).notNull(),
+    note: text("note"),
+    checkedAt: integer("checked_at", { mode: "timestamp_ms" }),
+    checkedById: text("checked_by_id").references(() => user.id, { onDelete: "set null" }),
+  },
+  (table) => [
+    uniqueIndex("calendar_checklist_item_uidx").on(table.itemId, table.key),
+    check("calendar_checklist_item_key_check", sql`${table.key} IN (${inList(LIVE_CHECKLIST)})`),
   ],
 );
 

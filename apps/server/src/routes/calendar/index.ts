@@ -14,12 +14,17 @@ import {
   calendarChange,
   calendarItem,
   calendarItemDepartment,
+  READY_STATUSES,
+  calendarChecklistItem,
+  holdsASlot,
   isTbd,
   needsCloseOut,
+  needsLiveChecklist,
   statusesFor,
 } from "@it3k/db/schema/calendar";
 import { department } from "@it3k/db/schema/department";
 import { type SQL, and, desc, eq, exists, gt, inArray, isNull, lt, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -40,6 +45,18 @@ import {
   stillCalendarEditor,
 } from "../../policies/calendar";
 import { containsAny } from "../leadership";
+import {
+  CONFLICT_MESSAGE,
+  type Conflict,
+  type Slot,
+  canCheck,
+  checklistComplete,
+  createLiveRoutes,
+  findConflicts,
+  loadChecklist,
+  readinessProblems,
+  uncheckTimes,
+} from "./live";
 import {
   closeOutProblems,
   createCoordinationRoutes,
@@ -142,6 +159,8 @@ const itemFields = {
   venue: optionalText(120),
   streamPlatform: optionalText(64),
   scoreboardUrl: optionalLink,
+  onCallOwnerId: id.nullable().optional(),
+  scoreboardOperatorId: id.nullable().optional(),
   meetingLink: optionalLink,
   agenda: optionalText(4000),
   feature: optionalText(200),
@@ -159,6 +178,9 @@ const createInput = z.strictObject({
   departmentIds: departmentIds.default([]),
   /** Records that the details were checked against their source just now. */
   confirm: z.boolean().default(false),
+  /** Saves despite clashes with other items; needs a `mitigation`. */
+  acceptConflicts: z.literal(true).optional(),
+  mitigation: optionalText(500),
   /** Creates a series: this item plus `count - 1` copies, one per day or week. */
   repeat: z
     .strictObject({
@@ -188,12 +210,16 @@ const updateInput = z
     venue: itemFields.venue,
     streamPlatform: itemFields.streamPlatform,
     scoreboardUrl: itemFields.scoreboardUrl,
+    onCallOwnerId: itemFields.onCallOwnerId,
+    scoreboardOperatorId: itemFields.scoreboardOperatorId,
     meetingLink: itemFields.meetingLink,
     agenda: itemFields.agenda,
     feature: itemFields.feature,
     environment: itemFields.environment,
     departmentIds: departmentIds.optional(),
     confirm: z.literal(true).optional(),
+    acceptConflicts: z.literal(true).optional(),
+    mitigation: optionalText(500),
     archived: z.boolean().optional(),
     reason: optionalText(500),
     /** The version the client read; a newer one means someone else saved first. */
@@ -214,6 +240,40 @@ type ItemInput = {
   endAt: number;
 };
 
+const READINESS_MESSAGE = "Finish the live checklist and name who is on call first";
+
+/** Changing any of these can create a clash with another item. */
+const SLOT_FIELDS = [
+  "startAt",
+  "endAt",
+  "mode",
+  "ownerId",
+  "onCallOwnerId",
+  "scoreboardOperatorId",
+  "venue",
+  "streamPlatform",
+  "archivedAt",
+] as const;
+
+/** Clashes of every occurrence of a new item or series, each listed once. */
+async function seriesConflicts(
+  db: Database,
+  count: number,
+  stepMs: number,
+  slot: Slot,
+): Promise<Conflict[]> {
+  const found = new Map<string, Conflict>();
+  for (let index = 0; index < count; index++) {
+    const shifted = {
+      ...slot,
+      startAt: slot.startAt + index * stepMs,
+      endAt: slot.endAt + index * stepMs,
+    };
+    for (const conflict of await findConflicts(db, shifted)) found.set(conflict.id, conflict);
+  }
+  return [...found.values()];
+}
+
 /** Rules that span fields, checked on the item as it would be saved. */
 function itemProblem(item: ItemInput): string | null {
   if (!CATEGORIES_BY_MODE[item.mode].includes(item.category)) {
@@ -233,16 +293,26 @@ const departmentIdList = sql<
 
 const pendingRequests = sql<number>`(select count(*) from ${calendarItemDepartment} where ${calendarItemDepartment.itemId} = ${calendarItem.id} and ${calendarItemDepartment.state} = 'requested')`;
 
+const onCall = alias(user, "on_call");
+const scoreboardOperator = alias(user, "scoreboard_operator");
+
+const checklistDone = sql<number>`(select count(*) from ${calendarChecklistItem} where ${calendarChecklistItem.itemId} = ${calendarItem.id} and ${calendarChecklistItem.checked} = 1)`;
+
 function selectItems(db: Database) {
   return db
     .select({
       item: calendarItem,
       ownerName: user.name,
+      onCallName: onCall.name,
+      scoreboardOperatorName: scoreboardOperator.name,
+      checklistDone,
       departmentIds: departmentIdList,
       pendingRequests,
     })
     .from(calendarItem)
-    .leftJoin(user, eq(user.id, calendarItem.ownerId));
+    .leftJoin(user, eq(user.id, calendarItem.ownerId))
+    .leftJoin(onCall, eq(onCall.id, calendarItem.onCallOwnerId))
+    .leftJoin(scoreboardOperator, eq(scoreboardOperator.id, calendarItem.scoreboardOperatorId));
 }
 
 type ItemRow = Awaited<ReturnType<ReturnType<typeof selectItems>["all"]>>[number];
@@ -273,6 +343,13 @@ function toItem(row: ItemRow, actor: CurrentUser) {
     venue: item.venue,
     streamPlatform: item.streamPlatform,
     scoreboardUrl: item.scoreboardUrl,
+    onCallOwner: item.onCallOwnerId ? { id: item.onCallOwnerId, name: row.onCallName ?? "" } : null,
+    scoreboardOperator: item.scoreboardOperatorId
+      ? { id: item.scoreboardOperatorId, name: row.scoreboardOperatorName ?? "" }
+      : null,
+    mitigation: item.mitigation,
+    /** Checked entries out of LIVE_CHECKLIST; null when the item has no checklist. */
+    checklistDone: needsLiveChecklist(item) ? Number(row.checklistDone) : null,
     meetingLink: item.meetingLink,
     agenda: item.agenda,
     feature: item.feature,
@@ -392,6 +469,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       const db = c.var.db;
       const item = await findItem(db, itemId, c.var.user);
       if (!item) return c.json({ message: "Item not found" }, 404);
+      const checklist = await loadChecklist(db, item);
       const coordination = await loadCoordination(
         db,
         { id: item.id, seriesId: item.seriesId, startAt: new Date(item.startAt) },
@@ -417,6 +495,8 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         {
           ...item,
           ...coordination,
+          checklist,
+          canCheck: canCheck(c.var.user, { onCallOwnerId: item.onCallOwner?.id ?? null }),
           changes: changes.map((change) => ({
             ...change,
             createdAt: change.createdAt.getTime(),
@@ -445,7 +525,14 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
     })
 
     .post("/items", editorOnly, validate("json", createInput), async (c) => {
-      const { departmentIds: ids, confirm, repeat, ...fields } = c.req.valid("json");
+      const {
+        departmentIds: ids,
+        confirm,
+        repeat,
+        acceptConflicts,
+        mitigation,
+        ...fields
+      } = c.req.valid("json");
       const db = c.var.db;
       const actor = c.var.user;
       const problem = itemProblem(fields);
@@ -460,11 +547,39 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         return c.json({ message: "Unconfirmed (TBD) items cannot be public" }, 400);
       }
       const invalid =
-        (await ownerProblem(db, fields.ownerId)) ?? (await departmentsProblem(db, ids));
+        (await ownerProblem(db, fields.ownerId)) ??
+        (fields.onCallOwnerId ? await ownerProblem(db, fields.onCallOwnerId) : null) ??
+        (fields.scoreboardOperatorId
+          ? await ownerProblem(db, fields.scoreboardOperatorId)
+          : null) ??
+        (await departmentsProblem(db, ids));
       if (invalid) return c.json({ message: invalid }, 400);
+      // A new item has no checklist ticked yet, so it cannot start out ready.
+      if (READY_STATUSES.includes(fields.status) && needsLiveChecklist(fields)) {
+        const missing = await readinessProblems(db, null, fields.onCallOwnerId ?? null);
+        return c.json({ message: READINESS_MESSAGE, missing }, 400);
+      }
 
       // Bangkok has no daylight saving, so a day is always 24 hours.
       const stepMs = repeat?.every === "week" ? 7 * DAY_MS : DAY_MS;
+      const conflicts =
+        holdsASlot(fields) && fields.status !== "cancelled"
+          ? await seriesConflicts(db, repeat?.count ?? 1, stepMs, {
+              startAt: fields.startAt,
+              endAt: fields.endAt,
+              ownerId: fields.ownerId,
+              onCallOwnerId: fields.onCallOwnerId ?? null,
+              scoreboardOperatorId: fields.scoreboardOperatorId ?? null,
+              venue: fields.venue ?? null,
+              streamPlatform: fields.streamPlatform ?? null,
+            })
+          : [];
+      if (conflicts.length > 0 && !acceptConflicts) {
+        return c.json({ message: CONFLICT_MESSAGE, conflicts }, 422);
+      }
+      if (conflicts.length > 0 && !mitigation) {
+        return c.json({ message: "Say how the clash will be handled" }, 400);
+      }
       const seriesId = repeat ? crypto.randomUUID() : null;
       const itemIds = Array.from({ length: repeat?.count ?? 1 }, () => crypto.randomUUID());
       const writes = itemIds.flatMap((itemId, index) => {
@@ -477,12 +592,14 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
           approvedAt: approving ? now : null,
           approvedById: approving ? actor.id : null,
           seriesId,
+          mitigation: mitigation ?? null,
         };
         const logged: Change = {};
         for (const [key, value] of Object.entries({ ...values, departmentIds: ids })) {
           const after = comparable(value);
           if (after !== null) logged[key] = [null, after];
         }
+        if (conflicts.length > 0) logged.conflicts = [null, conflicts.map((c) => c.title)];
         return [
           db.insert(calendarItem).values({ id: itemId, ...values, createdById: actor.id }),
           ...insertDepartments(db, itemId, ids),
@@ -517,6 +634,8 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
           confirm,
           archived,
           departmentIds: ids,
+          acceptConflicts,
+          mitigation,
           ...fields
         } = c.req.valid("json");
         const db = c.var.db;
@@ -608,8 +727,52 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         }
         const invalid =
           (set.ownerId ? await ownerProblem(db, set.ownerId) : null) ??
+          (set.onCallOwnerId ? await ownerProblem(db, set.onCallOwnerId) : null) ??
+          (set.scoreboardOperatorId ? await ownerProblem(db, set.scoreboardOperatorId) : null) ??
           (departmentsChanged && ids ? await departmentsProblem(db, ids) : null);
         if (invalid) return c.json({ message: invalid }, 400);
+
+        const after = { ...current, ...set };
+        const becomingReady =
+          READY_STATUSES.includes(next.status) &&
+          !READY_STATUSES.includes(current.status) &&
+          needsLiveChecklist(next);
+        if (becomingReady) {
+          const missing = await readinessProblems(db, itemId, after.onCallOwnerId);
+          // New times need confirming again, so the times entry does not count.
+          if (rescheduled && !missing.includes("times")) missing.push("times");
+          if (missing.length > 0) {
+            return c.json({ message: READINESS_MESSAGE, missing }, 400);
+          }
+        }
+
+        // Only what decides the slot is rechecked, so an accepted clash is not
+        // raised again by every later edit.
+        const slotChanged = SLOT_FIELDS.some((key) => key in changes);
+        const conflicts =
+          slotChanged &&
+          holdsASlot(next) &&
+          next.status !== "cancelled" &&
+          after.archivedAt === null
+            ? await findConflicts(db, {
+                excludeId: itemId,
+                startAt: next.startAt,
+                endAt: next.endAt,
+                ownerId: after.ownerId ?? null,
+                onCallOwnerId: after.onCallOwnerId ?? null,
+                scoreboardOperatorId: after.scoreboardOperatorId ?? null,
+                venue: after.venue ?? null,
+                streamPlatform: after.streamPlatform ?? null,
+              })
+            : [];
+        if (conflicts.length > 0 && !acceptConflicts) {
+          return c.json({ message: CONFLICT_MESSAGE, conflicts }, 422);
+        }
+        if (conflicts.length > 0 && !mitigation) {
+          return c.json({ message: "Say how the clash will be handled" }, 400);
+        }
+        if (mitigation !== undefined) record("mitigation", mitigation);
+        if (conflicts.length > 0) changes.conflicts = [null, conflicts.map((c) => c.title)];
 
         const closing =
           next.status === "completed" && current.status !== "completed" && needsCloseOut(next);
@@ -635,8 +798,9 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
               and(
                 approving ? stillCalendarApprover() : stillCalendarEditor(),
                 itemIsAsRead(db, itemId, version),
-                // Decisions and action items live outside the item's version.
+                // Decisions, action items and the checklist live outside the item's version.
                 closing ? hasMeetingRecord(db, itemId) : undefined,
+                becomingReady ? checklistComplete(itemId) : undefined,
               ) ?? sql`1`,
             ),
             db
@@ -658,6 +822,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
                 ]
               : []),
             ...insertDepartments(db, itemId, added),
+            ...(rescheduled ? [uncheckTimes(db, itemId)] : []),
             logChange(db, actor, itemId, action, changes, reason ?? null),
           ]);
           updated = results[1] as { id: string }[];
@@ -737,6 +902,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       },
     )
 
-    .route("/", createCoordinationRoutes());
+    .route("/", createCoordinationRoutes())
+    .route("/", createLiveRoutes());
 
 export type CalendarRoutes = ReturnType<typeof createCalendarRoutes>;
