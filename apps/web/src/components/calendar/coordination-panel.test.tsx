@@ -60,6 +60,8 @@ function detail(overrides: Partial<CalendarItemDetail> = {}): CalendarItemDetail
     actionItems: [],
     decisions: [],
     carriedOver: [],
+    checklist: null,
+    canCheck: false,
     changes: [],
     canApprove: false,
     ...overrides,

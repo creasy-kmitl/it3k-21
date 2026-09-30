@@ -7,7 +7,7 @@ import { Link } from "@tanstack/react-router";
 import { useApis } from "@/lib/api-context";
 import { HOUR_MS, dateKey, formatBangkok, formatRange } from "@/lib/bangkok-time";
 import type { CalendarItem } from "@/lib/calendar";
-import { LIVE_CATEGORIES, MODE_STYLES } from "@/lib/calendar-labels";
+import { LIVE_CATEGORIES, LIVE_CHECKLIST_SIZE, MODE_STYLES } from "@/lib/calendar-labels";
 
 import { ItemFlags } from "./item-chip";
 
@@ -65,6 +65,19 @@ function Entry({ item, onSelect }: { item: CalendarItem; onSelect?: (itemId: str
           {formatBangkok(item.startAt, "day")} {formatRange(item.startAt, item.endAt)}
           {item.owner && ` · ${item.owner.name}`}
         </span>
+        {item.checklistDone !== null && (
+          <span
+            className={cn(
+              "text-xs",
+              item.checklistDone < LIVE_CHECKLIST_SIZE || !item.onCallOwner
+                ? "text-destructive"
+                : "text-muted-foreground",
+            )}
+          >
+            On-call: {item.onCallOwner?.name ?? "ยังไม่ระบุ"} · Checklist {item.checklistDone}/
+            {LIVE_CHECKLIST_SIZE}
+          </span>
+        )}
         {item.blockedReason && (
           <span className="text-xs text-destructive">ติดขัด: {item.blockedReason}</span>
         )}

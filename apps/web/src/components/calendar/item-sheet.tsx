@@ -1,5 +1,6 @@
 import type { CalendarStatus } from "@it3k/db/calendar-rules";
 import { Button } from "@it3k/ui/components/button";
+import { Checkbox } from "@it3k/ui/components/checkbox";
 import { Field, FieldLabel } from "@it3k/ui/components/field";
 import {
   Sheet,
@@ -10,6 +11,7 @@ import {
 } from "@it3k/ui/components/sheet";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { Textarea } from "@it3k/ui/components/textarea";
+import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -17,6 +19,7 @@ import { toast } from "sonner";
 import { useApis } from "@/lib/api-context";
 import { formatBangkok, formatRange } from "@/lib/bangkok-time";
 import type {
+  CalendarChecklistEntry,
   CalendarChange,
   CalendarItem,
   CalendarItemDetail,
@@ -24,6 +27,7 @@ import type {
 } from "@/lib/calendar";
 import {
   ACTION_LABELS,
+  CHECKLIST_LABELS,
   ACTION_STATUS_LABELS,
   CATEGORY_LABELS,
   FIELD_LABELS,
@@ -66,6 +70,7 @@ export function describeValue(
   departmentNames: Map<string, string>,
 ): string {
   if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return value ? "ติ๊กแล้ว" : "ยังไม่ติ๊ก";
   if (TIME_FIELDS.has(field) && typeof value === "number") return formatBangkok(value, "dateTime");
   if (field === "departmentIds" && Array.isArray(value)) {
     return value.length
@@ -78,6 +83,76 @@ export function describeValue(
   // Ids of accounts and items mean nothing to a reader.
   if (field.endsWith("Id") || field.startsWith("duplicated")) return "✓";
   return String(value);
+}
+
+/** A change-log field in words, including `checklist.<key>` entries. */
+function fieldLabel(field: string) {
+  const [group, key] = field.split(".");
+  if (key && (group === "checklist" || group === "checklistNote")) {
+    const label = CHECKLIST_LABELS[key as keyof typeof CHECKLIST_LABELS] ?? key;
+    return group === "checklist" ? `Checklist: ${label}` : `หมายเหตุ checklist: ${label}`;
+  }
+  return FIELD_LABELS[field] ?? field;
+}
+
+function ChecklistPanel({ item }: { item: CalendarItemDetail }) {
+  const { calendar } = useApis();
+  const queryClient = useQueryClient();
+  const tick = useMutation({
+    mutationFn: ({ key, checked }: { key: CalendarChecklistEntry["key"]; checked: boolean }) =>
+      calendar.check(item.id, key, { checked }),
+    onError: (error) =>
+      toast.error(
+        error instanceof ApiError && error.status === 409
+          ? "สิทธิ์หรือข้อมูลเปลี่ยนไปแล้ว โหลดข้อมูลล่าสุดให้แล้ว"
+          : `บันทึกไม่สำเร็จ: ${error.message}`,
+      ),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["calendar"] }),
+  });
+  const checklist = item.checklist ?? [];
+  const done = checklist.filter((entry) => entry.checked).length;
+  return (
+    <section className="flex flex-col gap-2" aria-label="Checklist ไลฟ์">
+      <h3 className="flex items-center gap-2 text-sm font-semibold">
+        Checklist ไลฟ์
+        <span
+          className={cn(
+            "rounded-full px-2 text-xs",
+            done === checklist.length ? "bg-emerald-600 text-white" : "bg-muted",
+          )}
+        >
+          {done}/{checklist.length}
+        </span>
+      </h3>
+      <p className="text-xs text-muted-foreground">
+        On-call: {item.onCallOwner?.name ?? "ยังไม่ระบุ"} · ต้องครบทุกข้อและมี on-call ก่อนตั้งเป็นพร้อมหรือ Live
+      </p>
+      <ul className="flex flex-col divide-y rounded-xl border">
+        {checklist.map((entry) => {
+          const id = `checklist-${entry.key}`;
+          return (
+            <li key={entry.key} className="flex items-start gap-2 p-2 text-sm">
+              <Checkbox
+                id={id}
+                checked={entry.checked}
+                disabled={!item.canCheck || tick.isPending}
+                onCheckedChange={(checked) => tick.mutate({ key: entry.key, checked })}
+                className="mt-0.5"
+              />
+              <label htmlFor={id} className="flex min-w-0 flex-col">
+                <span>{CHECKLIST_LABELS[entry.key]}</span>
+                {entry.checked && entry.checkedAt && (
+                  <span className="text-xs text-muted-foreground">
+                    {entry.checkedBy ?? "—"} · {formatBangkok(entry.checkedAt, "dateTime")}
+                  </span>
+                )}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
 }
 
 function ChangeLog({
@@ -102,8 +177,8 @@ function ChangeLog({
                 const [before, after] = pair as [unknown, unknown];
                 return (
                   <li key={field}>
-                    {FIELD_LABELS[field] ?? field}: {describeValue(field, before, departmentNames)}{" "}
-                    → {describeValue(field, after, departmentNames)}
+                    {fieldLabel(field)}: {describeValue(field, before, departmentNames)} →{" "}
+                    {describeValue(field, after, departmentNames)}
                   </li>
                 );
               })}
@@ -155,6 +230,15 @@ function ItemDetails({ item }: { item: CalendarItemDetail }) {
       </Detail>
       <Detail label="สถานะ">{STATUS_LABELS[item.status]}</Detail>
       <Detail label="ผู้รับผิดชอบ">{item.owner?.name ?? "—"}</Detail>
+      {item.onCallOwner && <Detail label="On-call">{item.onCallOwner.name}</Detail>}
+      {item.scoreboardOperator && (
+        <Detail label="คนคุม Scoreboard">{item.scoreboardOperator.name}</Detail>
+      )}
+      {item.mitigation && (
+        <Detail label="แผนรับมือการชน">
+          <span className="whitespace-pre-wrap">{item.mitigation}</span>
+        </Detail>
+      )}
       <Detail label="แหล่งข้อมูล">{item.source}</Detail>
       <Detail label="ยืนยันล่าสุด">
         {item.lastConfirmedAt ? formatBangkok(item.lastConfirmedAt, "dateTime") : "ยังไม่ยืนยัน (TBD)"}
@@ -428,6 +512,7 @@ export function ItemSheet({
             <>
               <Actions item={detail.data} onSelect={onSelect} onEdit={() => setEditing(true)} />
               <ItemDetails item={detail.data} />
+              {detail.data.checklist && <ChecklistPanel item={detail.data} />}
               <CoordinationPanel item={detail.data} />
               <section className="flex flex-col gap-2">
                 <h3 className="text-sm font-semibold">ประวัติการเปลี่ยนแปลง</h3>

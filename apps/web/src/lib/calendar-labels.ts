@@ -1,14 +1,17 @@
-import type {
-  ActionItemStatus,
-  CalendarCategory,
-  CalendarChangeAction,
-  CalendarMode,
-  CalendarStatus,
-  CalendarVisibility,
-  Game,
-  RepeatUnit,
-  RequestState,
-  RiskLevel,
+import {
+  type ActionItemStatus,
+  type CalendarCategory,
+  type ConflictKind,
+  type LiveChecklistKey,
+  type CalendarChangeAction,
+  type CalendarMode,
+  type CalendarStatus,
+  type CalendarVisibility,
+  type Game,
+  type RepeatUnit,
+  type RequestState,
+  type RiskLevel,
+  LIVE_CHECKLIST,
 } from "@it3k/db/calendar-rules";
 
 import type { CalendarItem } from "./calendar";
@@ -111,6 +114,7 @@ export const ACTION_LABELS: Record<CalendarChangeAction, string> = {
   answer: "ฝ่ายตอบกลับ",
   action_item: "Action item",
   decision: "บันทึกการตัดสินใจ",
+  checklist: "Checklist ไลฟ์",
 };
 
 export const REQUEST_STATE_LABELS: Record<RequestState, string> = {
@@ -195,7 +199,48 @@ export const FIELD_LABELS: Record<string, string> = {
   actionItem: "Action item",
   departmentId: "ฝ่ายที่รับผิดชอบ",
   decision: "การตัดสินใจ",
+  onCallOwnerId: "On-call",
+  scoreboardOperatorId: "คนคุม Scoreboard",
+  mitigation: "แผนรับมือการชน",
+  conflicts: "ชนกับ",
 };
+
+export const CHECKLIST_LABELS: Record<LiveChecklistKey, string> = {
+  network: "Network และ backup path",
+  audio: "Audio เข้า/ออก และ monitor",
+  overlay: "Scene, overlay และ asset",
+  stream: "Stream preview และสถานะแพลตฟอร์ม",
+  scoreboard: "Scoreboard และการประกาศผล",
+  backup: "อุปกรณ์/คนสำรอง และผู้ติดต่อ escalate",
+  times: "เวลาเริ่ม/จบไลฟ์ที่ยืนยันแล้ว",
+};
+
+export const CONFLICT_KIND_LABELS: Record<ConflictKind, string> = {
+  person: "คนเดียวกัน",
+  venue: "สถานที่เดียวกัน",
+  stream: "ช่องสตรีมเดียวกัน",
+};
+
+/**
+ * The Thai explanation for an item the API refused to mark ready or live,
+ * or null when the error is something else.
+ */
+export function readinessMessage(body: unknown): string | null {
+  if (!body || typeof body !== "object" || !("missing" in body)) return null;
+  const missing = (body as { missing: unknown }).missing;
+  if (
+    !Array.isArray(missing) ||
+    !missing.every((key) => key === "onCall" || key in CHECKLIST_LABELS)
+  ) {
+    return null;
+  }
+  const labels = missing.map((key) =>
+    key === "onCall" ? "ผู้รับผิดชอบ on-call" : CHECKLIST_LABELS[key as LiveChecklistKey],
+  );
+  return `ยังตั้งเป็นพร้อมหรือ Live ไม่ได้ ต้องมี${labels.join(", ")}ก่อน`;
+}
+
+export const LIVE_CHECKLIST_SIZE = LIVE_CHECKLIST.length;
 
 export type ItemFlag = { key: string; label: string; className: string };
 
@@ -220,6 +265,17 @@ export function itemFlags(item: CalendarItem): ItemFlag[] {
   }
   if (item.blockedReason) {
     flags.push({ key: "blocked", label: "Blocked", className: "bg-destructive text-white" });
+  }
+  if (
+    item.checklistDone !== null &&
+    item.checklistDone < LIVE_CHECKLIST_SIZE &&
+    (item.status === "ready" || item.status === "live")
+  ) {
+    flags.push({
+      key: "checklist",
+      label: `Checklist ${item.checklistDone}/${LIVE_CHECKLIST_SIZE}`,
+      className: "bg-destructive text-white",
+    });
   }
   if (item.pendingRequests > 0) {
     flags.push({
@@ -251,7 +307,10 @@ const CLOSE_OUT_LABELS: Record<string, string> = {
 export function closeOutMessage(body: unknown): string | null {
   if (!body || typeof body !== "object" || !("missing" in body)) return null;
   const missing = (body as { missing: unknown }).missing;
-  if (!Array.isArray(missing)) return null;
+  // Readiness refusals also list what is `missing`; only close-out keys count here.
+  if (!Array.isArray(missing) || !missing.every((key) => String(key) in CLOSE_OUT_LABELS)) {
+    return null;
+  }
   const labels = missing.map((key) => CLOSE_OUT_LABELS[String(key)] ?? String(key));
   return `ปิดรายการนี้ไม่ได้ ต้องมี${labels.join(", ")}ก่อน`;
 }

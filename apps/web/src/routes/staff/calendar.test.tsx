@@ -2,6 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useCallback, useState } from "react";
 
+import { LIVE_CHECKLIST } from "@it3k/db/calendar-rules";
+
 import { ApiProvider } from "@/lib/api-context";
 import { bangkokTime } from "@/lib/bangkok-time";
 import type {
@@ -14,6 +16,7 @@ import type {
 } from "@/lib/calendar";
 import { ApiError } from "@/lib/leadership";
 import {
+  CALENDAR_NOW,
   calendarItem,
   choose,
   defined,
@@ -43,6 +46,8 @@ function detail(item: CalendarItem, overrides: Partial<CalendarItemDetail> = {})
     actionItems: [],
     decisions: [],
     carriedOver: [],
+    checklist: null,
+    canCheck: false,
     changes: [],
     canApprove: false,
     ...overrides,
@@ -289,5 +294,109 @@ describe("/staff/calendar", () => {
     fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0]?.repeat).toEqual({ every: "week", count: 3 });
+  });
+
+  test("shows clashes and saves only with a mitigation", async () => {
+    const attempts: CalendarInput[] = [];
+    setup({
+      items: [],
+      api: {
+        create: async (json) => {
+          attempts.push(json);
+          if (!json.acceptConflicts) {
+            throw new ApiError(422, "This clashes", {
+              message: "This clashes",
+              conflicts: [
+                {
+                  id: "other",
+                  title: "RoV SF1",
+                  startAt: bangkokTime(2026, 9, 10, 18),
+                  endAt: bangkokTime(2026, 9, 10, 20),
+                  kinds: ["person", "venue"],
+                  people: ["Tech Staff"],
+                },
+              ],
+            });
+          }
+          return calendarItem({ title: json.title });
+        },
+        get: async () => detail(calendarItem()),
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "เพิ่มรายการ" }));
+    const form = await screen.findByRole("form", { name: "เพิ่มรายการ" });
+    fireEvent.change(within(form).getByLabelText("ชื่อรายการ"), { target: { value: "VAL SF1" } });
+    fireEvent.change(within(form).getByLabelText("แหล่งข้อมูล"), { target: { value: "Sports" } });
+    fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+    const warning = await within(form).findByRole("alert");
+    expect(warning.textContent).toContain("RoV SF1");
+    expect(warning.textContent).toContain("คนเดียวกัน (Tech Staff)");
+    expect(warning.textContent).toContain("สถานที่เดียวกัน");
+    const accept = within(warning).getByRole("button", { name: "บันทึกทั้งที่ชน" });
+    expect(accept.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(within(warning).getByLabelText("แผนรับมือ (ถ้าจะบันทึกทั้งที่ชน)"), {
+      target: { value: "สลับคนคุม scoreboard" },
+    });
+    fireEvent.click(accept);
+    await waitFor(() => expect(attempts).toHaveLength(2));
+    expect(attempts[1]).toMatchObject({
+      acceptConflicts: true,
+      mitigation: "สลับคนคุม scoreboard",
+    });
+  });
+
+  test("explains in Thai why an item cannot go live yet", async () => {
+    const item = calendarItem();
+    setup({
+      items: [item],
+      search: { item: item.id },
+      api: {
+        get: async () => detail(item),
+        update: async () => {
+          throw new ApiError(400, "Finish the live checklist", {
+            message: "Finish the live checklist",
+            missing: ["onCall", "audio"],
+          });
+        },
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "แก้ไข" }));
+    const form = await screen.findByRole("form", { name: "แก้ไขรายการ" });
+    await choose(within(form).getByRole("combobox", { name: "สถานะ" }), "Live");
+    fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+    const alert = await within(form).findByRole("alert");
+    expect(alert.textContent).toContain("ยังตั้งเป็นพร้อมหรือ Live ไม่ได้");
+    expect(alert.textContent).toContain("ผู้รับผิดชอบ on-call");
+    expect(alert.textContent).toContain("Audio เข้า/ออก และ monitor");
+  });
+
+  test("the on-call owner ticks the live checklist", async () => {
+    const item = calendarItem({ checklistDone: 1 });
+    const ticks: [string, string, boolean][] = [];
+    setup({
+      items: [item],
+      search: { item: item.id },
+      api: {
+        get: async () =>
+          detail(item, {
+            canEdit: false,
+            canCheck: true,
+            checklist: LIVE_CHECKLIST.map((key) => ({
+              key,
+              checked: key === "network",
+              note: null,
+              checkedAt: key === "network" ? CALENDAR_NOW : null,
+              checkedBy: key === "network" ? "On Call" : null,
+            })),
+          }),
+        check: async (id, key, json) => {
+          ticks.push([id, key, json.checked]);
+        },
+      },
+    });
+    const panel = await screen.findByRole("region", { name: "Checklist ไลฟ์" });
+    expect(within(panel).getByText("1/7")).toBeTruthy();
+    fireEvent.click(within(panel).getByRole("checkbox", { name: "Audio เข้า/ออก และ monitor" }));
+    await waitFor(() => expect(ticks).toEqual([[item.id, "audio", true]]));
   });
 });

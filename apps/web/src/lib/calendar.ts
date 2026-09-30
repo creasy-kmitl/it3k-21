@@ -24,6 +24,25 @@ export type CalendarDecision = CalendarItemDetail["decisions"][number];
 export type CalendarRequestInput = InferRequestType<Link["request"]["$put"]>["json"];
 export type CalendarActionInput = InferRequestType<Item["action-items"]["$post"]>["json"];
 export type CalendarActionUpdate = InferRequestType<Action["$patch"]>["json"];
+export type CalendarChecklistEntry = NonNullable<CalendarItemDetail["checklist"]>[number];
+export type CalendarChecklistInput = InferRequestType<Item["checklist"][":key"]["$put"]>["json"];
+
+/** An overlapping item the API says a save would clash with (a 422 body). */
+export type CalendarConflict = {
+  id: string;
+  title: string;
+  startAt: number;
+  endAt: number;
+  kinds: ("person" | "venue" | "stream")[];
+  people: string[];
+};
+
+/** The clashes in a refused save, or null when the error is something else. */
+export function conflictsOf(body: unknown): CalendarConflict[] | null {
+  if (!body || typeof body !== "object" || !("conflicts" in body)) return null;
+  const conflicts = (body as { conflicts: unknown }).conflicts;
+  return Array.isArray(conflicts) ? (conflicts as CalendarConflict[]) : null;
+}
 
 export type CalendarFilters = {
   modes?: CalendarMode[];
@@ -122,6 +141,14 @@ export function createCalendarApi(baseUrl: string, fetchImpl?: ClientRequestOpti
       const res = await client.items[":id"].departments[":departmentId"].answer.$post({
         param: { id, departmentId },
         json: { response },
+      });
+      if (!res.ok) throw await toApiError(res);
+    },
+
+    async check(id: string, key: CalendarChecklistEntry["key"], json: CalendarChecklistInput) {
+      const res = await client.items[":id"].checklist[":key"].$put({
+        param: { id, key },
+        json,
       });
       if (!res.ok) throw await toApiError(res);
     },

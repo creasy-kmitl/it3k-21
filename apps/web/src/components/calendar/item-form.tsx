@@ -38,14 +38,28 @@ import { useState } from "react";
 import { z } from "zod";
 
 import { useApis } from "@/lib/api-context";
-import { HOUR_MS, fromDatetimeLocal, toDatetimeLocal } from "@/lib/bangkok-time";
-import type { CalendarInput, CalendarItem, CalendarItemDetail } from "@/lib/calendar";
+import {
+  HOUR_MS,
+  formatBangkok,
+  formatRange,
+  fromDatetimeLocal,
+  toDatetimeLocal,
+} from "@/lib/bangkok-time";
+import {
+  type CalendarConflict,
+  type CalendarInput,
+  type CalendarItem,
+  type CalendarItemDetail,
+  conflictsOf,
+} from "@/lib/calendar";
 import {
   CATEGORY_LABELS,
+  CONFLICT_KIND_LABELS,
   GAME_LABELS,
   MEETING_TEMPLATES,
   REPEAT_LABELS,
   closeOutMessage,
+  readinessMessage,
   MODE_LABELS,
   RISK_LABELS,
   STATUS_LABELS,
@@ -96,6 +110,8 @@ const fields = z.object({
   venue: text(120),
   streamPlatform: text(64),
   scoreboardUrl: https,
+  onCallOwnerId: z.string(),
+  scoreboardOperatorId: z.string(),
   meetingLink: https,
   agenda: text(4000),
   feature: text(200),
@@ -170,6 +186,8 @@ function defaults(mode: ItemFormMode, ownerId: string): FormValues {
     venue: item?.venue ?? "",
     streamPlatform: item?.streamPlatform ?? "",
     scoreboardUrl: item?.scoreboardUrl ?? "",
+    onCallOwnerId: item?.onCallOwner?.id ?? NONE,
+    scoreboardOperatorId: item?.scoreboardOperator?.id ?? NONE,
     meetingLink: item?.meetingLink ?? "",
     agenda: item?.agenda ?? "",
     feature: item?.feature ?? "",
@@ -207,6 +225,8 @@ function payload(values: FormValues, canApprove: boolean): Omit<CalendarInput, "
     venue: orNull(values.venue),
     streamPlatform: orNull(values.streamPlatform),
     scoreboardUrl: orNull(values.scoreboardUrl),
+    onCallOwnerId: noneToNull(values.onCallOwnerId),
+    scoreboardOperatorId: noneToNull(values.scoreboardOperatorId),
     meetingLink: orNull(values.meetingLink),
     agenda: orNull(values.agenda),
     feature: orNull(values.feature),
@@ -285,6 +305,8 @@ export function ItemForm({
 }) {
   const { calendar, leadership } = useApis();
   const queryClient = useQueryClient();
+  const [conflicts, setConflicts] = useState<CalendarConflict[]>();
+  const [mitigation, setMitigation] = useState("");
   const [formError, setFormError] = useState<{
     message: string;
     stale: boolean;
@@ -304,8 +326,12 @@ export function ItemForm({
   });
 
   const save = useMutation({
-    mutationFn: (values: FormValues) => {
-      const body = payload(values, canApprove);
+    mutationFn: ({ values, mitigation }: { values: FormValues; mitigation?: string }) => {
+      const body = {
+        ...payload(values, canApprove),
+        // Saving past clashes the editor has seen, with how they will be handled.
+        ...(mitigation ? { acceptConflicts: true as const, mitigation } : {}),
+      };
       if (!original) {
         return calendar.create({
           ...body,
@@ -331,12 +357,19 @@ export function ItemForm({
       await queryClient.invalidateQueries({ queryKey: ["calendar"] });
       onDone(item);
     },
-    onError: (error) =>
+    onError: (error) => {
+      const body = error instanceof ApiError ? error.body : null;
+      const clashes = error instanceof ApiError && error.status === 422 ? conflictsOf(body) : null;
+      if (clashes) {
+        setConflicts(clashes);
+        return;
+      }
       setFormError({
         message: error.message,
         stale: error instanceof ApiError && error.status === 409,
-        closeOut: error instanceof ApiError ? closeOutMessage(error.body) : null,
-      }),
+        closeOut: closeOutMessage(body) ?? readinessMessage(body),
+      });
+    },
   });
 
   const form = useForm({
@@ -344,7 +377,8 @@ export function ItemForm({
     validators: { onSubmit: formSchema(original) },
     onSubmit: async ({ value }) => {
       setFormError(undefined);
-      await save.mutateAsync(value).catch(() => {});
+      setConflicts(undefined);
+      await save.mutateAsync({ values: value }).catch(() => {});
     },
   });
 
@@ -398,6 +432,8 @@ export function ItemForm({
     value,
     label: STATUS_LABELS[value],
   }));
+  const personOptions =
+    people.data?.items.map((person) => ({ value: person.id, label: person.name })) ?? [];
   const ownerOptions = [
     ...(original?.owner && !people.data?.items.some((p) => p.id === original.owner?.id)
       ? [{ value: original.owner.id, label: original.owner.name }]
@@ -561,6 +597,28 @@ export function ItemForm({
               {textField("venue", "สถานที่")}
               {textField("streamPlatform", "แพลตฟอร์มสตรีม")}
               {textField("scoreboardUrl", "ลิงก์ Scoreboard", { type: "url" })}
+              <form.Field name="onCallOwnerId">
+                {(field) => (
+                  <OptionSelect
+                    id="calendar-on-call"
+                    label="On-call"
+                    value={field.state.value}
+                    options={[{ value: NONE, label: "ยังไม่ระบุ" }, ...personOptions]}
+                    onChange={field.handleChange}
+                  />
+                )}
+              </form.Field>
+              <form.Field name="scoreboardOperatorId">
+                {(field) => (
+                  <OptionSelect
+                    id="calendar-scoreboard-operator"
+                    label="คนคุม Scoreboard"
+                    value={field.state.value}
+                    options={[{ value: NONE, label: "ยังไม่ระบุ" }, ...personOptions]}
+                    onChange={field.handleChange}
+                  />
+                )}
+              </form.Field>
             </div>
           </FieldSet>
         )}
@@ -668,6 +726,55 @@ export function ItemForm({
           description: "เว้นว่างถ้าไม่มี ถ้าใส่ รายการจะแสดงป้าย Blocked",
         })}
         {textField("notes", "โน้ตภายใน", { multiline: true })}
+
+        {conflicts && (
+          <div
+            role="alert"
+            className="flex flex-col gap-2 rounded-xl border border-amber-500/60 bg-amber-500/10 p-3 text-sm"
+          >
+            <p className="font-medium">รายการนี้ชนกับ:</p>
+            <ul className="flex flex-col gap-1">
+              {conflicts.map((conflict) => (
+                <li key={conflict.id}>
+                  <span className="font-medium">{conflict.title}</span>{" "}
+                  <span className="text-muted-foreground">
+                    {formatBangkok(conflict.startAt, "day")}{" "}
+                    {formatRange(conflict.startAt, conflict.endAt)} ·{" "}
+                    {conflict.kinds
+                      .map((kind) =>
+                        kind === "person" && conflict.people.length
+                          ? `${CONFLICT_KIND_LABELS.person} (${conflict.people.join(", ")})`
+                          : CONFLICT_KIND_LABELS[kind],
+                      )
+                      .join(", ")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <Field>
+              <FieldLabel htmlFor="calendar-mitigation">แผนรับมือ (ถ้าจะบันทึกทั้งที่ชน)</FieldLabel>
+              <Textarea
+                id="calendar-mitigation"
+                value={mitigation}
+                onChange={(e) => setMitigation(e.target.value)}
+                placeholder="เช่น ให้อีกคนคุม scoreboard แทนช่วงที่ทับกัน"
+                maxLength={500}
+              />
+            </Field>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-end"
+              disabled={!mitigation.trim() || save.isPending}
+              onClick={() =>
+                save.mutate({ values: form.state.values, mitigation: mitigation.trim() })
+              }
+            >
+              บันทึกทั้งที่ชน
+            </Button>
+          </div>
+        )}
 
         {formError && (
           <div role="alert" className="flex flex-col gap-2 text-sm text-destructive">
