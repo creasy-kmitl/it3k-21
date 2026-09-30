@@ -2,13 +2,6 @@ import type { CalendarStatus } from "@it3k/db/calendar-rules";
 import { Button } from "@it3k/ui/components/button";
 import { Checkbox } from "@it3k/ui/components/checkbox";
 import { Field, FieldLabel } from "@it3k/ui/components/field";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@it3k/ui/components/sheet";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { Textarea } from "@it3k/ui/components/textarea";
 import { cn } from "@it3k/ui/lib/utils";
@@ -43,6 +36,7 @@ import { ApiError } from "@/lib/leadership";
 import { CoordinationPanel } from "./coordination-panel";
 import { DeliveryPanel } from "./delivery-panel";
 import { ItemFlags } from "./item-chip";
+import { SideDrawer } from "./side-drawer";
 import { ItemForm, type ItemFormMode } from "./item-form";
 
 const TIME_FIELDS = new Set([
@@ -497,66 +491,61 @@ export function ItemSheet({
       : (detail.data?.title ?? (detail.isPending ? "กำลังโหลด" : "รายการ"));
 
   return (
-    <Sheet open={open} onOpenChange={(next) => !next && close()}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-xl data-[side=right]:sm:max-w-xl">
-        <SheetHeader>
-          <SheetTitle>{title}</SheetTitle>
-          {detail.data && !formMode && (
-            <SheetDescription render={<div />}>
-              <ItemFlags item={detail.data as CalendarItem} />
-            </SheetDescription>
-          )}
-        </SheetHeader>
-        <div className="flex flex-col gap-6 px-4 pb-6">
-          {formMode ? (
-            <ItemForm
-              // A fresh form whenever the item's saved version changes.
-              key={
-                formMode.kind === "edit" ? `${formMode.item.id}:${formMode.item.version}` : "new"
-              }
-              mode={formMode}
-              canApprove={canApprove}
-              currentUserId={currentUserId}
-              onCancel={() => (createAt !== null ? close() : setEditing(false))}
-              onReload={() => void detail.refetch()}
-              onDone={(item) => {
-                toast.success(createAt !== null ? "เพิ่มรายการแล้ว" : "บันทึกแล้ว");
-                setEditing(false);
-                onSelect(item.id);
-              }}
-            />
-          ) : detail.isPending && itemId !== null ? (
-            <div className="flex flex-col gap-2" role="status" aria-label="กำลังโหลด">
-              <Skeleton className="h-4 w-2/3" />
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-4 w-3/4" />
-            </div>
-          ) : detail.isError ? (
-            <div role="alert" className="flex flex-col gap-2 text-sm text-destructive">
-              <p>
-                {detail.error instanceof ApiError && detail.error.status === 404
-                  ? "ไม่พบรายการนี้"
-                  : `โหลดรายการไม่สำเร็จ: ${detail.error.message}`}
-              </p>
-              <Button variant="outline" size="sm" onClick={() => void detail.refetch()}>
-                ลองอีกครั้ง
-              </Button>
-            </div>
-          ) : detail.data ? (
-            <>
-              <Actions item={detail.data} onSelect={onSelect} onEdit={() => setEditing(true)} />
-              <ItemDetails item={detail.data} />
-              {detail.data.checklist && <ChecklistPanel item={detail.data} />}
-              <DeliveryPanel item={detail.data} />
-              <CoordinationPanel item={detail.data} />
-              <section className="flex flex-col gap-2">
-                <h3 className="text-sm font-semibold">ประวัติการเปลี่ยนแปลง</h3>
-                <ChangeLog changes={detail.data.changes} departmentNames={departmentNames} />
-              </section>
-            </>
-          ) : null}
-        </div>
-      </SheetContent>
-    </Sheet>
+    <SideDrawer
+      open={open}
+      onOpenChange={(next) => !next && close()}
+      title={title}
+      description={
+        detail.data && !formMode ? <ItemFlags item={detail.data as CalendarItem} /> : undefined
+      }
+    >
+      <div className="flex flex-col gap-6">
+        {formMode ? (
+          <ItemForm
+            // A fresh form whenever the item's saved version changes.
+            key={formMode.kind === "edit" ? `${formMode.item.id}:${formMode.item.version}` : "new"}
+            mode={formMode}
+            canApprove={canApprove}
+            currentUserId={currentUserId}
+            onCancel={() => (createAt !== null ? close() : setEditing(false))}
+            onReload={() => void detail.refetch()}
+            onDone={(item) => {
+              toast.success(createAt !== null ? "เพิ่มรายการแล้ว" : "บันทึกแล้ว");
+              setEditing(false);
+              onSelect(item.id);
+            }}
+          />
+        ) : detail.isPending && itemId !== null ? (
+          <div className="flex flex-col gap-2" role="status" aria-label="กำลังโหลด">
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+        ) : detail.isError ? (
+          <div role="alert" className="flex flex-col gap-2 text-sm text-destructive">
+            <p>
+              {detail.error instanceof ApiError && detail.error.status === 404
+                ? "ไม่พบรายการนี้"
+                : `โหลดรายการไม่สำเร็จ: ${detail.error.message}`}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => void detail.refetch()}>
+              ลองอีกครั้ง
+            </Button>
+          </div>
+        ) : detail.data ? (
+          <>
+            <Actions item={detail.data} onSelect={onSelect} onEdit={() => setEditing(true)} />
+            <ItemDetails item={detail.data} />
+            {detail.data.checklist && <ChecklistPanel item={detail.data} />}
+            <DeliveryPanel item={detail.data} />
+            <CoordinationPanel item={detail.data} />
+            <section className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold">ประวัติการเปลี่ยนแปลง</h3>
+              <ChangeLog changes={detail.data.changes} departmentNames={departmentNames} />
+            </section>
+          </>
+        ) : null}
+      </div>
+    </SideDrawer>
   );
 }

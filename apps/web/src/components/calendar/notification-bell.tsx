@@ -1,11 +1,4 @@
 import { Button } from "@it3k/ui/components/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@it3k/ui/components/sheet";
 import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -16,6 +9,8 @@ import { useApis } from "@/lib/api-context";
 import { dateKey, formatBangkok } from "@/lib/bangkok-time";
 import type { CalendarAttention, CalendarInbox, CalendarNotification } from "@/lib/calendar";
 import { LIVE_CHECKLIST_SIZE, describeNotification } from "@/lib/calendar-labels";
+
+import { SideDrawer } from "./side-drawer";
 
 const RELEASE_GAPS: Record<string, string> = {
   qa: "ผล QA",
@@ -165,39 +160,39 @@ export function NotificationBell() {
           </span>
         )}
       </Button>
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-md data-[side=right]:sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>การแจ้งเตือน</SheetTitle>
-            <SheetDescription>งานที่เกี่ยวกับคุณในปฏิทิน Tech/Live</SheetDescription>
-          </SheetHeader>
-          <div className="px-4 pb-6">
-            {inbox.data ? (
-              <NotificationList
-                inbox={inbox.data}
-                onReadAll={() => markRead.mutate("all")}
-                onOpen={({ itemId, startAt, notificationId }) => {
-                  if (notificationId) markRead.mutate([notificationId]);
-                  setOpen(false);
-                  void navigate({
-                    to: "/staff/calendar",
-                    search: {
-                      item: itemId,
-                      ...(startAt ? { view: "day" as const, date: dateKey(startAt) } : {}),
-                    },
-                  });
-                }}
-              />
-            ) : inbox.isError ? (
-              <p role="alert" className="text-sm text-destructive">
-                โหลดการแจ้งเตือนไม่สำเร็จ
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">กำลังโหลด</p>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+      <SideDrawer
+        open={open}
+        onOpenChange={setOpen}
+        title="การแจ้งเตือน"
+        description="งานที่เกี่ยวกับคุณในปฏิทิน Tech/Live"
+        width="28rem"
+      >
+        <div>
+          {inbox.data ? (
+            <NotificationList
+              inbox={inbox.data}
+              onReadAll={() => markRead.mutate("all")}
+              onOpen={({ itemId, startAt, notificationId }) => {
+                if (notificationId) markRead.mutate([notificationId]);
+                setOpen(false);
+                void navigate({
+                  to: "/staff/calendar",
+                  search: {
+                    item: itemId,
+                    ...(startAt ? { view: "day" as const, date: dateKey(startAt) } : {}),
+                  },
+                });
+              }}
+            />
+          ) : inbox.isError ? (
+            <p role="alert" className="text-sm text-destructive">
+              โหลดการแจ้งเตือนไม่สำเร็จ
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">กำลังโหลด</p>
+          )}
+        </div>
+      </SideDrawer>
     </>
   );
 }
