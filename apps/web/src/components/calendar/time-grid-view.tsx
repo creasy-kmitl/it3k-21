@@ -19,24 +19,29 @@ type Placed = { item: CalendarItem; top: number; height: number; lane: number; l
 /**
  * Lays one day's items out side by side where they overlap. Each group of
  * overlapping items shares its width between as many lanes as it needs.
+ * Overlap is judged by where each chip is drawn, not only by its times: a
+ * five-minute item is drawn MIN_HEIGHT_PX tall, so the next one must not
+ * share its lane until that drawn height has passed.
  */
 export function layoutDay(items: CalendarItem[], day: number): Placed[] {
   const sorted = [...items].sort((a, b) => a.startAt - b.startAt || b.endAt - a.endAt);
   const placed: Placed[] = [];
-  let group: Placed[] = [];
+  let group: { entry: Placed; drawnEnd: number }[] = [];
   let groupEnd = Number.NEGATIVE_INFINITY;
   const closeGroup = () => {
-    const lanes = Math.max(1, ...group.map((entry) => entry.lane + 1));
-    for (const entry of group) entry.lanes = lanes;
+    const lanes = Math.max(1, ...group.map(({ entry }) => entry.lane + 1));
+    for (const { entry } of group) entry.lanes = lanes;
     group = [];
   };
   for (const item of sorted) {
     const start = Math.max(item.startAt, day);
     const end = Math.min(item.endAt, day + DAY_MS);
+    const height = Math.max(MIN_HEIGHT_PX, ((end - start) / HOUR_MS) * HOUR_PX);
+    // The time the bottom of the chip reaches, which may be later than `end`.
+    const drawnEnd = start + (height / HOUR_PX) * HOUR_MS;
     if (start >= groupEnd) closeGroup();
     const laneEnds = new Map<number, number>();
-    for (const entry of group) {
-      const entryEnd = Math.min(entry.item.endAt, day + DAY_MS);
+    for (const { entry, drawnEnd: entryEnd } of group) {
       laneEnds.set(entry.lane, Math.max(laneEnds.get(entry.lane) ?? 0, entryEnd));
     }
     let lane = 0;
@@ -44,13 +49,13 @@ export function layoutDay(items: CalendarItem[], day: number): Placed[] {
     const entry: Placed = {
       item,
       top: ((start - day) / HOUR_MS) * HOUR_PX,
-      height: Math.max(MIN_HEIGHT_PX, ((end - start) / HOUR_MS) * HOUR_PX),
+      height,
       lane,
       lanes: 1,
     };
-    group.push(entry);
+    group.push({ entry, drawnEnd });
     placed.push(entry);
-    groupEnd = Math.max(groupEnd, end);
+    groupEnd = Math.max(groupEnd, drawnEnd);
   }
   closeGroup();
   return placed;
