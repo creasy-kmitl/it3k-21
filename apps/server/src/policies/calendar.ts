@@ -1,27 +1,40 @@
 import { hasRole, isMember } from "@it3k/auth/permissions";
 import { user } from "@it3k/db/schema/auth";
-import { department } from "@it3k/db/schema/department";
 import { leadership } from "@it3k/db/schema/leadership";
 import { type SQL, sql } from "drizzle-orm";
 
 import type { CurrentUser } from "../middleware/current-user";
-import type { Actor } from "./leadership";
 
-const TECH_LIVE = "tech-live";
+type Actor = Pick<CurrentUser, "role" | "banned" | "departmentId" | "leadershipRole">;
 
-/** Admins and every Tech/Live member plan the calendar; other members read it. */
-export function canEditCalendar(actor: Actor | null): boolean {
-  if (!actor || actor.banned || !isMember(actor.role)) return false;
-  return hasRole(actor.role, "admin") || actor.departmentCode === TECH_LIVE;
+function activeMember(actor: Actor | null): actor is Actor {
+  return !!actor && !actor.banned && isMember(actor.role);
+}
+
+/** Every member reads every department's calendar. */
+export function canReadCalendar(actor: Actor | null): boolean {
+  return activeMember(actor);
+}
+
+/** Admins plan every department's calendar; members plan their own department's. */
+export function canEditDepartment(actor: Actor | null, departmentId: string): boolean {
+  if (!activeMember(actor)) return false;
+  return hasRole(actor.role, "admin") || actor.departmentId === departmentId;
+}
+
+/** Whether the actor can add items anywhere: admins, and members with a department. */
+export function canCreateItems(actor: Actor | null): boolean {
+  if (!activeMember(actor)) return false;
+  return hasRole(actor.role, "admin") || actor.departmentId !== null;
 }
 
 /**
- * Admins and Tech/Live's head and vicehead approve: they publish items and
- * change who can see them. A seat's account always belongs to the seat's
- * department, so a seat plus a Tech/Live account means a Tech/Live seat.
+ * Admins and the department's head and vicehead publish its items. A seat's
+ * account always belongs to the seat's department, so a seat plus the
+ * department means a seat in that department.
  */
-export function canApproveCalendar(actor: Actor | null): boolean {
-  if (!canEditCalendar(actor) || !actor) return false;
+export function canPublishDepartment(actor: Actor | null, departmentId: string): boolean {
+  if (!canEditDepartment(actor, departmentId) || !actor) return false;
   return hasRole(actor.role, "admin") || actor.leadershipRole !== null;
 }
 
@@ -35,50 +48,20 @@ const roleIncludes = (role: string): SQL =>
 const notBanned = (): SQL =>
   sql`(coalesce(${user.banned}, 0) = 0 or (${user.banExpires} is not null and ${user.banExpires} <= cast(unixepoch('subsecond') * 1000 as integer)))`;
 
-const inTechLive = (): SQL =>
-  sql`(select ${department.code} from ${department} where ${department.id} = ${user.departmentId}) = ${TECH_LIVE}`;
+const holdsSeatIn = (departmentId: string): SQL =>
+  sql`exists (select 1 from ${leadership} where ${leadership.userId} = ${user.id} and ${leadership.departmentId} = ${departmentId})`;
 
-const holdsTechLiveSeat = (): SQL =>
-  sql`exists (select 1 from ${leadership} inner join ${department} on ${department.id} = ${leadership.departmentId} where ${leadership.userId} = ${user.id} and ${department.code} = ${TECH_LIVE})`;
-
-/** SQL twin of canEditCalendar, for abortUnless on the actor's row. */
-export function stillCalendarEditor(): SQL {
-  return sql`(${notBanned()} and (${roleIncludes("admin")} or (${roleIncludes("staff")} and ${inTechLive()})))`;
+/** SQL twin of canEditDepartment, for abortUnless on the actor's row. */
+export function stillDepartmentEditor(departmentId: string): SQL {
+  return sql`(${notBanned()} and (${roleIncludes("admin")} or (${roleIncludes("staff")} and ${user.departmentId} = ${departmentId})))`;
 }
 
-/** SQL twin of canApproveCalendar, for abortUnless on the actor's row. */
-export function stillCalendarApprover(): SQL {
-  return sql`(${notBanned()} and (${roleIncludes("admin")} or (${roleIncludes("staff")} and ${inTechLive()} and ${holdsTechLiveSeat()})))`;
+/** SQL twin of canPublishDepartment, for abortUnless on the actor's row. */
+export function stillDepartmentPublisher(departmentId: string): SQL {
+  return sql`(${notBanned()} and (${roleIncludes("admin")} or (${roleIncludes("staff")} and ${user.departmentId} = ${departmentId} and ${holdsSeatIn(departmentId)})))`;
 }
 
-/**
- * Members of an involved department answer what Tech/Live asked of it;
- * editors may record an answer on the department's behalf.
- */
-export function canAnswerRequest(actor: CurrentUser | null, departmentId: string): boolean {
-  if (canEditCalendar(actor)) return true;
-  return !!actor && !actor.banned && isMember(actor.role) && actor.departmentId === departmentId;
-}
-
-/** Editors, the assignee and the assigned department may tick an action item off. */
-export function canCompleteActionItem(
-  actor: CurrentUser | null,
-  action: { ownerId: string | null; departmentId: string | null },
-): boolean {
-  if (canEditCalendar(actor)) return true;
-  if (!actor || actor.banned || !isMember(actor.role)) return false;
-  return (
-    action.ownerId === actor.id ||
-    (action.departmentId !== null && action.departmentId === actor.departmentId)
-  );
-}
-
-/** SQL: the actor is still an unbanned member. */
-export function stillMember(): SQL {
-  return sql`(${notBanned()} and (${roleIncludes("admin")} or ${roleIncludes("staff")}))`;
-}
-
-/** SQL: the actor is still an unbanned member of this department. */
-export function stillInDepartment(departmentId: string): SQL {
-  return sql`(${stillMember()} and ${user.departmentId} = ${departmentId})`;
+/** SQL: the actor is still an unbanned admin, for admin-only writes. */
+export function stillAdmin(): SQL {
+  return sql`(${notBanned()} and ${roleIncludes("admin")})`;
 }

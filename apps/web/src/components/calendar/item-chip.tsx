@@ -1,37 +1,16 @@
 import { cn } from "@it3k/ui/lib/utils";
 
+import { DEPARTMENT_COLORS, DEPARTMENT_ICONS } from "@/components/department-icon";
 import { formatBangkok, formatRange } from "@/lib/bangkok-time";
 import type { CalendarItem } from "@/lib/calendar";
-import { FLAG_HINTS } from "@/lib/calendar-hints";
-import { CATEGORY_ICONS, FLAG_ICONS } from "@/lib/calendar-icons";
-import { CATEGORY_LABELS, MODE_STYLES, itemFlags } from "@/lib/calendar-labels";
+import { STATUS_LABELS } from "@/lib/calendar-labels";
 
-export function ItemFlags({ item, className }: { item: CalendarItem; className?: string }) {
-  const flags = itemFlags(item);
-  if (flags.length === 0) return null;
-  return (
-    <span className={cn("inline-flex flex-wrap gap-1", className)}>
-      {flags.map((flag) => {
-        const Icon = FLAG_ICONS[flag.key];
-        return (
-          <span
-            key={flag.key}
-            title={FLAG_HINTS[flag.key]}
-            className={cn(
-              "inline-flex h-4 items-center gap-0.5 rounded-full px-1.5 text-[10px] leading-none font-semibold",
-              flag.className,
-            )}
-          >
-            {Icon && <Icon aria-hidden className="size-2.5 shrink-0" />}
-            {flag.label}
-          </span>
-        );
-      })}
-    </span>
-  );
+/** The department's tint for an item: its colour class, with a fallback. */
+export function departmentTint(item: Pick<CalendarItem, "department">) {
+  return DEPARTMENT_COLORS[item.department.color] ?? DEPARTMENT_COLORS.slate;
 }
 
-/** A compact, clickable item: mode colour, time, title and warning badges. */
+/** A compact, clickable item on its department's colour: time, title and department. */
 export function ItemChip({
   item,
   onSelect,
@@ -45,34 +24,34 @@ export function ItemChip({
   className?: string;
   style?: React.CSSProperties;
 }) {
-  const muted = item.status === "cancelled" || item.archivedAt !== null;
-  const Icon = CATEGORY_ICONS[item.category];
+  const Icon = DEPARTMENT_ICONS[item.department.icon];
+  const draft = item.status === "draft";
   return (
     <button
       type="button"
       onClick={() => onSelect(item)}
       style={style}
-      aria-label={`${item.title} ${formatRange(item.startAt, item.endAt)}`}
+      aria-label={`${item.title} ${formatRange(item.startAt, item.endAt)} ${item.department.name}${draft ? ` (${STATUS_LABELS.draft})` : ""}`}
       className={cn(
-        "flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-md border-l-4 px-1.5 py-1 text-left text-xs transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-        MODE_STYLES[item.mode].chip,
-        item.tbd && "border-dashed",
-        muted && "opacity-60 line-through decoration-foreground/40",
+        "flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-md border-l-4 border-l-current px-1.5 py-1 text-left text-xs transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+        departmentTint(item),
+        draft && "border-dashed",
+        item.status === "cancelled" && "opacity-60 line-through decoration-foreground/40",
         className,
       )}
     >
-      <span className="flex w-full min-w-0 items-center gap-1">
+      <span className="flex w-full min-w-0 items-center gap-1 text-foreground">
         {showTime && (
           <span className="shrink-0 tabular-nums opacity-80">
             {formatBangkok(item.startAt, "time")}
           </span>
         )}
-        <Icon aria-hidden className="size-3 shrink-0 opacity-80" />
         <span className="truncate font-medium">{item.title}</span>
       </span>
       <span className="flex w-full min-w-0 items-center gap-1">
-        <span className="truncate opacity-70">{CATEGORY_LABELS[item.category]}</span>
-        <ItemFlags item={item} />
+        {Icon && <Icon aria-hidden className="size-3 shrink-0" />}
+        <span className="truncate">{item.department.name}</span>
+        {draft && <span className="shrink-0 opacity-80">· {STATUS_LABELS.draft}</span>}
       </span>
     </button>
   );

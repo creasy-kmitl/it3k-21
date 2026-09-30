@@ -3,28 +3,10 @@ import { cn } from "@it3k/ui/lib/utils";
 
 import { addDays, formatBangkok, formatRange, sameDay } from "@/lib/bangkok-time";
 import type { CalendarItem } from "@/lib/calendar";
-import { CATEGORY_ICONS } from "@/lib/calendar-icons";
-import { CATEGORY_LABELS, MODE_LABELS, MODE_STYLES, STATUS_LABELS } from "@/lib/calendar-labels";
+import { STATUS_LABELS } from "@/lib/calendar-labels";
+import { DepartmentIcon } from "@/components/department-icon";
 
-import { ItemFlags } from "./item-chip";
 import { itemsOnDay } from "./month-view";
-
-/** The item's category icon on its mode colour. */
-export function CategoryBadge({ item, className }: { item: CalendarItem; className?: string }) {
-  const Icon = CATEGORY_ICONS[item.category];
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "flex size-7 shrink-0 items-center justify-center rounded-full text-white",
-        MODE_STYLES[item.mode].dot,
-        className,
-      )}
-    >
-      <Icon className="size-3.5" />
-    </span>
-  );
-}
 
 /** A list of the days from `start`, skipping days with nothing on them. */
 export function AgendaView({
@@ -76,18 +58,22 @@ export function AgendaView({
                     item.status === "cancelled" && "opacity-60",
                   )}
                 >
-                  <CategoryBadge item={item} />
+                  <DepartmentIcon department={item.department} className="size-7" />
                   <span className="w-28 shrink-0 text-sm tabular-nums text-muted-foreground">
                     {formatRange(item.startAt, item.endAt)}
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{item.title}</span>
-                      <ItemFlags item={item} />
+                    <span
+                      className={cn(
+                        "font-medium",
+                        item.status === "cancelled" && "line-through decoration-foreground/40",
+                      )}
+                    >
+                      {item.title}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {MODE_LABELS[item.mode]} · {CATEGORY_LABELS[item.category]} ·{" "}
-                      {STATUS_LABELS[item.status]}
+                      {item.department.name} · {STATUS_LABELS[item.status]}
+                      {item.venue && ` · ${item.venue}`}
                       {item.owner && ` · ${item.owner.name}`}
                     </span>
                   </span>

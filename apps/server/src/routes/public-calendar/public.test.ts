@@ -17,32 +17,25 @@ beforeEach(async () => {
   t = createTestContext();
   staff = createCalendarRoutes(t.deps);
   open = createPublicCalendarRoutes(t.deps);
-  await t.seedUser("tech-head", { department: "Tech/Live", seat: "head", name: "Tech Head" });
+  await t.seedUser("art-head", { department: "Art", seat: "head", name: "Art Head" });
 });
 
 let slot = 0;
 async function create(overrides: Record<string, unknown> = {}) {
-  // Each item gets its own slot, so none of them clash over the owner.
   slot += 3;
   const res = await staff.request(
     "/items",
-    t.as("tech-head", {
+    t.as("art-head", {
       method: "POST",
       json: {
-        title: "VALORANT Final",
-        mode: "operations",
-        category: "match",
+        title: "Art Exhibition",
         status: "confirmed",
-        confirm: true,
         visibility: "public",
         startAt: START + slot * HOUR,
         endAt: START + (slot + 2) * HOUR,
-        ownerId: "tech-head",
-        source: "Sports",
-        teams: ["Team A", "Team B"],
+        ownerId: "art-head",
         venue: "Hall 1, Floor 2",
         notes: "private: call Somchai 081-000-0000",
-        streamPlatform: "YouTube",
         ...overrides,
       },
     }),
@@ -56,47 +49,40 @@ async function list() {
 }
 
 describe("public calendar", () => {
-  test("shows approved, confirmed matches without anything private", async () => {
+  test("shows approved, confirmed items without anything private", async () => {
     await create();
     const { res, body } = await list();
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("public, max-age=60");
     expect(body.items).toHaveLength(1);
     expect(Object.keys(body.items[0] ?? {}).sort()).toEqual(
-      [
-        "category",
-        "endAt",
-        "game",
-        "id",
-        "matchId",
-        "scoreboardUrl",
-        "startAt",
-        "status",
-        "streamPlatform",
-        "teams",
-        "title",
-        "updatedAt",
-        "venue",
-      ].sort(),
+      ["department", "endAt", "id", "startAt", "title", "updatedAt", "venue"].sort(),
     );
-    // The private note's phone number and name never leave the team.
+    expect(body.items[0]).toMatchObject({ department: { name: "Art", color: "rose" } });
+    // The private note's phone number and owner never leave the team.
     expect(JSON.stringify(body)).not.toContain("081-000-0000");
     expect(JSON.stringify(body)).not.toContain("Somchai");
-    expect(body.items[0]).toMatchObject({ status: "scheduled", teams: ["Team A", "Team B"] });
+    expect(JSON.stringify(body)).not.toContain("art-head");
   });
 
-  test("never shows internal, archived or items that became TBD", async () => {
+  test("never shows internal or cancelled items", async () => {
     await create({ visibility: "internal", title: "Internal" });
-    const archived = await create({ title: "Archived" });
+    const cancelled = await create({ title: "Cancelled" });
     await staff.request(
-      `/items/${archived.body.id}`,
-      t.as("tech-head", { method: "PATCH", json: { archived: true, version: 1 } }),
+      `/items/${cancelled.body.id}`,
+      t.as("art-head", {
+        method: "PATCH",
+        json: { status: "cancelled", reason: "ยกเลิก", version: 1 },
+      }),
     );
-    const moved = await create({ title: "Moved" });
-    // Rescheduling clears the confirmation, so it drops out until confirmed again.
+    expect((await list()).body.items).toEqual([]);
+  });
+
+  test("a rescheduled public item stays public at its new time", async () => {
+    const item = await create();
     await staff.request(
-      `/items/${moved.body.id}`,
-      t.as("tech-head", {
+      `/items/${item.body.id}`,
+      t.as("art-head", {
         method: "PATCH",
         json: {
           startAt: START + 40 * HOUR,
@@ -106,24 +92,7 @@ describe("public calendar", () => {
         },
       }),
     );
-    expect((await list()).body.items).toEqual([]);
-  });
-
-  test("shows cancellations so viewers know", async () => {
-    const item = await create();
-    await staff.request(
-      `/items/${item.body.id}`,
-      t.as("tech-head", {
-        method: "PATCH",
-        json: { status: "cancelled", reason: "ทีมถอนตัว", version: 1 },
-      }),
-    );
-    expect((await list()).body.items[0]).toMatchObject({ status: "cancelled" });
-  });
-
-  test("only live operations can be published", async () => {
-    const { res } = await create({ mode: "meetings", category: "planning" });
-    expect(res.status).toBe(400);
+    expect((await list()).body.items[0]).toMatchObject({ startAt: START + 40 * HOUR });
   });
 
   test("refuses ranges over 62 days", async () => {
@@ -137,7 +106,8 @@ describe("public calendar", () => {
     expect(res.headers.get("content-type")).toBe("text/calendar; charset=utf-8");
     const text = await res.text();
     expect(text).toStartWith("BEGIN:VCALENDAR\r\n");
-    expect(text).toContain("SUMMARY:VALORANT Final\r\n");
+    expect(text).toContain("SUMMARY:Art Exhibition\r\n");
+    expect(text).toContain("CATEGORIES:Art\r\n");
     expect(text).toContain("LOCATION:Hall 1\\, Floor 2\r\n");
     expect(text).not.toContain("081-000-0000");
     expect(text).not.toContain("Somchai");
@@ -151,16 +121,10 @@ describe("toIcs", () => {
         {
           id: "x",
           title: "การแข่งขันรอบชิงชนะเลิศประเภททีมระดับมหาวิทยาลัยประจำปี",
-          category: "match",
-          status: "scheduled",
           startAt: Date.UTC(2026, 9, 10, 6),
           endAt: Date.UTC(2026, 9, 10, 8),
-          game: null,
-          matchId: null,
-          teams: [],
           venue: null,
-          streamPlatform: null,
-          scoreboardUrl: null,
+          department: { id: "d", name: "กีฬา", icon: "trophy", color: "green" },
           updatedAt: Date.UTC(2026, 9, 1),
         },
       ],

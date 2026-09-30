@@ -33,7 +33,7 @@ function HomeComponent() {
         </ol>
 
         <Link to="/calendar" className={cn(buttonVariants({ variant: "outline" }), "mb-6")}>
-          ดูตารางการแข่งขัน
+          ดูปฏิทินกิจกรรม
         </Link>
 
         <footer className="flex items-center font-bold">

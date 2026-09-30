@@ -11,20 +11,17 @@ afterEach(cleanup);
 
 const NOW = bangkokTime(2026, 9, 10, 12);
 
+const SPORTS = { id: "d-sports", name: "กีฬา", icon: "trophy", color: "green" } as const;
+const ART = { id: "d-art", name: "Art", icon: "palette", color: "rose" } as const;
+
 function item(overrides: Partial<PublicCalendarItem> = {}): PublicCalendarItem {
   return {
     id: crypto.randomUUID(),
-    title: "VALORANT Final",
-    category: "match",
-    status: "scheduled",
+    title: "พิธีเปิด",
     startAt: bangkokTime(2026, 9, 10, 18),
     endAt: bangkokTime(2026, 9, 10, 20),
-    game: "valorant",
-    matchId: "VAL-F",
-    teams: ["KMITL", "KMUTT"],
     venue: "Hall 1",
-    streamPlatform: "YouTube",
-    scoreboardUrl: "https://score.example/val",
+    department: SPORTS,
     updatedAt: NOW,
     ...overrides,
   };
@@ -37,35 +34,31 @@ function render(items: PublicCalendarItem[]) {
 }
 
 describe("/calendar", () => {
-  test("lists published items by Bangkok day, with live and cancelled marked", async () => {
+  test("lists published items by Bangkok day with their department and venue", async () => {
     await render([
       item(),
-      item({ title: "RoV SF", game: "rov", status: "live", startAt: bangkokTime(2026, 9, 10, 13) }),
+      item({ title: "นิทรรศการ", department: ART, startAt: bangkokTime(2026, 9, 10, 13) }),
       item({
-        title: "TFT R1",
-        game: "tft",
-        status: "cancelled",
+        title: "ซ้อมเชียร์",
         startAt: bangkokTime(2026, 9, 11, 10),
         endAt: bangkokTime(2026, 9, 11, 11),
       }),
     ]);
     const today = screen.getByRole("region", { name: /10 ตุลาคม/ });
-    expect(
-      within(today)
-        .getAllByRole("listitem")
-        .map((li) => li.textContent),
-    ).toEqual([expect.stringContaining("RoV SF"), expect.stringContaining("VALORANT Final")]);
-    expect(within(today).getByText("Live")).toBeTruthy();
-    expect(within(today).getAllByText(/KMITL vs KMUTT/)).toHaveLength(2);
-    const tomorrow = screen.getByRole("region", { name: /11 ตุลาคม/ });
-    expect(within(tomorrow).getByText("ยกเลิก")).toBeTruthy();
+    const rows = within(today)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+    expect(rows).toEqual([expect.stringContaining("นิทรรศการ"), expect.stringContaining("พิธีเปิด")]);
+    expect(rows[0]).toContain("Art");
+    expect(rows[1]).toContain("Hall 1");
+    expect(screen.getByRole("region", { name: /11 ตุลาคม/ }).textContent).toContain("ซ้อมเชียร์");
   });
 
-  test("filters by game and offers the subscription feed", async () => {
-    await render([item(), item({ title: "RoV SF", game: "rov" })]);
-    fireEvent.click(screen.getByRole("button", { name: "RoV" }));
-    expect(screen.queryByText("VALORANT Final")).toBeNull();
-    expect(screen.getByText("RoV SF")).toBeTruthy();
+  test("filters by department and offers the subscription feed", async () => {
+    await render([item(), item({ title: "นิทรรศการ", department: ART })]);
+    fireEvent.click(screen.getByRole("button", { name: "Art" }));
+    expect(screen.queryByText("พิธีเปิด")).toBeNull();
+    expect(screen.getByText("นิทรรศการ")).toBeTruthy();
     expect(screen.getByRole("link", { name: "เพิ่มลงปฏิทินของฉัน" }).getAttribute("href")).toBe(
       "webcal://it3k-api.creasy.club/api/public/calendar/calendar.ics",
     );

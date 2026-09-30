@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { calendarChange, calendarItem, leadership } from "@it3k/db/schema/index";
 import { eq, sql } from "drizzle-orm";
 
-import { createTestContext, defined, readJson } from "../../testing";
+import { createTestContext, readJson } from "../../testing";
 import { createCalendarRoutes } from ".";
 
 let t: ReturnType<typeof createTestContext>;
@@ -19,22 +19,35 @@ type Item = {
   startAt: number;
   endAt: number;
   visibility: string;
+  approvedAt: number | null;
   version: number;
-  tbd: boolean;
-  lastConfirmedAt: number | null;
-  departmentIds: string[];
+  department: { id: string; name: string; icon: string; color: string };
   owner: { id: string; name: string } | null;
+  venue: string | null;
+  notes: string | null;
   canEdit: boolean;
+  canPublish: boolean;
 };
+
+type Page = {
+  items: Item[];
+  canCreate: boolean;
+  myDepartmentId: string | null;
+  isAdmin: boolean;
+};
+
+let art = "";
+let registration = "";
 
 beforeEach(async () => {
   t = createTestContext();
   app = createCalendarRoutes(t.deps);
+  art = await t.departmentId("Art");
+  registration = await t.departmentId("ทะเบียน");
   await t.seedUser("admin", { role: "admin", name: "Admin" });
-  await t.seedUser("tech-staff", { department: "Tech/Live", name: "Tech Staff" });
-  await t.seedUser("tech-head", { department: "Tech/Live", seat: "head", name: "Tech Head" });
   await t.seedUser("art-staff", { department: "Art", name: "Art Staff" });
   await t.seedUser("art-head", { department: "Art", seat: "head", name: "Art Head" });
+  await t.seedUser("reg-staff", { department: "ทะเบียน", name: "Reg Staff" });
   await t.seedUser("guest", { role: "guest", name: "New Guest" });
 });
 
@@ -48,23 +61,15 @@ async function send<T = Record<string, unknown>>(
   return { res, body: (await readJson(res)) as T };
 }
 
-const match = (overrides: Record<string, unknown> = {}) => ({
-  title: "VALORANT รอบรองชนะเลิศ",
-  mode: "operations",
-  category: "match",
-  status: "draft",
+const entry = (overrides: Record<string, unknown> = {}) => ({
+  title: "ประชุมออกแบบฉาก",
   startAt: START,
   endAt: START + 2 * HOUR,
-  ownerId: "tech-staff",
-  source: "Sports schedule v1",
-  game: "valorant",
-  matchId: "VAL-SF1",
-  teams: ["Team A", "Team B"],
   ...overrides,
 });
 
-async function create(overrides: Record<string, unknown> = {}, who = "tech-staff") {
-  const { res, body } = await send<Item>(who, "POST", "/items", match(overrides));
+async function create(overrides: Record<string, unknown> = {}, who = "art-staff") {
+  const { res, body } = await send<Item>(who, "POST", "/items", entry(overrides));
   expect(res.status).toBe(201);
   return body;
 }
@@ -79,308 +84,280 @@ async function changesOf(itemId: string) {
     .orderBy(calendarChange.createdAt, sql`rowid`);
 }
 
-describe("access", () => {
-  test("every member reads; guests are refused", async () => {
-    for (const who of ["admin", "tech-staff", "art-staff"]) {
-      expect((await send(who, "GET", range())).res.status).toBe(200);
+describe("reading", () => {
+  test("every member reads every department; guests are refused", async () => {
+    await create({ title: "Art" });
+    await create({ title: "Reg" }, "reg-staff");
+    for (const who of ["admin", "art-staff", "reg-staff"]) {
+      const { res, body } = await send<Page>(who, "GET", range());
+      expect(res.status).toBe(200);
+      expect(body.items.map((item) => item.title).sort()).toEqual(["Art", "Reg"]);
     }
     expect((await send("guest", "GET", range())).res.status).toBe(403);
   });
 
-  test("only Tech/Live members and admins write", async () => {
-    expect((await send("art-staff", "POST", "/items", match())).res.status).toBe(403);
-    expect((await send("art-head", "POST", "/items", match())).res.status).toBe(403);
-    await create({}, "tech-staff");
-    // A later slot, so the two matches do not clash over the same owner.
-    await create({ startAt: START + 3 * HOUR, endAt: START + 5 * HOUR }, "admin");
+  test("filters by department", async () => {
+    await create({ title: "Art" });
+    await create({ title: "Reg" }, "reg-staff");
+    const { body } = await send<Page>("art-staff", "GET", `${range()}&departmentIds=${art}`);
+    expect(body.items.map((item) => item.title)).toEqual(["Art"]);
+    const both = await send<Page>(
+      "art-staff",
+      "GET",
+      `${range()}&departmentIds=${art},${registration}`,
+    );
+    expect(both.body.items).toHaveLength(2);
   });
 
-  test("reports what the caller may do", async () => {
-    expect((await send("tech-staff", "GET", range())).body).toMatchObject({
+  test("reports the viewer's department and what they may do", async () => {
+    await create();
+    const own = await send<Page>("art-staff", "GET", range());
+    expect(own.body).toMatchObject({
       canCreate: true,
-      canApprove: false,
+      myDepartmentId: art,
+      isAdmin: false,
+      canPublishOwn: false,
     });
-    expect((await send("tech-head", "GET", range())).body).toMatchObject({
+    expect(own.body.items[0]).toMatchObject({ canEdit: true, canPublish: false });
+    const head = await send<Page>("art-head", "GET", range());
+    expect(head.body).toMatchObject({ canPublishOwn: true });
+    expect(head.body.items[0]).toMatchObject({ canEdit: true, canPublish: true });
+    expect((await send<Page>("reg-staff", "GET", range())).body.items[0]).toMatchObject({
+      canEdit: false,
+      canPublish: false,
+    });
+    expect((await send<Page>("admin", "GET", range())).body).toMatchObject({
       canCreate: true,
-      canApprove: true,
-    });
-    expect((await send("art-head", "GET", range())).body).toMatchObject({
-      canCreate: false,
-      canApprove: false,
+      myDepartmentId: null,
+      isAdmin: true,
     });
   });
 
-  test("the owner picker is for editors and never exposes emails", async () => {
-    expect((await send("art-staff", "GET", "/people")).res.status).toBe(403);
-    const { body } = await send<{ items: { id: string }[] }>("tech-staff", "GET", "/people?q=Tech");
-    expect(body.items.map((person) => person.id).sort()).toEqual(["tech-head", "tech-staff"]);
+  test("the owner picker never exposes emails", async () => {
+    const { body } = await send<{ items: { id: string }[] }>("art-staff", "GET", "/people?q=Art");
+    expect(body.items.map((person) => person.id).sort()).toEqual(["art-head", "art-staff"]);
     expect(JSON.stringify(body)).not.toContain("@");
   });
+
+  test("an item's detail includes its change log", async () => {
+    const item = await create();
+    const { body } = await send<{ changes: { action: string }[] }>(
+      "reg-staff",
+      "GET",
+      `/items/${item.id}`,
+    );
+    expect(body.changes.map((change) => change.action)).toEqual(["create"]);
+  });
 });
 
-describe("create", () => {
-  test("any status but draft confirms; delivery work is never TBD", async () => {
-    const confirmed = await create({ status: "confirmed" });
-    expect(confirmed).toMatchObject({ tbd: false });
-    expect(confirmed.lastConfirmedAt).not.toBeNull();
-    const draft = await create({ startAt: START + 3 * HOUR, endAt: START + 4 * HOUR });
-    expect(draft.tbd).toBe(true);
-    const task = await create({
-      mode: "delivery",
-      category: "development",
-      status: "backlog",
-      game: null,
-      matchId: null,
-      teams: null,
+describe("creating", () => {
+  test("needs only a title and times, and defaults to the creator's department", async () => {
+    const item = await create();
+    expect(item).toMatchObject({
+      status: "confirmed",
+      visibility: "internal",
+      department: { id: art, name: "Art" },
+      owner: null,
+      venue: null,
+      notes: null,
     });
-    expect(task.tbd).toBe(false);
   });
 
-  test("the source is optional", async () => {
-    const { res, body } = await send<Item & { source: string | null }>(
-      "tech-staff",
-      "POST",
-      "/items",
-      match({ source: undefined, startAt: START + 5 * HOUR, endAt: START + 6 * HOUR }),
-    );
-    expect(res.status).toBe(201);
-    expect(body.source).toBeNull();
-  });
-
-  test("stores the item as TBD until it is confirmed, and logs it", async () => {
-    const item = await create({ departmentIds: [await t.departmentId("กีฬา")] });
+  test("keeps the optional details", async () => {
+    const item = await create({
+      status: "draft",
+      venue: "ห้อง 301",
+      notes: "เตรียมโปรเจกเตอร์",
+      ownerId: "art-head",
+    });
     expect(item).toMatchObject({
       status: "draft",
-      tbd: true,
-      visibility: "internal",
-      version: 1,
-      owner: { id: "tech-staff", name: "Tech Staff" },
-      canEdit: true,
+      venue: "ห้อง 301",
+      notes: "เตรียมโปรเจกเตอร์",
+      owner: { id: "art-head", name: "Art Head" },
     });
-    expect(item.departmentIds).toHaveLength(1);
-    const [log] = await changesOf(item.id);
-    expect(log).toMatchObject({ action: "create", actorUserId: "tech-staff" });
-    expect(defined(log, "log").changes.title).toEqual([null, "VALORANT รอบรองชนะเลิศ"]);
-
-    const confirmed = await create({
-      status: "confirmed",
-      confirm: true,
-      startAt: START + 3 * HOUR,
-      endAt: START + 5 * HOUR,
-    });
-    expect(confirmed.tbd).toBe(false);
   });
 
-  test("rejects categories and statuses from another mode", async () => {
-    const wrongCategory = await send(
-      "tech-staff",
+  test("members add only to their own department; admins to any", async () => {
+    const { res } = await send(
+      "art-staff",
       "POST",
       "/items",
-      match({ category: "release" }),
+      entry({ departmentId: registration }),
     );
-    expect(wrongCategory.res.status).toBe(400);
-    const wrongStatus = await send("tech-staff", "POST", "/items", match({ status: "released" }));
-    expect(wrongStatus.res.status).toBe(400);
-    await create({ mode: "delivery", category: "release", status: "planned" });
+    expect(res.status).toBe(403);
+    const item = await create({ departmentId: registration }, "admin");
+    expect(item.department.id).toBe(registration);
   });
 
-  test("rejects an end before the start and unknown owners", async () => {
-    const backwards = await send("tech-staff", "POST", "/items", match({ endAt: START }));
-    expect(backwards.res.status).toBe(400);
-    const noOwner = await send("tech-staff", "POST", "/items", match({ ownerId: "nobody" }));
-    expect(noOwner.res.status).toBe(400);
-    const guestOwner = await send("tech-staff", "POST", "/items", match({ ownerId: "guest" }));
-    expect(guestOwner.res.status).toBe(400);
+  test("an admin without a department must choose one", async () => {
+    expect((await send("admin", "POST", "/items", entry())).res.status).toBe(400);
   });
 
-  test("rejects links that are not https", async () => {
-    const res = await send(
-      "tech-staff",
-      "POST",
-      "/items",
-      match({ scoreboardUrl: "javascript:alert(1)" }),
+  test("refuses bad times and unknown owners", async () => {
+    expect((await send("art-staff", "POST", "/items", entry({ endAt: START }))).res.status).toBe(
+      400,
     );
-    expect(res.res.status).toBe(400);
+    expect(
+      (await send("art-staff", "POST", "/items", entry({ endAt: START + 32 * 24 * HOUR }))).res
+        .status,
+    ).toBe(400);
+    expect(
+      (await send("art-staff", "POST", "/items", entry({ ownerId: "guest" }))).res.status,
+    ).toBe(400);
   });
 
-  test("only approvers publish, and never a TBD item", async () => {
-    const publicMatch = { visibility: "public", status: "confirmed", confirm: true };
-    expect((await send("tech-staff", "POST", "/items", match(publicMatch))).res.status).toBe(403);
-    const tbd = await send("tech-head", "POST", "/items", match({ visibility: "public" }));
-    expect(tbd.res.status).toBe(400);
-    const item = await create(publicMatch, "tech-head");
-    expect(item.visibility).toBe("public");
-  });
-});
-
-describe("list", () => {
-  test("returns items that overlap the range, archived ones only on request", async () => {
-    const inside = await create();
-    // Starts before the window and ends inside it.
-    const spanning = await create({ startAt: START - 30 * HOUR, endAt: START - 20 * HOUR });
-    await create({ startAt: START + 48 * HOUR, endAt: START + 50 * HOUR });
-    const { body } = await send<{ items: Item[] }>("art-staff", "GET", range());
-    expect(body.items.map((item) => item.id).sort()).toEqual([inside.id, spanning.id].sort());
-    expect(body.items.every((item) => item.canEdit === false)).toBe(true);
-
-    await send("tech-staff", "PATCH", `/items/${inside.id}`, { archived: true, version: 1 });
-    const visible = await send<{ items: Item[] }>("tech-staff", "GET", range());
-    expect(visible.body.items.map((item) => item.id)).toEqual([spanning.id]);
-    const all = await send<{ items: Item[] }>(
-      "tech-staff",
+  test("tells the owner", async () => {
+    const item = await create({ ownerId: "art-head" });
+    const { body } = await send<{ items: { kind: string; itemId: string }[] }>(
+      "art-head",
       "GET",
-      `${range()}&includeArchived=true`,
+      "/notifications",
     );
-    expect(all.body.items).toHaveLength(2);
-  });
-
-  test("filters by mode, status, department and search", async () => {
-    const sports = await t.departmentId("กีฬา");
-    const matchItem = await create({ departmentIds: [sports] });
-    const release = await create({
-      title: "Scoreboard v2",
-      mode: "delivery",
-      category: "release",
-      status: "planned",
-      // After the match, so the release window does not overlap it.
-      startAt: START + 4 * HOUR,
-      endAt: START + 5 * HOUR,
-      feature: "Live scoreboard",
-      game: null,
-      matchId: null,
-      teams: null,
-    });
-    const ids = async (query: string) =>
-      (await send<{ items: Item[] }>("tech-staff", "GET", `${range()}&${query}`)).body.items.map(
-        (item) => item.id,
-      );
-    expect(await ids("mode=delivery")).toEqual([release.id]);
-    expect(await ids("mode=operations,delivery")).toHaveLength(2);
-    expect(await ids("status=draft")).toEqual([matchItem.id]);
-    expect(await ids(`departmentId=${sports}`)).toEqual([matchItem.id]);
-    expect(await ids("q=VAL-SF1")).toEqual([matchItem.id]);
-    expect(await ids("q=Team%20B")).toEqual([matchItem.id]);
-    expect(await ids("q=scoreboard")).toEqual([release.id]);
-    expect(await ids("q=Tech%20Staff")).toHaveLength(2);
-    expect(await ids("q=100%25")).toEqual([]);
-  });
-
-  test("refuses ranges over 62 days", async () => {
-    const res = await send("tech-staff", "GET", range(START, START + 63 * 24 * HOUR));
-    expect(res.res.status).toBe(400);
+    expect(body.items).toEqual([expect.objectContaining({ kind: "assignment", itemId: item.id })]);
   });
 });
 
-describe("update", () => {
-  test("rescheduling needs a reason, drops the confirmation and is logged", async () => {
-    const item = await create({ status: "confirmed", confirm: true });
-    const moved = { startAt: START + HOUR, endAt: START + 3 * HOUR, version: 1 };
-    expect((await send("tech-staff", "PATCH", `/items/${item.id}`, moved)).res.status).toBe(400);
-    const { res, body } = await send<Item>("tech-staff", "PATCH", `/items/${item.id}`, {
-      ...moved,
-      reason: "Sports moved the slot",
-    });
-    expect(res.status).toBe(200);
-    expect(body).toMatchObject({ startAt: START + HOUR, version: 2, tbd: true });
-    expect(body.lastConfirmedAt).toBeNull();
-    const log = defined((await changesOf(item.id)).at(-1), "log");
-    expect(log).toMatchObject({ action: "reschedule", reason: "Sports moved the slot" });
-    expect(log.changes.startAt).toEqual([START, START + HOUR]);
-  });
-
-  test("cancelling needs a reason", async () => {
+describe("editing", () => {
+  test("members edit their own department's items only", async () => {
     const item = await create();
-    const cancel = { status: "cancelled", version: 1 };
-    expect((await send("tech-staff", "PATCH", `/items/${item.id}`, cancel)).res.status).toBe(400);
-    const { res } = await send("tech-staff", "PATCH", `/items/${item.id}`, {
-      ...cancel,
-      reason: "Team withdrew",
-    });
-    expect(res.status).toBe(200);
-    expect(defined((await changesOf(item.id)).at(-1), "log").action).toBe("cancel");
-  });
-
-  test("leaving draft confirms the item", async () => {
-    const item = await create();
-    const { body } = await send<Item>("tech-staff", "PATCH", `/items/${item.id}`, {
-      // Not "ready": that also needs the live checklist.
-      status: "delayed",
+    const other = await send("reg-staff", "PATCH", `/items/${item.id}`, {
+      title: "Hijack",
       version: 1,
     });
-    expect(body.tbd).toBe(false);
-    const [row] = await t.db.select().from(calendarItem).where(eq(calendarItem.id, item.id));
-    expect(row?.lastConfirmedById).toBe("tech-staff");
-  });
-
-  test("confirming stamps who and when", async () => {
-    const item = await create();
-    const { body } = await send<Item>("tech-staff", "PATCH", `/items/${item.id}`, {
-      status: "confirmed",
-      confirm: true,
+    expect(other.res.status).toBe(403);
+    const { res, body } = await send<Item>("art-head", "PATCH", `/items/${item.id}`, {
+      title: "Renamed",
+      venue: "Hall",
       version: 1,
     });
-    expect(body.tbd).toBe(false);
-    const [row] = await t.db.select().from(calendarItem).where(eq(calendarItem.id, item.id));
-    expect(row?.lastConfirmedById).toBe("tech-staff");
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ title: "Renamed", venue: "Hall", version: 2 });
+    const [, change] = await changesOf(item.id);
+    expect(change).toMatchObject({
+      action: "update",
+      actorUserId: "art-head",
+      changes: { title: ["ประชุมออกแบบฉาก", "Renamed"], venue: [null, "Hall"] },
+    });
+  });
+
+  test("clears optional details", async () => {
+    const item = await create({ venue: "Hall", ownerId: "art-head" });
+    const { body } = await send<Item>("art-staff", "PATCH", `/items/${item.id}`, {
+      venue: "",
+      ownerId: null,
+      version: 1,
+    });
+    expect(body).toMatchObject({ venue: null, owner: null });
+  });
+
+  test("only admins move an item to another department", async () => {
+    const item = await create();
+    const { res } = await send("art-head", "PATCH", `/items/${item.id}`, {
+      departmentId: registration,
+      version: 1,
+    });
+    expect(res.status).toBe(403);
+    const moved = await send<Item>("admin", "PATCH", `/items/${item.id}`, {
+      departmentId: registration,
+      version: 1,
+    });
+    expect(moved.body.department.id).toBe(registration);
+  });
+
+  test("a confirmed item needs a reason to move or be cancelled; a draft does not", async () => {
+    const item = await create({ ownerId: "art-head" });
+    const later = { startAt: START + 3 * HOUR, endAt: START + 4 * HOUR, version: 1 };
+    expect((await send("art-staff", "PATCH", `/items/${item.id}`, later)).res.status).toBe(400);
+    const { res } = await send("art-staff", "PATCH", `/items/${item.id}`, {
+      ...later,
+      reason: "ห้องไม่ว่าง",
+    });
+    expect(res.status).toBe(200);
+    const cancelled = await send<Item>("art-staff", "PATCH", `/items/${item.id}`, {
+      status: "cancelled",
+      reason: "ยกเลิกงาน",
+      version: 2,
+    });
+    expect(cancelled.body.status).toBe("cancelled");
+    expect((await changesOf(item.id)).map((change) => change.action)).toEqual([
+      "create",
+      "reschedule",
+      "cancel",
+    ]);
+    const { body } = await send<{ items: { kind: string }[] }>("art-head", "GET", "/notifications");
+    expect(body.items.map((notice) => notice.kind)).toEqual(["cancel", "reschedule", "assignment"]);
+
+    const draft = await create({ status: "draft" });
+    expect((await send("art-staff", "PATCH", `/items/${draft.id}`, later)).res.status).toBe(200);
   });
 
   test("refuses an edit based on an old version", async () => {
     const item = await create();
-    await send("tech-staff", "PATCH", `/items/${item.id}`, { title: "First", version: 1 });
-    const { res } = await send("tech-head", "PATCH", `/items/${item.id}`, {
+    await send("art-staff", "PATCH", `/items/${item.id}`, { title: "First", version: 1 });
+    const { res } = await send("art-staff", "PATCH", `/items/${item.id}`, {
       title: "Second",
       version: 1,
     });
     expect(res.status).toBe(409);
   });
+});
 
-  test("only approvers change visibility, and TBD items stay internal", async () => {
+describe("publishing", () => {
+  test("the department's head publishes; members and other heads cannot", async () => {
     const item = await create();
-    const publish = { visibility: "public", version: 1 };
-    expect((await send("tech-staff", "PATCH", `/items/${item.id}`, publish)).res.status).toBe(403);
-    expect((await send("tech-head", "PATCH", `/items/${item.id}`, publish)).res.status).toBe(400);
-    const { res, body } = await send<Item>("tech-head", "PATCH", `/items/${item.id}`, {
-      ...publish,
-      status: "confirmed",
-      confirm: true,
-    });
-    expect(res.status).toBe(200);
-    expect(body.visibility).toBe("public");
-    const [row] = await t.db.select().from(calendarItem).where(eq(calendarItem.id, item.id));
-    expect(row?.approvedById).toBe("tech-head");
-  });
-
-  test("replaces the departments and logs the change", async () => {
-    const item = await create({ departmentIds: [await t.departmentId("กีฬา")] });
-    const venue = await t.departmentId("สถานที่");
-    const { body } = await send<Item>("tech-staff", "PATCH", `/items/${item.id}`, {
-      departmentIds: [venue],
+    expect(
+      (await send("art-staff", "PATCH", `/items/${item.id}`, { visibility: "public", version: 1 }))
+        .res.status,
+    ).toBe(403);
+    const { body } = await send<Item>("art-head", "PATCH", `/items/${item.id}`, {
+      visibility: "public",
       version: 1,
     });
-    expect(body.departmentIds).toEqual([venue]);
-    expect(defined((await changesOf(item.id)).at(-1), "log").action).toBe("update");
+    expect(body).toMatchObject({ visibility: "public", approvedAt: expect.any(Number) });
+    expect((await changesOf(item.id)).at(-1)?.action).toBe("publish");
   });
 
-  test("a no-op edit writes nothing", async () => {
-    const item = await create();
-    const { body } = await send<Item>("tech-staff", "PATCH", `/items/${item.id}`, {
-      title: item.title,
+  test("drafts cannot be public", async () => {
+    const { res } = await send(
+      "art-head",
+      "POST",
+      "/items",
+      entry({ status: "draft", visibility: "public" }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  test("leaving confirmed takes an item off the public calendar", async () => {
+    const item = await create({ visibility: "public" }, "art-head");
+    const { body } = await send<Item>("art-staff", "PATCH", `/items/${item.id}`, {
+      status: "cancelled",
+      reason: "ยกเลิก",
       version: 1,
     });
-    expect(body.version).toBe(1);
-    expect(await changesOf(item.id)).toHaveLength(1);
+    expect(body).toMatchObject({ status: "cancelled", visibility: "internal", approvedAt: null });
+  });
+});
+
+describe("deleting", () => {
+  test("removes the item and keeps its history", async () => {
+    const item = await create();
+    expect((await send("reg-staff", "DELETE", `/items/${item.id}?version=1`)).res.status).toBe(403);
+    expect((await send("art-staff", "DELETE", `/items/${item.id}?version=2`)).res.status).toBe(409);
+    expect((await send("art-staff", "DELETE", `/items/${item.id}?version=1`)).res.status).toBe(200);
+    expect(await t.db.select().from(calendarItem).where(eq(calendarItem.id, item.id))).toEqual([]);
+    expect((await changesOf(item.id)).map((change) => change.action)).toEqual(["create", "delete"]);
   });
 });
 
 describe("races", () => {
-  test("an editor moved out of Tech/Live mid-request writes nothing", async () => {
+  test("an editor moved out of the department mid-request writes nothing", async () => {
     const item = await create();
-    const art = await t.departmentId("Art");
     t.hooks.beforeBatch = () => {
       t.hooks.beforeBatch = undefined;
-      t.sqlite.run("UPDATE user SET department_id = ? WHERE id = 'tech-staff'", [art]);
+      t.sqlite.run("UPDATE user SET department_id = ? WHERE id = 'art-staff'", [registration]);
     };
-    const { res } = await send("tech-staff", "PATCH", `/items/${item.id}`, {
+    const { res } = await send("art-staff", "PATCH", `/items/${item.id}`, {
       title: "Changed",
       version: 1,
     });
@@ -390,20 +367,20 @@ describe("races", () => {
     expect(await changesOf(item.id)).toHaveLength(1);
   });
 
-  test("an approver who lost the seat mid-request cannot publish", async () => {
-    const item = await create({ status: "confirmed", confirm: true });
+  test("a head who lost the seat mid-request cannot publish", async () => {
+    const item = await create();
     t.hooks.beforeBatch = () => {
       t.hooks.beforeBatch = undefined;
-      t.sqlite.run("DELETE FROM leadership WHERE user_id = 'tech-head'");
+      t.sqlite.run("DELETE FROM leadership WHERE user_id = 'art-head'");
     };
-    const { res } = await send("tech-head", "PATCH", `/items/${item.id}`, {
+    const { res } = await send("art-head", "PATCH", `/items/${item.id}`, {
       visibility: "public",
       version: 1,
     });
     expect(res.status).toBe(409);
     const [row] = await t.db.select().from(calendarItem).where(eq(calendarItem.id, item.id));
     expect(row?.visibility).toBe("internal");
-    expect(await t.db.select().from(leadership).where(eq(leadership.userId, "tech-head"))).toEqual(
+    expect(await t.db.select().from(leadership).where(eq(leadership.userId, "art-head"))).toEqual(
       [],
     );
   });
@@ -414,59 +391,12 @@ describe("races", () => {
       t.hooks.beforeBatch = undefined;
       t.sqlite.run("UPDATE calendar_item SET version = 2, title = 'Other' WHERE id = ?", [item.id]);
     };
-    const { res } = await send("tech-staff", "PATCH", `/items/${item.id}`, {
+    const { res } = await send("art-staff", "PATCH", `/items/${item.id}`, {
       title: "Mine",
       version: 1,
     });
     expect(res.status).toBe(409);
     const [row] = await t.db.select().from(calendarItem).where(eq(calendarItem.id, item.id));
     expect(row?.title).toBe("Other");
-  });
-});
-
-describe("duplicate and detail", () => {
-  test("copies an item as an internal draft and logs both sides", async () => {
-    const source = await create(
-      { status: "confirmed", confirm: true, visibility: "public" },
-      "tech-head",
-    );
-    const { res, body } = await send<Item>(
-      "tech-staff",
-      "POST",
-      `/items/${source.id}/duplicate`,
-      {},
-    );
-    expect(res.status).toBe(201);
-    expect(body).toMatchObject({
-      title: source.title,
-      status: "draft",
-      visibility: "internal",
-      tbd: true,
-    });
-    expect(body.id).not.toBe(source.id);
-    expect(defined((await changesOf(source.id)).at(-1), "log").action).toBe("duplicate");
-    expect((await changesOf(body.id)).map((change) => change.action)).toEqual(["duplicate"]);
-  });
-
-  test("the detail includes departments and the change log with names", async () => {
-    const item = await create({ departmentIds: [await t.departmentId("กีฬา")] });
-    await send("tech-staff", "PATCH", `/items/${item.id}`, { title: "Renamed", version: 1 });
-    const { res, body } = await send<{
-      departments: { name: string }[];
-      changes: { action: string; actorName: string }[];
-    }>("art-staff", "GET", `/items/${item.id}`);
-    expect(res.status).toBe(200);
-    expect(body.departments.map((dept) => dept.name)).toEqual(["กีฬา"]);
-    expect(body.changes.map((change) => change.action)).toEqual(["update", "create"]);
-    expect(body.changes[0]?.actorName).toBe("Tech Staff");
-  });
-
-  test("unknown items are 404", async () => {
-    const missing = crypto.randomUUID();
-    expect((await send("tech-staff", "GET", `/items/${missing}`)).res.status).toBe(404);
-    expect(
-      (await send("tech-staff", "PATCH", `/items/${missing}`, { title: "x", version: 1 })).res
-        .status,
-    ).toBe(404);
   });
 });

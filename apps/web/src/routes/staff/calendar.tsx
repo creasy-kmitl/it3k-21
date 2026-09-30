@@ -1,18 +1,10 @@
-import {
-  CALENDAR_CATEGORIES,
-  CALENDAR_MODES,
-  CALENDAR_STATUSES,
-  type CalendarCategory,
-  type CalendarMode,
-  GAMES,
-} from "@it3k/db/calendar-rules";
+import { CALENDAR_STATUSES } from "@it3k/db/calendar-rules";
 import { Button } from "@it3k/ui/components/button";
 import { Skeleton } from "@it3k/ui/components/skeleton";
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { CalendarDays, CloudAlert, Info, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { z } from "zod";
 
 import { AgendaView } from "@/components/calendar/agenda-view";
@@ -20,18 +12,18 @@ import {
   CalendarFilters,
   CalendarToolbar,
   type CalendarView,
+  type DepartmentScope,
+  DepartmentScopePicker,
   VIEWS,
 } from "@/components/calendar/calendar-toolbar";
 import { ItemSheet } from "@/components/calendar/item-sheet";
 import { MonthView } from "@/components/calendar/month-view";
-import { RunSheet } from "@/components/calendar/run-sheet";
 import { TimeGridView } from "@/components/calendar/time-grid-view";
 import { PageHeader } from "@/components/page-header";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useNow } from "@/hooks/use-now";
 import { useApis } from "@/lib/api-context";
 import {
-  DAY_MS,
   HOUR_MS,
   addDays,
   addMonths,
@@ -43,29 +35,21 @@ import {
   startOfWeek,
 } from "@/lib/bangkok-time";
 import type { CalendarItem, CalendarQuery } from "@/lib/calendar";
-import { LIVE_CATEGORIES } from "@/lib/calendar-labels";
 
 const AGENDA_DAYS = 14;
-/** How far ahead "next live" and "next release" look: the API's widest range. */
-const JUMP_AHEAD_MS = 62 * DAY_MS;
+/** Remembers the last department scope, so the calendar reopens on it. */
+const SCOPE_KEY = "it3k:calendar-departments";
 
 const optional = <T extends z.ZodType>(schema: T) => schema.optional().catch(undefined);
 
 const searchSchema = z.object({
   view: optional(z.enum(VIEWS)),
   date: optional(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
-  // Comma-separated, so links stay short: `?modes=operations,delivery`.
-  modes: optional(z.string().max(64)),
-  category: optional(z.enum(CALENDAR_CATEGORIES)),
+  // `mine`, `all` or comma-separated department ids, so links stay short.
+  depts: optional(z.string().max(1000)),
   status: optional(z.enum(CALENDAR_STATUSES)),
-  game: optional(z.enum(GAMES)),
-  departmentId: optional(z.string().max(64)),
   mine: optional(z.boolean()),
-  archived: optional(z.boolean()),
   q: optional(z.string().max(64)),
-  venue: optional(z.string().max(64)),
-  streamPlatform: optional(z.string().max(64)),
-  environment: optional(z.string().max(64)),
   item: optional(z.string().max(64)),
 });
 
@@ -76,9 +60,6 @@ export const Route = createFileRoute("/staff/calendar")({
   component: RouteComponent,
 });
 
-const isMode = (value: string): value is CalendarMode =>
-  (CALENDAR_MODES as readonly string[]).includes(value);
-
 function RouteComponent() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -87,6 +68,7 @@ function RouteComponent() {
     <CalendarPage
       search={search}
       currentUserId={session.data?.user.id ?? ""}
+      myDepartmentId={session.data?.user.departmentId ?? null}
       onSearch={(patch, options) =>
         void navigate({
           search: (previous) => ({ ...previous, ...patch }),
@@ -99,6 +81,39 @@ function RouteComponent() {
 
 function prefersAgenda() {
   return typeof window.matchMedia === "function" && window.matchMedia("(max-width: 767px)").matches;
+}
+
+function readStoredScope(): string | undefined {
+  try {
+    return window.localStorage.getItem(SCOPE_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function storeScope(value: string) {
+  try {
+    window.localStorage.setItem(SCOPE_KEY, value);
+  } catch {
+    // Private windows and blocked storage just forget the choice.
+  }
+}
+
+/** `depts` from the URL as a scope; the viewer's own department unless it says otherwise. */
+export function parseScope(
+  depts: string | undefined,
+  myDepartmentId: string | null,
+): DepartmentScope {
+  if (depts === "all") return { kind: "all" };
+  if (depts && depts !== "mine") {
+    const ids = [...new Set(depts.split(",").filter(Boolean))];
+    if (ids.length > 0) return { kind: "some", ids };
+  }
+  return myDepartmentId ? { kind: "mine" } : { kind: "all" };
+}
+
+export function serializeScope(scope: DepartmentScope): string {
+  return scope.kind === "some" ? scope.ids.join(",") : scope.kind;
 }
 
 /** The window each view shows, as epoch ms. */
@@ -142,15 +157,18 @@ export function CalendarPage({
   search,
   onSearch,
   currentUserId,
+  myDepartmentId,
 }: {
   search: CalendarSearch;
   onSearch: (patch: Partial<CalendarSearch>, options?: { replace?: boolean }) => void;
   currentUserId: string;
+  /** The viewer's department from their session; the calendar opens on it. */
+  myDepartmentId: string | null;
 }) {
   const { calendar, leadership } = useApis();
-  const queryClient = useQueryClient();
   const now = useNow();
   const [agendaByDefault] = useState(prefersAgenda);
+  const [storedScope] = useState(readStoredScope);
   const [createAt, setCreateAt] = useState<number | null>(null);
   const [searchText, setSearchText] = useState(search.q ?? "");
   const debouncedSearch = useDebouncedValue(searchText);
@@ -163,26 +181,31 @@ export function CalendarPage({
     onSearch({ q: debouncedSearch || undefined }, { replace: true });
   }, [debouncedSearch, onSearch]);
 
-  const modes = search.modes?.split(",").filter(isMode);
+  const scope = parseScope(search.depts ?? storedScope, myDepartmentId);
+  const setScope = (next: DepartmentScope) => {
+    const value = serializeScope(next);
+    storeScope(value);
+    onSearch({ depts: value }, { replace: true });
+  };
 
   const view: CalendarView = search.view ?? (agendaByDefault ? "agenda" : "week");
   const date = (search.date && fromDateKey(search.date)) || now;
   const { from, to } = viewRange(view, date);
 
-  const filters: Omit<CalendarQuery, "from" | "to"> = {
-    modes,
-    categories: search.category ? [search.category] : undefined,
+  const departmentIds =
+    scope.kind === "mine" && myDepartmentId
+      ? [myDepartmentId]
+      : scope.kind === "some"
+        ? scope.ids
+        : undefined;
+  const query: CalendarQuery = {
+    from,
+    to,
+    departmentIds,
     statuses: search.status ? [search.status] : undefined,
-    game: search.game,
-    departmentId: search.departmentId,
     ownerId: search.mine ? currentUserId : undefined,
-    includeArchived: search.archived,
     q: search.q,
-    venue: search.venue,
-    streamPlatform: search.streamPlatform,
-    environment: search.environment,
   };
-  const query = { from, to, ...filters };
   const items = useQuery({
     queryKey: ["calendar", "items", query],
     queryFn: () => calendar.list(query),
@@ -199,39 +222,38 @@ export function CalendarPage({
     onSearch({ item: typeof item === "string" ? item : item.id });
   const openDay = (day: number) => onSearch({ view: "day", date: dateKey(day) });
 
-  async function jump(target: "week" | "live" | "release") {
-    if (target === "week") {
-      onSearch({ view: "week", date: dateKey(now) });
-      return;
-    }
-    const categories: CalendarCategory[] = target === "live" ? [...LIVE_CATEGORIES] : ["release"];
-    const lookup = { from: now, to: now + JUMP_AHEAD_MS, categories };
-    try {
-      const page = await queryClient.fetchQuery({
-        queryKey: ["calendar", "items", lookup],
-        queryFn: () => calendar.list(lookup),
-      });
-      const next = page.items.find((item) => item.startAt >= now && item.status !== "cancelled");
-      if (!next) {
-        toast.info(target === "live" ? "ไม่พบ Live ถัดไปใน 62 วัน" : "ไม่พบ Release ถัดไปใน 62 วัน");
-        return;
-      }
-      onSearch({ view: "day", date: dateKey(next.startAt), item: next.id });
-    } catch (error) {
-      toast.error(`ค้นหาไม่สำเร็จ: ${(error as Error).message}`);
-    }
-  }
-
   const list = items.data?.items ?? [];
   const canCreate = items.data?.canCreate ?? false;
-  const canApprove = items.data?.canApprove ?? false;
+  const viewer = {
+    departmentId: items.data?.myDepartmentId ?? myDepartmentId,
+    isAdmin: items.data?.isAdmin ?? false,
+    canPublishOwn: items.data?.canPublishOwn ?? false,
+  };
   const showSkeleton = items.isPending || (items.isPlaceholderData && items.isFetching);
+  const departmentName = (id: string | null | undefined) =>
+    departments.data?.find((d) => d.id === id)?.name;
+
+  const title =
+    scope.kind === "all"
+      ? "ปฏิทินทุกแผนก"
+      : scope.kind === "mine"
+        ? `ปฏิทิน${departmentName(myDepartmentId) ? ` · ${departmentName(myDepartmentId)}` : "แผนกของฉัน"}`
+        : scope.ids.length === 1
+          ? `ปฏิทิน · ${departmentName(scope.ids[0]) ?? "1 แผนก"}`
+          : `ปฏิทิน · ${scope.ids.length} แผนก`;
+  // New items go to the one department on screen, else the viewer's own.
+  const createDepartmentId =
+    scope.kind === "some" &&
+    scope.ids.length === 1 &&
+    (viewer.isAdmin || scope.ids[0] === viewer.departmentId)
+      ? (scope.ids[0] ?? null)
+      : viewer.departmentId;
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         icon={CalendarDays}
-        title="ปฏิทิน Tech/Live"
+        title={title}
         description={
           <span className="tabular-nums">
             เวลาไทย (UTC+07:00) · ตอนนี้ {formatBangkok(now, "time")} น.
@@ -241,9 +263,13 @@ export function CalendarPage({
         }
       />
 
-      <RunSheet now={now} onSelect={select} />
-
       <div className="flex flex-col gap-3">
+        <DepartmentScopePicker
+          scope={scope}
+          onChange={setScope}
+          departments={departments.data ?? []}
+          myDepartmentId={myDepartmentId}
+        />
         <CalendarToolbar
           label={rangeLabel(view, from, to, date)}
           view={view}
@@ -251,7 +277,6 @@ export function CalendarPage({
           onPrevious={() => onSearch({ date: dateKey(step(view, date, -1)) })}
           onToday={() => onSearch({ date: dateKey(now) })}
           onNext={() => onSearch({ date: dateKey(step(view, date, 1)) })}
-          onJump={(target) => void jump(target)}
           canCreate={canCreate}
           onCreate={() =>
             // The next whole hour on the day in view.
@@ -261,15 +286,10 @@ export function CalendarPage({
           }
         />
         <CalendarFilters
-          filters={{ ...search, modes }}
-          onChange={(patch) => {
-            const { modes: nextModes, ...rest } = patch;
-            const modesPatch = "modes" in patch ? { modes: nextModes?.join(",") || undefined } : {};
-            onSearch({ ...rest, ...modesPatch }, { replace: true });
-          }}
+          filters={search}
+          onChange={(patch) => onSearch(patch, { replace: true })}
           search={searchText}
           onSearch={setSearchText}
-          departments={departments.data ?? []}
         />
       </div>
 
@@ -340,9 +360,8 @@ export function CalendarPage({
 
       <ItemSheet
         itemId={search.item ?? null}
-        createAt={createAt}
-        currentUserId={currentUserId}
-        canApprove={canApprove}
+        create={createAt === null ? null : { start: createAt, departmentId: createDepartmentId }}
+        viewer={viewer}
         onSelect={(id) => {
           setCreateAt(null);
           select(id);

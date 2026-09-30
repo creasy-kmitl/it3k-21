@@ -1,13 +1,9 @@
-// The public calendar: approved, confirmed live operations only, with a field
-// whitelist. No session is needed, so nothing here may reveal private data.
+// The public calendar: approved, confirmed items of every department, with a
+// field whitelist. No session is needed, so nothing here may reveal private data.
 import type { Database } from "@it3k/db";
-import {
-  CALENDAR_TIMEZONE,
-  type CalendarStatus,
-  calendarItem,
-  publicStatus,
-} from "@it3k/db/schema/calendar";
-import { and, eq, gt, isNotNull, isNull, lt, ne } from "drizzle-orm";
+import { CALENDAR_TIMEZONE, calendarItem } from "@it3k/db/schema/calendar";
+import { department, departmentAppearance } from "@it3k/db/schema/department";
+import { and, eq, gt, isNotNull, lt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -35,18 +31,12 @@ const listQuery = z
     message: "The range must be forwards and at most 62 days",
   });
 
-/**
- * Published, approved and confirmed (not TBD) live operations. Delivery work,
- * meetings and anything archived never leave the team.
- */
+/** Published, approved and confirmed items. Drafts and internal items never leave the team. */
 function published() {
   return and(
     eq(calendarItem.visibility, "public"),
     isNotNull(calendarItem.approvedAt),
-    isNotNull(calendarItem.lastConfirmedAt),
-    ne(calendarItem.status, "draft"),
-    eq(calendarItem.mode, "operations"),
-    isNull(calendarItem.archivedAt),
+    eq(calendarItem.status, "confirmed"),
   );
 }
 
@@ -54,23 +44,21 @@ function published() {
 const publicFields = {
   id: calendarItem.id,
   title: calendarItem.title,
-  category: calendarItem.category,
-  status: calendarItem.status,
   startAt: calendarItem.startAt,
   endAt: calendarItem.endAt,
-  game: calendarItem.game,
-  matchId: calendarItem.matchId,
-  teams: calendarItem.teams,
   venue: calendarItem.venue,
-  streamPlatform: calendarItem.streamPlatform,
-  scoreboardUrl: calendarItem.scoreboardUrl,
   updatedAt: calendarItem.updatedAt,
+  departmentId: department.id,
+  departmentName: department.name,
+  departmentIcon: department.icon,
+  departmentColor: department.color,
 };
 
 async function publicItems(db: Database, from: number, to: number) {
   const rows = await db
     .select(publicFields)
     .from(calendarItem)
+    .innerJoin(department, eq(department.id, calendarItem.departmentId))
     .where(
       and(
         published(),
@@ -83,16 +71,15 @@ async function publicItems(db: Database, from: number, to: number) {
   return rows.map((row) => ({
     id: row.id,
     title: row.title,
-    category: row.category,
-    status: publicStatus(row.status as CalendarStatus),
     startAt: row.startAt.getTime(),
     endAt: row.endAt.getTime(),
-    game: row.game,
-    matchId: row.matchId,
-    teams: row.teams ?? [],
     venue: row.venue,
-    streamPlatform: row.streamPlatform,
-    scoreboardUrl: row.scoreboardUrl,
+    department: departmentAppearance({
+      id: row.departmentId,
+      name: row.departmentName,
+      icon: row.departmentIcon,
+      color: row.departmentColor,
+    }),
     updatedAt: row.updatedAt.getTime(),
   }));
 }
@@ -142,21 +129,13 @@ export function toIcs(items: PublicCalendarItem[], now: number) {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//IT3K//Tech Live Calendar//TH",
+    "PRODID:-//IT3K//Calendar//TH",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
-    "X-WR-CALNAME:IT3K Tech/Live",
+    "X-WR-CALNAME:IT3K",
     `X-WR-TIMEZONE:${CALENDAR_TIMEZONE}`,
   ];
   for (const item of items) {
-    const description = [
-      item.teams.length > 0 ? item.teams.join(" vs ") : null,
-      item.matchId ? `Match ID: ${item.matchId}` : null,
-      item.streamPlatform ? `Stream: ${item.streamPlatform}` : null,
-      item.scoreboardUrl ? `Scoreboard: ${item.scoreboardUrl}` : null,
-    ]
-      .filter(Boolean)
-      .join("\n");
     lines.push(
       "BEGIN:VEVENT",
       `UID:${item.id}@it3k`,
@@ -165,10 +144,9 @@ export function toIcs(items: PublicCalendarItem[], now: number) {
       `DTSTART:${icsTime(item.startAt)}`,
       `DTEND:${icsTime(item.endAt)}`,
       `SUMMARY:${icsText(item.title)}`,
-      `STATUS:${item.status === "cancelled" ? "CANCELLED" : "CONFIRMED"}`,
+      "STATUS:CONFIRMED",
+      `CATEGORIES:${icsText(item.department.name)}`,
       ...(item.venue ? [`LOCATION:${icsText(item.venue)}`] : []),
-      ...(description ? [`DESCRIPTION:${icsText(description)}`] : []),
-      ...(item.scoreboardUrl ? [`URL:${item.scoreboardUrl}`] : []),
       "END:VEVENT",
     );
   }
@@ -193,7 +171,7 @@ export const createPublicCalendarRoutes = (deps: { getDb: () => Database }) =>
       const items = await publicItems(deps.getDb(), now - FEED_BACK_MS, now + FEED_AHEAD_MS);
       c.header("Cache-Control", CACHE);
       c.header("Content-Type", "text/calendar; charset=utf-8");
-      c.header("Content-Disposition", 'inline; filename="it3k-tech-live.ics"');
+      c.header("Content-Disposition", 'inline; filename="it3k.ics"');
       return c.body(toIcs(items, now));
     });
 

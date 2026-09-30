@@ -1,18 +1,16 @@
-import { GAMES, type Game, type PublicStatus } from "@it3k/db/calendar-rules";
 import { Button, buttonVariants } from "@it3k/ui/components/button";
 import { cn } from "@it3k/ui/lib/utils";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { CalendarDays, CalendarPlus, Download, Gamepad2, LayoutGrid, Trophy } from "lucide-react";
+import { CalendarDays, CalendarPlus, Download, LayoutGrid, MapPin } from "lucide-react";
 import { useState } from "react";
 
+import { DepartmentBadge, DepartmentIcon } from "@/components/department-icon";
 import { formatBangkok, formatRange, sameDay, startOfDay } from "@/lib/bangkok-time";
-import { CATEGORY_ICONS, PUBLIC_STATUS_ICONS } from "@/lib/calendar-icons";
-import { CATEGORY_LABELS, GAME_LABELS } from "@/lib/calendar-labels";
 import { type PublicCalendarItem, publicCalendarApi } from "@/lib/public-calendar";
 
 export const Route = createFileRoute("/calendar")({
   loader: () => publicCalendarApi.list(),
-  head: () => ({ meta: [{ title: "ตารางการแข่งขัน · IT3K" }] }),
+  head: () => ({ meta: [{ title: "ปฏิทินกิจกรรม · IT3K" }] }),
   component: RouteComponent,
   errorComponent: () => (
     <p role="alert" className="container mx-auto px-6 py-10 text-destructive">
@@ -26,14 +24,6 @@ function RouteComponent() {
   return <PublicCalendar items={page.items} now={Date.now()} feedUrl={publicCalendarApi.feedUrl} />;
 }
 
-const STATUS: Record<PublicStatus, { label: string; className: string } | null> = {
-  scheduled: null,
-  live: { label: "Live", className: "bg-red-600 text-white" },
-  completed: { label: "จบแล้ว", className: "bg-muted text-muted-foreground" },
-  delayed: { label: "ล่าช้า", className: "bg-amber-500 text-black" },
-  cancelled: { label: "ยกเลิก", className: "bg-muted text-muted-foreground line-through" },
-};
-
 /** Calendar apps subscribe with webcal://; browsers download the https link. */
 const webcal = (url: string) => url.replace(/^https?:\/\//, "webcal://");
 
@@ -46,10 +36,14 @@ export function PublicCalendar({
   now: number;
   feedUrl: string;
 }) {
-  const [game, setGame] = useState<Game>();
-  const shown = [...(game ? items.filter((item) => item.game === game) : items)].sort(
-    (a, b) => a.startAt - b.startAt,
-  );
+  const [departmentId, setDepartmentId] = useState<string>();
+  // Only departments with something published get a filter button.
+  const departments = [
+    ...new Map(items.map((item) => [item.department.id, item.department])).values(),
+  ].sort((a, b) => a.name.localeCompare(b.name, "th"));
+  const shown = [
+    ...(departmentId ? items.filter((item) => item.department.id === departmentId) : items),
+  ].sort((a, b) => a.startAt - b.startAt);
   const days = [...new Set(shown.map((item) => startOfDay(item.startAt)))].sort((a, b) => a - b);
 
   return (
@@ -61,7 +55,7 @@ export function PublicCalendar({
           </Link>
           <h1 className="flex items-center gap-3 text-4xl font-bold tracking-tight text-primary">
             <CalendarDays aria-hidden className="size-9" />
-            ตารางการแข่งขัน
+            ปฏิทินกิจกรรม
           </h1>
           <p className="text-sm text-muted-foreground">
             เวลาทั้งหมดเป็นเวลาไทย (UTC+07:00) · แสดงเฉพาะรายการที่ยืนยันแล้ว
@@ -82,29 +76,30 @@ export function PublicCalendar({
           </div>
         </header>
 
-        <fieldset className="m-0 flex flex-wrap gap-1 border-0 p-0" aria-label="เกม">
-          <Button
-            size="sm"
-            variant={game ? "outline" : "default"}
-            aria-pressed={!game}
-            onClick={() => setGame(undefined)}
-          >
-            <LayoutGrid data-icon="inline-start" />
-            ทุกเกม
-          </Button>
-          {GAMES.map((value) => (
+        {departments.length > 1 && (
+          <fieldset className="m-0 flex flex-wrap gap-1 border-0 p-0" aria-label="แผนก">
             <Button
-              key={value}
               size="sm"
-              variant={game === value ? "default" : "outline"}
-              aria-pressed={game === value}
-              onClick={() => setGame(value)}
+              variant={departmentId ? "outline" : "default"}
+              aria-pressed={!departmentId}
+              onClick={() => setDepartmentId(undefined)}
             >
-              <Gamepad2 data-icon="inline-start" />
-              {GAME_LABELS[value]}
+              <LayoutGrid data-icon="inline-start" />
+              ทุกแผนก
             </Button>
-          ))}
-        </fieldset>
+            {departments.map((department) => (
+              <Button
+                key={department.id}
+                size="sm"
+                variant={departmentId === department.id ? "default" : "outline"}
+                aria-pressed={departmentId === department.id}
+                onClick={() => setDepartmentId(department.id)}
+              >
+                {department.name}
+              </Button>
+            ))}
+          </fieldset>
+        )}
 
         {days.length === 0 ? (
           <p className="rounded-2xl border p-6 text-center text-muted-foreground">
@@ -133,61 +128,23 @@ export function PublicCalendar({
 }
 
 function PublicItem({ item }: { item: PublicCalendarItem }) {
-  const status = STATUS[item.status];
-  const Icon = CATEGORY_ICONS[item.category];
-  const StatusIcon = PUBLIC_STATUS_ICONS[item.status];
   return (
     <li className="flex items-start gap-3 px-3 py-3">
-      <span
-        aria-hidden
-        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-      >
-        <Icon className="size-4" />
-      </span>
+      <DepartmentIcon department={item.department} className="size-8" />
       <span className="w-28 shrink-0 text-sm tabular-nums text-muted-foreground">
         {formatRange(item.startAt, item.endAt)}
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="flex flex-wrap items-center gap-2">
-          <span
-            className={cn("font-medium", item.status === "cancelled" && "line-through opacity-60")}
-          >
-            {item.title}
-          </span>
-          {status && (
-            <span
-              className={cn(
-                "inline-flex h-5 items-center gap-1 rounded-full px-2 text-[11px] font-semibold",
-                status.className,
-              )}
-            >
-              {StatusIcon && <StatusIcon aria-hidden className="size-3" />}
-              {status.label}
+        <span className="font-medium">{item.title}</span>
+        <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <DepartmentBadge department={item.department} />
+          {item.venue && (
+            <span className="inline-flex items-center gap-1">
+              <MapPin aria-hidden className="size-3.5" />
+              {item.venue}
             </span>
           )}
         </span>
-        <span className="text-xs text-muted-foreground">
-          {[
-            item.game && GAME_LABELS[item.game],
-            CATEGORY_LABELS[item.category],
-            item.teams.length > 0 && item.teams.join(" vs "),
-            item.venue,
-            item.streamPlatform && `ถ่ายทอดสด: ${item.streamPlatform}`,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </span>
-        {item.scoreboardUrl && (
-          <a
-            href={item.scoreboardUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="inline-flex items-center gap-1 text-xs text-primary underline"
-          >
-            <Trophy aria-hidden className="size-3.5" />
-            ดูผลคะแนน
-          </a>
-        )}
       </span>
     </li>
   );

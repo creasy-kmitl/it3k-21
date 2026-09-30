@@ -10,7 +10,7 @@ type Client = ReturnType<typeof hc<PublicCalendarRoutes>>;
 export type PublicCalendarPage = InferResponseType<Client["index"]["$get"], 200>;
 export type PublicCalendarItem = PublicCalendarPage["items"][number];
 
-/** The sign-in-free calendar API: approved, confirmed live operations only. */
+/** The sign-in-free calendar API: approved, confirmed items of every department. */
 export function createPublicCalendarApi(
   baseUrl: string,
   fetchImpl?: ClientRequestOptions["fetch"],

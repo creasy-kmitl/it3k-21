@@ -1,18 +1,11 @@
-// Pieces the calendar's item and coordination routes share.
+// Pieces the calendar routes share.
 import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
 import { type CalendarChangeAction, calendarChange, calendarItem } from "@it3k/db/schema/calendar";
-import { department } from "@it3k/db/schema/department";
-import { and, eq, exists, inArray } from "drizzle-orm";
-import { createMiddleware } from "hono/factory";
+import { and, eq, exists } from "drizzle-orm";
 import { z } from "zod";
 
-import {
-  type CurrentUser,
-  type CurrentUserEnv,
-  constraintError,
-} from "../../middleware/current-user";
-import { canEditCalendar } from "../../policies/calendar";
+import { type CurrentUser, constraintError } from "../../middleware/current-user";
 
 const MAX_QUERY_CODE_POINTS = 64;
 
@@ -56,15 +49,6 @@ export async function ownerProblem(db: Database, ownerId: string): Promise<strin
   const roles = (owner.role ?? "").split(",").map((role) => role.trim());
   if (!roles.includes("staff") && !roles.includes("admin")) return "The owner must be a member";
   return null;
-}
-
-export async function departmentsProblem(db: Database, ids: string[]): Promise<string | null> {
-  if (ids.length === 0) return null;
-  const rows = await db
-    .select({ id: department.id })
-    .from(department)
-    .where(inArray(department.id, ids));
-  return rows.length === ids.length ? null : "Department not found";
 }
 
 /** Same item, same version: nobody saved in between. For abortUnless. */
@@ -116,10 +100,3 @@ export function conflictResponse(error: unknown) {
   }
   return null;
 }
-
-export const editorOnly = createMiddleware<CurrentUserEnv>(async (c, next) => {
-  if (!canEditCalendar(c.var.user)) {
-    return c.json({ message: "Forbidden" }, 403);
-  }
-  await next();
-});

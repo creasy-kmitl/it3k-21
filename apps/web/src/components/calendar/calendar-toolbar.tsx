@@ -1,23 +1,15 @@
-import {
-  CALENDAR_CATEGORIES,
-  CALENDAR_MODES,
-  CALENDAR_STATUSES,
-  CATEGORIES_BY_MODE,
-  type CalendarCategory,
-  type CalendarMode,
-  type CalendarStatus,
-  GAMES,
-  type Game,
-} from "@it3k/db/calendar-rules";
+import { CALENDAR_STATUSES, type CalendarStatus } from "@it3k/db/calendar-rules";
 import { Button } from "@it3k/ui/components/button";
 import { Checkbox } from "@it3k/ui/components/checkbox";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@it3k/ui/components/collapsible";
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@it3k/ui/components/dropdown-menu";
 import { Field, FieldLabel } from "@it3k/ui/components/field";
-import { Input } from "@it3k/ui/components/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@it3k/ui/components/input-group";
 import {
   Select,
@@ -26,41 +18,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@it3k/ui/components/select";
-import { cn } from "@it3k/ui/lib/utils";
 import {
-  Archive,
   CalendarCheck,
-  CalendarRange,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  LayoutGrid,
+  Layers,
   Plus,
-  Radio,
-  Rocket,
   Search,
-  SlidersHorizontal,
   User,
-  type LucideIcon,
+  UsersRound,
 } from "lucide-react";
-import type { ReactNode } from "react";
 
 import { DepartmentLabel } from "@/components/department-icon";
+import { OPTION_ICONS, STATUS_ICONS, VIEW_ICONS } from "@/lib/calendar-icons";
+import { STATUS_LABELS } from "@/lib/calendar-labels";
 import type { LeadershipDepartment } from "@/lib/leadership";
-import {
-  CATEGORY_ICONS,
-  GAME_ICONS,
-  MODE_ICONS,
-  OPTION_ICONS,
-  STATUS_ICONS,
-  VIEW_ICONS,
-} from "@/lib/calendar-icons";
-import {
-  CATEGORY_LABELS,
-  GAME_LABELS,
-  MODE_LABELS,
-  MODE_STYLES,
-  STATUS_LABELS,
-} from "@/lib/calendar-labels";
 
 import { IconLabel } from "./icon-label";
 
@@ -74,20 +47,11 @@ const VIEW_LABELS: Record<CalendarView, string> = {
   agenda: "รายการ",
 };
 
-/** Filters the page keeps in its URL. */
-export type CalendarSearchFilters = {
-  modes?: CalendarMode[];
-  category?: CalendarCategory;
-  status?: CalendarStatus;
-  game?: Game;
-  departmentId?: string;
-  mine?: boolean;
-  archived?: boolean;
-  q?: string;
-  venue?: string;
-  streamPlatform?: string;
-  environment?: string;
-};
+/**
+ * Whose calendars are on screen: the viewer's own department, every
+ * department, or a chosen set.
+ */
+export type DepartmentScope = { kind: "mine" } | { kind: "all" } | { kind: "some"; ids: string[] };
 
 const ALL = "__all__";
 
@@ -123,7 +87,6 @@ export function CalendarToolbar({
   onPrevious,
   onToday,
   onNext,
-  onJump,
   canCreate,
   onCreate,
 }: {
@@ -133,278 +96,214 @@ export function CalendarToolbar({
   onPrevious: () => void;
   onToday: () => void;
   onNext: () => void;
-  onJump: (target: "week" | "live" | "release") => void;
   canCreate: boolean;
   onCreate: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1">
-          <Button variant="outline" size="icon-sm" onClick={onPrevious} aria-label="ก่อนหน้า">
-            <ChevronLeft />
-          </Button>
-          <Button variant="outline" size="sm" onClick={onToday}>
-            <CalendarCheck data-icon="inline-start" />
-            วันนี้
-          </Button>
-          <Button variant="outline" size="icon-sm" onClick={onNext} aria-label="ถัดไป">
-            <ChevronRight />
-          </Button>
-        </div>
-        <h2 className="min-w-0 flex-1 truncate text-lg font-semibold" aria-live="polite">
-          {label}
-        </h2>
-        <fieldset className="m-0 flex min-w-0 items-center gap-1 border-0 p-0" aria-label="มุมมอง">
-          {VIEWS.map((option) => {
-            const Icon = VIEW_ICONS[option];
-            return (
-              <Toggle key={option} pressed={view === option} onClick={() => onView(option)}>
-                <Icon data-icon="inline-start" />
-                {VIEW_LABELS[option]}
-              </Toggle>
-            );
-          })}
-        </fieldset>
-        {canCreate && (
-          <Button size="sm" onClick={onCreate}>
-            <Plus data-icon="inline-start" />
-            เพิ่มรายการ
-          </Button>
-        )}
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1">
+        <Button variant="outline" size="icon-sm" onClick={onPrevious} aria-label="ก่อนหน้า">
+          <ChevronLeft />
+        </Button>
+        <Button variant="outline" size="sm" onClick={onToday}>
+          <CalendarCheck data-icon="inline-start" />
+          วันนี้
+        </Button>
+        <Button variant="outline" size="icon-sm" onClick={onNext} aria-label="ถัดไป">
+          <ChevronRight />
+        </Button>
       </div>
-      <fieldset
-        className="m-0 flex min-w-0 flex-wrap items-center gap-1 border-0 p-0"
-        aria-label="ไปที่"
-      >
-        <Button variant="ghost" size="sm" onClick={() => onJump("week")}>
-          <CalendarRange data-icon="inline-start" />
-          สัปดาห์นี้
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => onJump("live")}>
-          <Radio data-icon="inline-start" />
-          Live ถัดไป
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => onJump("release")}>
-          <Rocket data-icon="inline-start" />
-          Release ถัดไป
-        </Button>
+      <h2 className="min-w-0 flex-1 truncate text-lg font-semibold" aria-live="polite">
+        {label}
+      </h2>
+      <fieldset className="m-0 flex min-w-0 items-center gap-1 border-0 p-0" aria-label="มุมมอง">
+        {VIEWS.map((option) => {
+          const Icon = VIEW_ICONS[option];
+          return (
+            <Toggle key={option} pressed={view === option} onClick={() => onView(option)}>
+              <Icon data-icon="inline-start" />
+              {VIEW_LABELS[option]}
+            </Toggle>
+          );
+        })}
       </fieldset>
+      {canCreate && (
+        <Button size="sm" onClick={onCreate}>
+          <Plus data-icon="inline-start" />
+          เพิ่มรายการ
+        </Button>
+      )}
     </div>
   );
 }
 
-function FilterSelect<T extends string>({
-  id,
-  label,
-  value,
-  options,
+/** Switches between the viewer's own department, every department, or a chosen set. */
+export function DepartmentScopePicker({
+  scope,
   onChange,
+  departments,
+  myDepartmentId,
 }: {
-  id: string;
-  label: string;
-  value: T | undefined;
-  options: { value: T; label: string; icon?: LucideIcon; content?: ReactNode }[];
-  onChange: (value: T | undefined) => void;
+  scope: DepartmentScope;
+  onChange: (scope: DepartmentScope) => void;
+  departments: LeadershipDepartment[];
+  myDepartmentId: string | null;
 }) {
-  // Labels are elements, so the trigger shows the chosen option's icon too.
-  const items = [
-    {
-      value: ALL,
-      label: <IconLabel icon={OPTION_ICONS.all}>{`${label}: ทั้งหมด`}</IconLabel>,
-    },
-    ...options.map((option) => ({
-      value: option.value as string,
-      label: option.content ?? <IconLabel icon={option.icon}>{option.label}</IconLabel>,
-    })),
-  ];
+  const chosen = scope.kind === "some" ? scope.ids : [];
+  const toggle = (id: string, checked: boolean) => {
+    // Picking starts from what is on screen, so ticking one more adds to it.
+    const base =
+      scope.kind === "some"
+        ? scope.ids
+        : scope.kind === "mine" && myDepartmentId
+          ? [myDepartmentId]
+          : [];
+    const ids = checked ? [...new Set([...base, id])] : base.filter((value) => value !== id);
+    if (ids.length === 0) onChange(myDepartmentId ? { kind: "mine" } : { kind: "all" });
+    else if (ids.length === 1 && ids[0] === myDepartmentId) onChange({ kind: "mine" });
+    else onChange({ kind: "some", ids });
+  };
+  const pickedLabel =
+    chosen.length === 1
+      ? (departments.find((d) => d.id === chosen[0])?.name ?? "1 แผนก")
+      : `${chosen.length} แผนก`;
   return (
-    <Select
-      items={items}
-      value={value ?? ALL}
-      onValueChange={(next: string | null) =>
-        onChange(next === null || next === ALL ? undefined : (next as T))
-      }
+    <fieldset
+      className="m-0 flex min-w-0 flex-wrap items-center gap-1 border-0 p-0"
+      aria-label="แผนกที่แสดง"
     >
-      <SelectTrigger id={id} aria-label={label} className="w-full sm:w-44">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      {myDepartmentId && (
+        <Toggle pressed={scope.kind === "mine"} onClick={() => onChange({ kind: "mine" })}>
+          <User data-icon="inline-start" />
+          แผนกของฉัน
+        </Toggle>
+      )}
+      <Toggle pressed={scope.kind === "all"} onClick={() => onChange({ kind: "all" })}>
+        <Layers data-icon="inline-start" />
+        ทุกแผนก
+      </Toggle>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              size="sm"
+              variant={scope.kind === "some" ? "default" : "outline"}
+              aria-pressed={scope.kind === "some"}
+            />
+          }
+        >
+          <UsersRound data-icon="inline-start" />
+          {scope.kind === "some" ? pickedLabel : "เลือกแผนก"}
+          <ChevronDown data-icon="inline-end" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="max-h-80 w-60 overflow-y-auto">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>แสดงปฏิทินของ</DropdownMenuLabel>
+            {departments.map((department) => {
+              const checked =
+                scope.kind === "all" ||
+                chosen.includes(department.id) ||
+                (scope.kind === "mine" && department.id === myDepartmentId);
+              return (
+                <DropdownMenuCheckboxItem
+                  key={department.id}
+                  checked={checked}
+                  // Stays open, so several departments can be ticked in one go.
+                  closeOnClick={false}
+                  onCheckedChange={(next) =>
+                    scope.kind === "all"
+                      ? onChange({
+                          kind: "some",
+                          ids: departments.map((d) => d.id).filter((id) => id !== department.id),
+                        })
+                      : toggle(department.id, next)
+                  }
+                >
+                  <DepartmentLabel department={department} />
+                </DropdownMenuCheckboxItem>
+              );
+            })}
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </fieldset>
   );
 }
+
+/** Narrowing filters the page keeps in its URL. */
+export type CalendarSearchFilters = {
+  status?: CalendarStatus;
+  mine?: boolean;
+};
 
 export function CalendarFilters({
   filters,
   onChange,
   search,
   onSearch,
-  departments,
 }: {
   filters: CalendarSearchFilters;
   onChange: (filters: Partial<CalendarSearchFilters>) => void;
-  /** The search box's own text; the page debounces it into `filters.q`. */
+  /** The search box's own text; the page debounces it into the URL. */
   search: string;
   onSearch: (text: string) => void;
-  departments: LeadershipDepartment[];
 }) {
-  const modes = filters.modes ?? [];
-  const toggleMode = (mode: CalendarMode) => {
-    const next = modes.includes(mode) ? modes.filter((m) => m !== mode) : [...modes, mode];
-    // A category from a mode that is no longer shown would hide everything.
-    const categories = next.length ? next.flatMap((m) => CATEGORIES_BY_MODE[m]) : null;
-    onChange({
-      modes: next.length ? next : undefined,
-      ...(filters.category && categories && !categories.includes(filters.category)
-        ? { category: undefined }
-        : {}),
-    });
-  };
-  const categories = modes.length
-    ? CALENDAR_CATEGORIES.filter((c) => modes.some((m) => CATEGORIES_BY_MODE[m].includes(c)))
-    : CALENDAR_CATEGORIES;
-  const extraCount = [filters.venue, filters.streamPlatform, filters.environment].filter(
-    Boolean,
-  ).length;
-
+  const statusItems = [
+    {
+      value: ALL,
+      label: <IconLabel icon={OPTION_ICONS.all}>สถานะ: ทั้งหมด</IconLabel>,
+    },
+    ...CALENDAR_STATUSES.map((value) => ({
+      value: value as string,
+      label: <IconLabel icon={STATUS_ICONS[value]}>{STATUS_LABELS[value]}</IconLabel>,
+    })),
+  ];
   return (
-    <div className="flex flex-col gap-2">
-      <fieldset
-        className="m-0 flex min-w-0 flex-wrap items-center gap-1 border-0 p-0"
-        aria-label="โหมด"
+    <div className="flex flex-wrap items-center gap-2">
+      <InputGroup className="w-full sm:w-72">
+        <InputGroupAddon>
+          <Search />
+        </InputGroupAddon>
+        <InputGroupInput
+          type="search"
+          placeholder="ค้นหาชื่อ, สถานที่, ผู้รับผิดชอบ"
+          aria-label="ค้นหา"
+          value={search}
+          onChange={(e) => onSearch(e.target.value)}
+        />
+      </InputGroup>
+      <Select
+        items={statusItems}
+        value={filters.status ?? ALL}
+        onValueChange={(next: string | null) =>
+          onChange({
+            status: next === null || next === ALL ? undefined : (next as CalendarStatus),
+          })
+        }
       >
-        <Toggle pressed={modes.length === 0} onClick={() => onChange({ modes: undefined })}>
-          <LayoutGrid data-icon="inline-start" />
-          ทั้งหมด
-        </Toggle>
-        {CALENDAR_MODES.map((mode) => {
-          const Icon = MODE_ICONS[mode];
-          const pressed = modes.includes(mode);
-          return (
-            <Toggle key={mode} pressed={pressed} onClick={() => toggleMode(mode)}>
-              <Icon data-icon="inline-start" className={cn(!pressed && MODE_STYLES[mode].icon)} />
-              {MODE_LABELS[mode]}
-            </Toggle>
-          );
-        })}
-      </fieldset>
-      <div className="flex flex-wrap items-center gap-2">
-        <InputGroup className="w-full sm:w-72">
-          <InputGroupAddon>
-            <Search />
-          </InputGroupAddon>
-          <InputGroupInput
-            type="search"
-            placeholder="ค้นหาชื่อ, Match ID, ทีม, ฟีเจอร์, ผู้รับผิดชอบ"
-            aria-label="ค้นหา"
-            value={search}
-            onChange={(e) => onSearch(e.target.value)}
-          />
-        </InputGroup>
-        <FilterSelect
-          id="filter-category"
-          label="ประเภท"
-          value={filters.category}
-          options={categories.map((value) => ({
-            value,
-            label: CATEGORY_LABELS[value],
-            icon: CATEGORY_ICONS[value],
-          }))}
-          onChange={(category) => onChange({ category })}
+        <SelectTrigger id="filter-status" aria-label="สถานะ" className="w-full sm:w-44">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {statusItems.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Field orientation="horizontal" className="w-auto">
+        <Checkbox
+          id="filter-mine"
+          checked={filters.mine ?? false}
+          onCheckedChange={(checked) => onChange({ mine: checked || undefined })}
         />
-        <FilterSelect
-          id="filter-status"
-          label="สถานะ"
-          value={filters.status}
-          options={CALENDAR_STATUSES.map((value) => ({
-            value,
-            label: STATUS_LABELS[value],
-            icon: STATUS_ICONS[value],
-          }))}
-          onChange={(status) => onChange({ status })}
-        />
-        <FilterSelect
-          id="filter-game"
-          label="เกม"
-          value={filters.game}
-          options={GAMES.map((value) => ({
-            value,
-            label: GAME_LABELS[value],
-            icon: GAME_ICONS[value],
-          }))}
-          onChange={(game) => onChange({ game })}
-        />
-        <FilterSelect
-          id="filter-department"
-          label="ฝ่าย"
-          value={filters.departmentId}
-          options={departments.map((d) => ({
-            value: d.id,
-            label: d.name,
-            content: <DepartmentLabel department={d} />,
-          }))}
-          onChange={(departmentId) => onChange({ departmentId })}
-        />
-      </div>
-      <Collapsible defaultOpen={extraCount > 0}>
-        <div className="flex flex-wrap items-center gap-4">
-          <Field orientation="horizontal" className="w-auto">
-            <Checkbox
-              id="filter-mine"
-              checked={filters.mine ?? false}
-              onCheckedChange={(checked) => onChange({ mine: checked || undefined })}
-            />
-            <FieldLabel htmlFor="filter-mine" className="font-normal">
-              <User aria-hidden className="size-4 text-muted-foreground" />
-              เฉพาะงานของฉัน
-            </FieldLabel>
-          </Field>
-          <Field orientation="horizontal" className="w-auto">
-            <Checkbox
-              id="filter-archived"
-              checked={filters.archived ?? false}
-              onCheckedChange={(checked) => onChange({ archived: checked || undefined })}
-            />
-            <FieldLabel htmlFor="filter-archived" className="font-normal">
-              <Archive aria-hidden className="size-4 text-muted-foreground" />
-              แสดงที่เก็บถาวร
-            </FieldLabel>
-          </Field>
-          <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-            <SlidersHorizontal data-icon="inline-start" />
-            ตัวกรองเพิ่มเติม{extraCount > 0 && ` (${extraCount})`}
-          </CollapsibleTrigger>
-        </div>
-        <CollapsibleContent className="flex flex-wrap gap-2 pt-2">
-          <Input
-            aria-label="สถานที่"
-            placeholder="สถานที่"
-            value={filters.venue ?? ""}
-            onChange={(e) => onChange({ venue: e.target.value || undefined })}
-            className="w-full sm:w-44"
-          />
-          <Input
-            aria-label="แพลตฟอร์มสตรีม"
-            placeholder="แพลตฟอร์มสตรีม"
-            value={filters.streamPlatform ?? ""}
-            onChange={(e) => onChange({ streamPlatform: e.target.value || undefined })}
-            className="w-full sm:w-44"
-          />
-          <Input
-            aria-label="Environment"
-            placeholder="Release environment"
-            value={filters.environment ?? ""}
-            onChange={(e) => onChange({ environment: e.target.value || undefined })}
-            className="w-full sm:w-44"
-          />
-        </CollapsibleContent>
-      </Collapsible>
+        <FieldLabel htmlFor="filter-mine" className="font-normal">
+          <User aria-hidden className="size-4 text-muted-foreground" />
+          เฉพาะที่ฉันรับผิดชอบ
+        </FieldLabel>
+      </Field>
     </div>
   );
 }

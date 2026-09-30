@@ -2,45 +2,23 @@ import { Button } from "@it3k/ui/components/button";
 import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, CheckCheck, Inbox, ListChecks, ShieldAlert, TriangleAlert } from "lucide-react";
+import { Bell, CheckCheck, Inbox } from "lucide-react";
 import { useState } from "react";
 
 import { useApis } from "@/lib/api-context";
 import { dateKey, formatBangkok } from "@/lib/bangkok-time";
-import type { CalendarAttention, CalendarInbox, CalendarNotification } from "@/lib/calendar";
+import type { CalendarInbox, CalendarNotification } from "@/lib/calendar";
 import { NOTIFICATION_ICONS } from "@/lib/calendar-icons";
-import { LIVE_CHECKLIST_SIZE, describeNotification } from "@/lib/calendar-labels";
+import { describeNotification } from "@/lib/calendar-labels";
 
 import { SideDrawer } from "./side-drawer";
-
-const RELEASE_GAPS: Record<string, string> = {
-  qa: "ผล QA",
-  approval: "การอนุมัติ",
-  rollbackPlan: "แผน rollback",
-  monitoringOwner: "ผู้ดูแลการ monitor",
-};
-
-function describeAttention(entry: CalendarAttention) {
-  const at = formatBangkok(entry.startAt, "dateTime");
-  if (entry.kind === "readiness") {
-    const gaps = [
-      entry.checklistDone < LIVE_CHECKLIST_SIZE &&
-        `checklist ${entry.checklistDone}/${LIVE_CHECKLIST_SIZE}`,
-      !entry.hasOnCall && "ยังไม่มี on-call",
-    ].filter(Boolean);
-    return `"${entry.itemTitle}" (${at}) ยังไม่พร้อม: ${gaps.join(", ")}`;
-  }
-  return `release "${entry.itemTitle}" (${at}) ยังขาด ${entry.missing
-    .map((key) => RELEASE_GAPS[key] ?? key)
-    .join(", ")}`;
-}
 
 function NoticeIcon({ kind }: { kind: CalendarNotification["kind"] }) {
   const Icon = NOTIFICATION_ICONS[kind];
   return <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />;
 }
 
-/** The inbox itself: what needs attention now, then notifications newest first. */
+/** The inbox itself: notifications, newest first. */
 export function NotificationList({
   inbox,
   onOpen,
@@ -52,32 +30,6 @@ export function NotificationList({
 }) {
   return (
     <div className="flex flex-col gap-6">
-      {inbox.attention.length > 0 && (
-        <section aria-label="ต้องดูตอนนี้" className="flex flex-col gap-2">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-destructive">
-            <TriangleAlert aria-hidden className="size-4" />
-            ต้องดูตอนนี้
-          </h3>
-          <ul className="flex flex-col divide-y rounded-xl border border-destructive/40">
-            {inbox.attention.map((entry) => (
-              <li key={`${entry.kind}-${entry.itemId}`}>
-                <button
-                  type="button"
-                  className="flex w-full items-start gap-2 p-2 text-left text-sm hover:bg-muted/60"
-                  onClick={() => onOpen({ itemId: entry.itemId, startAt: entry.startAt })}
-                >
-                  {entry.kind === "readiness" ? (
-                    <ListChecks aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
-                  ) : (
-                    <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
-                  )}
-                  {describeAttention(entry)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
       <section aria-label="การแจ้งเตือน" className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <h3 className="flex items-center gap-2 text-sm font-semibold">
@@ -153,9 +105,7 @@ export function NotificationBell() {
     mutationFn: (ids: string[] | "all") => calendar.markRead(ids),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["calendar", "notifications"] }),
   });
-  const unread = inbox.data?.unread ?? 0;
-  const urgent = inbox.data?.attention.length ?? 0;
-  const count = unread + urgent;
+  const count = inbox.data?.unread ?? 0;
 
   return (
     <>
@@ -170,10 +120,7 @@ export function NotificationBell() {
         {count > 0 && (
           <span
             aria-hidden
-            className={cn(
-              "absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white",
-              urgent > 0 ? "bg-destructive" : "bg-primary",
-            )}
+            className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-white"
           >
             {count > 99 ? "99+" : count}
           </span>
@@ -183,7 +130,7 @@ export function NotificationBell() {
         open={open}
         onOpenChange={setOpen}
         title="การแจ้งเตือน"
-        description="งานที่เกี่ยวกับคุณในปฏิทิน Tech/Live"
+        description="รายการในปฏิทินที่คุณรับผิดชอบ"
         width="28rem"
       >
         <div>
