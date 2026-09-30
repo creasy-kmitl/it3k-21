@@ -619,6 +619,24 @@ describe("more races", () => {
     expect(await changesOf(item.id)).toHaveLength(1);
   });
 
+  test("an account deleted mid-request can neither edit nor delete", async () => {
+    const item = await create();
+    for (const [method, path, json] of [
+      ["PATCH", `/items/${item.id}`, { title: "Changed", version: 1 }],
+      ["DELETE", `/items/${item.id}?version=1`, undefined],
+    ] as const) {
+      t.hooks.beforeBatch = () => {
+        t.hooks.beforeBatch = undefined;
+        t.sqlite.run("DELETE FROM user WHERE id = 'art-helper'");
+      };
+      await t.seedUser("art-helper", { department: "Art", name: "Art Helper" });
+      expect((await send("art-helper", method, path, json)).res.status).toBe(409);
+    }
+    const [row] = await t.db.select().from(calendarItem).where(eq(calendarItem.id, item.id));
+    expect(row).toMatchObject({ title: item.title, version: 1 });
+    expect(await changesOf(item.id)).toHaveLength(1);
+  });
+
   test("an editor banned mid-create writes nothing", async () => {
     t.hooks.beforeBatch = () => {
       t.hooks.beforeBatch = undefined;

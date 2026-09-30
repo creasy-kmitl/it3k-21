@@ -132,22 +132,36 @@ export function constraintError(error: unknown): "unique" | "foreign-key" | "sta
 
 /**
  * A batch statement that fails the whole batch (a NOT NULL error on user.role,
- * reported by constraintError as "stale") unless `stillTrue` holds. D1 runs a
- * batch as one transaction, so this rechecks what the route read and rolls
- * every write back if it changed in between. Put it before any write in the
- * batch that changes what it checks. With `sql\`1\`` it changes nothing.
+ * reported by constraintError as "stale") unless the actor's account still
+ * exists and `stillTrue` holds for it. D1 runs a batch as one transaction, so
+ * this rechecks what the route read and rolls every write back if it changed
+ * in between. Put it before any write in the batch that changes what it
+ * checks. With `sql\`1\`` it changes nothing.
+ *
+ * It is an upsert so that a deleted account fails too: an UPDATE of a missing
+ * row matches nothing and would let the batch through. When the account
+ * exists, the insert conflicts on id and the update keeps or nulls the role.
+ * When it does not, the insert proposes a NULL role and fails on its own.
  */
 export function abortUnless(db: Database, userId: string, stillTrue: SQL) {
-  return (
-    db
-      .update(user)
+  const actorExists = sql`exists (select 1 from ${user} where ${user.id} = ${userId})`;
+  return db
+    .insert(user)
+    .values({
+      id: userId,
+      name: "",
+      // Never a real address, so it cannot clash with another account's.
+      email: `abort-unless:${userId}`,
+      role: sql`case when ${actorExists} then 'staff' else null end`,
+    })
+    .onConflictDoUpdate({
+      target: user.id,
       // updatedAt is kept as is: this guard must not look like a change.
-      .set({
+      set: {
         role: sql`case when ${stillTrue} then ${user.role} else null end`,
         updatedAt: sql`${user.updatedAt}`,
-      })
-      .where(eq(user.id, userId))
-  );
+      },
+    });
 }
 
 /** True while the account's (comma-separated) role list does not include admin. */
