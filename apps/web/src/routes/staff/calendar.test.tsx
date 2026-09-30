@@ -171,6 +171,25 @@ describe("/staff/calendar", () => {
     expect(main.departmentIds).toEqual(["d-art"]);
   });
 
+  test("an overnight item shows its own part of each day in the agenda", async () => {
+    setup({
+      items: [
+        calendarItem({
+          title: "ถ่ายทอดสดรอบดึก",
+          startAt: bangkokTime(2026, 9, 10, 23),
+          endAt: bangkokTime(2026, 9, 11, 1),
+        }),
+      ],
+    });
+    const first = await screen.findByRole("region", { name: /10 ตุลาคม/ });
+    const next = screen.getByRole("region", { name: /11 ตุลาคม/ });
+    expect(first.textContent).toContain("23:00–00:00");
+    expect(first.textContent).toContain("ต่อถึงวันถัดไป");
+    expect(next.textContent).toContain("00:00–01:00");
+    expect(next.textContent).toContain("ต่อจากวันก่อน");
+    expect(next.textContent).not.toContain("23:00");
+  });
+
   test("switches to every department or a chosen few, and remembers it", async () => {
     const { queries } = setup({ items: [calendarItem()] });
     await agenda();

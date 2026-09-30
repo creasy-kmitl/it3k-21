@@ -1,12 +1,13 @@
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@it3k/ui/components/empty";
 import { cn } from "@it3k/ui/lib/utils";
 
-import { addDays, formatBangkok, formatRange, sameDay } from "@/lib/bangkok-time";
+import { addDays, formatBangkok, sameDay } from "@/lib/bangkok-time";
 import type { CalendarItem } from "@/lib/calendar";
 import { STATUS_LABELS } from "@/lib/calendar-labels";
 import { DepartmentIcon } from "@/components/department-icon";
 
 import { ItemContextMenu } from "./calendar-shortcuts";
+import { DayRange } from "./day-range";
 import { itemsOnDay } from "./month-view";
 
 /** A list of the days from `start`, skipping days with nothing on them. */
@@ -62,7 +63,7 @@ export function AgendaView({
                   >
                     <DepartmentIcon department={item.department} className="size-7" />
                     <span className="w-28 shrink-0 text-sm tabular-nums text-muted-foreground">
-                      {formatRange(item.startAt, item.endAt)}
+                      <DayRange range={item} day={group.day} />
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col gap-1">
                       <span

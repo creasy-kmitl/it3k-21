@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
+import { bangkokTime } from "@/lib/bangkok-time";
 import { calendarItem } from "@/test/query";
 
 import { ItemChip } from "./item-chip";
@@ -45,5 +46,30 @@ describe("ItemChip", () => {
     fireEvent.click(screen.getByRole("button"));
     expect(chosen).toEqual([item.id]);
     expect(screen.getByRole("button").textContent).not.toMatch(/\d{2}:\d{2}/);
+  });
+});
+
+describe("ItemChip on one day of an overnight item", () => {
+  const night = calendarItem({
+    title: "ถ่ายทอดสดรอบดึก",
+    startAt: bangkokTime(2026, 9, 10, 23),
+    endAt: bangkokTime(2026, 9, 11, 1),
+  });
+
+  test("shows the start on its first day and says it carries on", () => {
+    render(<ItemChip item={night} day={bangkokTime(2026, 9, 10)} onSelect={() => {}} />);
+    const chip = screen.getByRole("button");
+    expect(chip.textContent).toContain("23:00");
+    expect(chip.getAttribute("aria-label")).toContain("23:00–00:00 (ต่อถึงวันถัดไป)");
+    expect(chip.querySelector(".lucide-chevron-right")).not.toBeNull();
+  });
+
+  test("shows midnight on the next day, not the previous day's start", () => {
+    render(<ItemChip item={night} day={bangkokTime(2026, 9, 11)} onSelect={() => {}} />);
+    const chip = screen.getByRole("button");
+    expect(chip.textContent).toContain("00:00");
+    expect(chip.textContent).not.toContain("23:00");
+    expect(chip.getAttribute("aria-label")).toContain("00:00–01:00 (ต่อจากวันก่อน)");
+    expect(chip.querySelector(".lucide-chevron-left")).not.toBeNull();
   });
 });

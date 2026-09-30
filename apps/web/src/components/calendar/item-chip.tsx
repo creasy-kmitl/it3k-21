@@ -1,11 +1,11 @@
 import { cn } from "@it3k/ui/lib/utils";
 
 import { DEPARTMENT_COLORS, DEPARTMENT_ICONS } from "@/components/department-icon";
-import { formatBangkok, formatRange } from "@/lib/bangkok-time";
 import type { CalendarItem } from "@/lib/calendar";
 import { STATUS_LABELS } from "@/lib/calendar-labels";
 
 import { ItemContextMenu } from "./calendar-shortcuts";
+import { DayRange, describeDayRange } from "./day-range";
 
 /** The department's tint for an item: its colour class, with a fallback. */
 export function departmentTint(item: Pick<CalendarItem, "department">) {
@@ -15,12 +15,15 @@ export function departmentTint(item: Pick<CalendarItem, "department">) {
 /** A compact, clickable item on its department's colour: time, title and department. */
 export function ItemChip({
   item,
+  day,
   onSelect,
   showTime = true,
   className,
   style,
 }: {
   item: CalendarItem;
+  /** The Bangkok day the chip sits on; its time is then the part on that day. */
+  day?: number;
   onSelect: (item: CalendarItem) => void;
   showTime?: boolean;
   className?: string;
@@ -34,7 +37,7 @@ export function ItemChip({
         type="button"
         onClick={() => onSelect(item)}
         style={style}
-        aria-label={`${item.title} ${formatRange(item.startAt, item.endAt)} ${item.department.name}${
+        aria-label={`${item.title} ${describeDayRange(item, day)} ${item.department.name}${
           item.collaborators.length > 0
             ? ` ร่วมกับ ${item.collaborators.map((d) => d.name).join(", ")}`
             : ""
@@ -50,7 +53,7 @@ export function ItemChip({
         <span className="flex w-full min-w-0 items-center gap-1 text-foreground">
           {showTime && (
             <span className="shrink-0 tabular-nums opacity-80">
-              {formatBangkok(item.startAt, "time")}
+              <DayRange range={item} day={day} startOnly />
             </span>
           )}
           <span className="truncate font-medium">{item.title}</span>

@@ -73,7 +73,7 @@ export function MonthView({
                     {bangkokParts(day).day}
                   </button>
                   {dayItems.slice(0, VISIBLE_PER_DAY).map((item) => (
-                    <ItemChip key={item.id} item={item} onSelect={onSelect} />
+                    <ItemChip key={item.id} item={item} day={startOfDay(day)} onSelect={onSelect} />
                   ))}
                   {dayItems.length > VISIBLE_PER_DAY && (
                     <button

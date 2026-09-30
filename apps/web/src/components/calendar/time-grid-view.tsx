@@ -136,7 +136,12 @@ export function TimeGridView({
                         width: `${100 / entry.lanes}%`,
                       }}
                     >
-                      <ItemChip item={entry.item} onSelect={onSelect} className="h-full" />
+                      <ItemChip
+                        item={entry.item}
+                        day={day}
+                        onSelect={onSelect}
+                        className="h-full"
+                      />
                     </li>
                   ))}
                 </ul>

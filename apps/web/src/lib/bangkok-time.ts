@@ -165,6 +165,22 @@ export function formatBangkok(ms: number, style: DateStyle) {
 }
 
 /** "13:00–15:00", with the end's date when the range crosses midnight. */
+/**
+ * The part of a stretch of time that falls on the Bangkok day starting at
+ * `day`, and whether it carries on from the day before or into the next one,
+ * so an overnight item reads 23:00–00:00 on its first day and 00:00–01:00 on
+ * the next.
+ */
+export function portionOnDay(range: { startAt: number; endAt: number }, day: number) {
+  const dayEnd = day + DAY_MS;
+  return {
+    startAt: Math.max(range.startAt, day),
+    endAt: Math.min(range.endAt, dayEnd),
+    fromBefore: range.startAt < day,
+    intoNext: range.endAt > dayEnd,
+  };
+}
+
 export function formatRange(start: number, end: number) {
   const endLabel = sameDay(start, end - 1)
     ? formatBangkok(end, "time")

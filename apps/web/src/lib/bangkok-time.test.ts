@@ -15,6 +15,7 @@ import {
   startOfMonth,
   startOfWeek,
   toDatetimeLocal,
+  portionOnDay,
 } from "./bangkok-time";
 
 describe("Bangkok time", () => {
@@ -64,5 +65,42 @@ describe("Bangkok time", () => {
     const ms = Date.UTC(2026, 9, 10, 6, 0);
     expect(formatBangkok(ms, "time")).toBe("13:00");
     expect(formatRange(ms, ms + 2 * HOUR_MS)).toBe("13:00–15:00");
+  });
+});
+
+describe("portionOnDay", () => {
+  const night = {
+    startAt: bangkokTime(2026, 9, 10, 23),
+    endAt: bangkokTime(2026, 9, 11, 1),
+  };
+
+  test("splits an overnight item at Bangkok midnight", () => {
+    expect(portionOnDay(night, bangkokTime(2026, 9, 10))).toEqual({
+      startAt: bangkokTime(2026, 9, 10, 23),
+      endAt: bangkokTime(2026, 9, 11),
+      fromBefore: false,
+      intoNext: true,
+    });
+    expect(portionOnDay(night, bangkokTime(2026, 9, 11))).toEqual({
+      startAt: bangkokTime(2026, 9, 11),
+      endAt: bangkokTime(2026, 9, 11, 1),
+      fromBefore: true,
+      intoNext: false,
+    });
+  });
+
+  test("leaves an item inside one day as it is", () => {
+    const item = { startAt: bangkokTime(2026, 9, 10, 9), endAt: bangkokTime(2026, 9, 10, 10) };
+    expect(portionOnDay(item, bangkokTime(2026, 9, 10))).toEqual({
+      ...item,
+      fromBefore: false,
+      intoNext: false,
+    });
+  });
+
+  test("an item that ends exactly at midnight does not carry on", () => {
+    const late = { startAt: bangkokTime(2026, 9, 10, 22), endAt: bangkokTime(2026, 9, 11) };
+    expect(portionOnDay(late, bangkokTime(2026, 9, 10)).intoNext).toBe(false);
+    expect(formatRange(late.startAt, late.endAt)).toBe("22:00–00:00");
   });
 });
