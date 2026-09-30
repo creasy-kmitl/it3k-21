@@ -61,17 +61,28 @@ import {
   FIELD_LABELS,
   GAME_LABELS,
   MODE_LABELS,
+  MODE_STYLES,
   REQUEST_STATE_LABELS,
   RISK_LABELS,
   STATUS_LABELS,
   VISIBILITY_LABELS,
 } from "@/lib/calendar-labels";
-import { ACTION_ICONS, CHECKLIST_ICONS } from "@/lib/calendar-icons";
+import {
+  ACTION_ICONS,
+  CATEGORY_ICONS,
+  CHECKLIST_ICONS,
+  GAME_ICONS,
+  MODE_ICONS,
+  RISK_ICONS,
+  STATUS_ICONS,
+  VISIBILITY_ICONS,
+} from "@/lib/calendar-icons";
 import { ApiError } from "@/lib/leadership";
 
 import { CategoryBadge } from "./agenda-view";
 import { CoordinationPanel } from "./coordination-panel";
 import { DeliveryPanel } from "./delivery-panel";
+import { IconLabel } from "./icon-label";
 import { ItemFlags } from "./item-chip";
 import { SideDrawer } from "./side-drawer";
 import { ItemForm, type ItemFormMode } from "./item-form";
@@ -319,7 +330,10 @@ function ExternalLink({ href }: { href: string }) {
 
 function ItemDetails({ item }: { item: CalendarItemDetail }) {
   const context: [string, React.ReactNode][] = [
-    ["เกม", item.game && GAME_LABELS[item.game]],
+    [
+      "เกม",
+      item.game && <IconLabel icon={GAME_ICONS[item.game]}>{GAME_LABELS[item.game]}</IconLabel>,
+    ],
     ["Match ID", item.matchId],
     ["ทีม", item.teams.length > 0 && item.teams.join(" vs ")],
     ["สถานที่", item.venue],
@@ -336,9 +350,18 @@ function ItemDetails({ item }: { item: CalendarItemDetail }) {
         <span className="text-muted-foreground"> (เวลาไทย)</span>
       </Detail>
       <Detail label="โหมด">
-        {MODE_LABELS[item.mode]} · {CATEGORY_LABELS[item.category]}
+        <span className="flex flex-wrap gap-x-3 gap-y-1">
+          <IconLabel icon={MODE_ICONS[item.mode]} iconClassName={MODE_STYLES[item.mode].icon}>
+            {MODE_LABELS[item.mode]}
+          </IconLabel>
+          <IconLabel icon={CATEGORY_ICONS[item.category]}>
+            {CATEGORY_LABELS[item.category]}
+          </IconLabel>
+        </span>
       </Detail>
-      <Detail label="สถานะ">{STATUS_LABELS[item.status]}</Detail>
+      <Detail label="สถานะ">
+        <IconLabel icon={STATUS_ICONS[item.status]}>{STATUS_LABELS[item.status]}</IconLabel>
+      </Detail>
       <Detail label="ผู้รับผิดชอบ">{item.owner?.name ?? "—"}</Detail>
       {item.onCallOwner && <Detail label="On-call">{item.onCallOwner.name}</Detail>}
       {item.scoreboardOperator && (
@@ -353,8 +376,16 @@ function ItemDetails({ item }: { item: CalendarItemDetail }) {
       <Detail label="ยืนยันล่าสุด">
         {item.lastConfirmedAt ? formatBangkok(item.lastConfirmedAt, "dateTime") : "ยังไม่ยืนยัน (TBD)"}
       </Detail>
-      <Detail label="การเผยแพร่">{VISIBILITY_LABELS[item.visibility]}</Detail>
-      {item.riskLevel && <Detail label="ความเสี่ยง">{RISK_LABELS[item.riskLevel]}</Detail>}
+      <Detail label="การเผยแพร่">
+        <IconLabel icon={VISIBILITY_ICONS[item.visibility]}>
+          {VISIBILITY_LABELS[item.visibility]}
+        </IconLabel>
+      </Detail>
+      {item.riskLevel && (
+        <Detail label="ความเสี่ยง">
+          <IconLabel icon={RISK_ICONS[item.riskLevel]}>{RISK_LABELS[item.riskLevel]}</IconLabel>
+        </Detail>
+      )}
       {item.blockedReason && (
         <Detail label="สิ่งที่ติดขัด">
           <span className="text-destructive">{item.blockedReason}</span>

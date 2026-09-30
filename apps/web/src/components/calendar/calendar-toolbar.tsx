@@ -40,9 +40,20 @@ import {
   Search,
   SlidersHorizontal,
   User,
+  type LucideIcon,
 } from "lucide-react";
+import type { ReactNode } from "react";
 
-import { MODE_ICONS, VIEW_ICONS } from "@/lib/calendar-icons";
+import { DepartmentLabel } from "@/components/department-icon";
+import type { LeadershipDepartment } from "@/lib/leadership";
+import {
+  CATEGORY_ICONS,
+  GAME_ICONS,
+  MODE_ICONS,
+  OPTION_ICONS,
+  STATUS_ICONS,
+  VIEW_ICONS,
+} from "@/lib/calendar-icons";
 import {
   CATEGORY_LABELS,
   GAME_LABELS,
@@ -50,6 +61,8 @@ import {
   MODE_STYLES,
   STATUS_LABELS,
 } from "@/lib/calendar-labels";
+
+import { IconLabel } from "./icon-label";
 
 export const VIEWS = ["month", "week", "day", "agenda"] as const;
 export type CalendarView = (typeof VIEWS)[number];
@@ -191,10 +204,20 @@ function FilterSelect<T extends string>({
   id: string;
   label: string;
   value: T | undefined;
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; icon?: LucideIcon; content?: ReactNode }[];
   onChange: (value: T | undefined) => void;
 }) {
-  const items = [{ value: ALL, label: `${label}: ทั้งหมด` }, ...options];
+  // Labels are elements, so the trigger shows the chosen option's icon too.
+  const items = [
+    {
+      value: ALL,
+      label: <IconLabel icon={OPTION_ICONS.all}>{`${label}: ทั้งหมด`}</IconLabel>,
+    },
+    ...options.map((option) => ({
+      value: option.value as string,
+      label: option.content ?? <IconLabel icon={option.icon}>{option.label}</IconLabel>,
+    })),
+  ];
   return (
     <Select
       items={items}
@@ -229,7 +252,7 @@ export function CalendarFilters({
   /** The search box's own text; the page debounces it into `filters.q`. */
   search: string;
   onSearch: (text: string) => void;
-  departments: { id: string; name: string }[];
+  departments: LeadershipDepartment[];
 }) {
   const modes = filters.modes ?? [];
   const toggleMode = (mode: CalendarMode) => {
@@ -288,28 +311,44 @@ export function CalendarFilters({
           id="filter-category"
           label="ประเภท"
           value={filters.category}
-          options={categories.map((value) => ({ value, label: CATEGORY_LABELS[value] }))}
+          options={categories.map((value) => ({
+            value,
+            label: CATEGORY_LABELS[value],
+            icon: CATEGORY_ICONS[value],
+          }))}
           onChange={(category) => onChange({ category })}
         />
         <FilterSelect
           id="filter-status"
           label="สถานะ"
           value={filters.status}
-          options={CALENDAR_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))}
+          options={CALENDAR_STATUSES.map((value) => ({
+            value,
+            label: STATUS_LABELS[value],
+            icon: STATUS_ICONS[value],
+          }))}
           onChange={(status) => onChange({ status })}
         />
         <FilterSelect
           id="filter-game"
           label="เกม"
           value={filters.game}
-          options={GAMES.map((value) => ({ value, label: GAME_LABELS[value] }))}
+          options={GAMES.map((value) => ({
+            value,
+            label: GAME_LABELS[value],
+            icon: GAME_ICONS[value],
+          }))}
           onChange={(game) => onChange({ game })}
         />
         <FilterSelect
           id="filter-department"
           label="ฝ่าย"
           value={filters.departmentId}
-          options={departments.map((d) => ({ value: d.id, label: d.name }))}
+          options={departments.map((d) => ({
+            value: d.id,
+            label: d.name,
+            content: <DepartmentLabel department={d} />,
+          }))}
           onChange={(departmentId) => onChange({ departmentId })}
         />
       </div>

@@ -14,6 +14,8 @@ import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
+  CircleCheck,
+  Link2,
   Gavel,
   Hourglass,
   ListTodo,
@@ -35,9 +37,12 @@ import type {
   CalendarItemDetail,
 } from "@/lib/calendar";
 import { REQUEST_STATE_LABELS, REQUEST_STATE_STYLES } from "@/lib/calendar-labels";
-import { ApiError } from "@/lib/leadership";
+import { DepartmentLabel } from "@/components/department-icon";
+import { OPTION_ICONS } from "@/lib/calendar-icons";
+import { ApiError, type LeadershipDepartment } from "@/lib/leadership";
 
 import { DateTimePicker } from "./date-time-picker";
+import { IconLabel } from "./icon-label";
 
 const NONE = "__none__";
 
@@ -80,14 +85,22 @@ function Section({
   );
 }
 
+const STATE_ICONS: Record<CalendarDepartmentLink["state"], LucideIcon> = {
+  involved: Link2,
+  requested: Hourglass,
+  answered: CircleCheck,
+};
+
 function StateBadge({ state }: { state: CalendarDepartmentLink["state"] }) {
+  const Icon = STATE_ICONS[state];
   return (
     <span
       className={cn(
-        "inline-flex h-5 items-center rounded-full px-2 text-[11px] font-semibold",
+        "inline-flex h-5 items-center gap-1 rounded-full px-2 text-[11px] font-semibold",
         REQUEST_STATE_STYLES[state],
       )}
     >
+      <Icon aria-hidden className="size-3" />
       {REQUEST_STATE_LABELS[state]}
     </span>
   );
@@ -188,8 +201,33 @@ function AnswerForm({ itemId, link }: { itemId: string; link: CalendarDepartment
   );
 }
 
+/** A department's name with its icon and colour, when its look is loaded. */
+function DepartmentName({
+  id,
+  name,
+  appearance,
+}: {
+  id: string;
+  name: string;
+  appearance: Map<string, LeadershipDepartment>;
+}) {
+  const look = appearance.get(id);
+  return (
+    <span className="font-medium">
+      {look ? <DepartmentLabel department={{ ...look, name }} /> : name}
+    </span>
+  );
+}
+
 function DepartmentRequests({ item }: { item: CalendarItemDetail }) {
+  const { leadership } = useApis();
   const [editing, setEditing] = useState<string>();
+  const departments = useQuery({
+    queryKey: ["leadership", "departments"],
+    queryFn: () => leadership.departments(),
+    staleTime: 5 * 60_000,
+  });
+  const appearance = new Map(departments.data?.map((d) => [d.id, d]));
   if (item.departments.length === 0) {
     return <p className="text-sm text-muted-foreground">ยังไม่ได้ระบุฝ่ายที่เกี่ยวข้อง</p>;
   }
@@ -198,7 +236,7 @@ function DepartmentRequests({ item }: { item: CalendarItemDetail }) {
       {item.departments.map((link) => (
         <li key={link.id} className="flex flex-col gap-2 p-3 text-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium">{link.name}</span>
+            <DepartmentName id={link.id} name={link.name} appearance={appearance} />
             <StateBadge state={link.state} />
             {link.dueAt && (
               <span
@@ -320,12 +358,21 @@ function AddActionItem({ item }: { item: CalendarItemDetail }) {
     "เพิ่ม action item แล้ว",
   );
   const ownerItems = [
-    { value: NONE, label: "ไม่ระบุผู้รับผิดชอบ" },
-    ...(people.data?.items.map((p) => ({ value: p.id, label: p.name })) ?? []),
+    {
+      value: NONE,
+      label: <IconLabel icon={OPTION_ICONS.none}>ไม่ระบุผู้รับผิดชอบ</IconLabel>,
+    },
+    ...(people.data?.items.map((p) => ({
+      value: p.id,
+      label: <IconLabel icon={OPTION_ICONS.person}>{p.name}</IconLabel>,
+    })) ?? []),
   ];
   const departmentItems = [
-    { value: NONE, label: "ไม่ระบุฝ่าย" },
-    ...(departments.data?.map((d) => ({ value: d.id, label: d.name })) ?? []),
+    { value: NONE, label: <IconLabel icon={OPTION_ICONS.none}>ไม่ระบุฝ่าย</IconLabel> },
+    ...(departments.data?.map((d) => ({
+      value: d.id,
+      label: <DepartmentLabel department={d} />,
+    })) ?? []),
   ];
   const submit = (e: FormEvent) => {
     e.preventDefault();

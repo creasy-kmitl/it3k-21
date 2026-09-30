@@ -469,4 +469,21 @@ describe("/staff/calendar", () => {
     expect(alert.textContent).toContain("การอนุมัติ release");
     expect(alert.textContent).toContain("dependency ที่เสร็จครบ");
   });
+
+  test("select options carry their icons, and so does the chosen value", async () => {
+    setup({ items: [calendarItem()] });
+    await agenda();
+    const trigger = screen.getByRole("combobox", { name: "สถานะ" });
+    fireEvent.click(trigger);
+    const options = await screen.findAllByRole("option");
+    const live = defined(
+      options.find((option) => option.textContent === "Live"),
+      "Live option",
+    );
+    expect(live.querySelector("svg")).not.toBeNull();
+    fireEvent.pointerDown(live, { pointerType: "mouse" });
+    fireEvent.click(live);
+    await waitFor(() => expect(trigger.textContent).toContain("Live"));
+    expect(trigger.querySelector("svg")).not.toBeNull();
+  });
 });

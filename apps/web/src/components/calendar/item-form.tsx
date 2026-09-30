@@ -45,10 +45,12 @@ import {
   Save,
   ShieldAlert,
   TriangleAlert,
+  type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 
+import { DepartmentLabel } from "@/components/department-icon";
 import { useApis } from "@/lib/api-context";
 import {
   HOUR_MS,
@@ -80,10 +82,24 @@ import {
   STATUS_LABELS,
   VISIBILITY_LABELS,
 } from "@/lib/calendar-labels";
-import { CONFLICT_ICONS } from "@/lib/calendar-icons";
+import {
+  CATEGORY_ICONS,
+  CONFLICT_ICONS,
+  ENVIRONMENT_ICONS,
+  GAME_ICONS,
+  MODE_ICONS,
+  OPTION_ICONS,
+  QA_RESULT_ICONS,
+  REPEAT_ICONS,
+  RISK_ICONS,
+  STATUS_ICONS,
+  TEMPLATE_ICONS,
+  VISIBILITY_ICONS,
+} from "@/lib/calendar-icons";
 import { ApiError } from "@/lib/leadership";
 
 import { DateTimePicker } from "./date-time-picker";
+import { IconLabel } from "./icon-label";
 
 export type ItemFormMode =
   | { kind: "create"; start: number }
@@ -280,7 +296,7 @@ function payload(values: FormValues, canApprove: boolean): Omit<CalendarInput, "
   };
 }
 
-type Option = { value: string; label: string };
+type Option = { value: string; label: string; icon?: LucideIcon | null };
 
 function OptionSelect({
   id,
@@ -303,7 +319,11 @@ function OptionSelect({
     <Field data-invalid={invalid}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Select
-        items={options}
+        // Labels are elements, so the trigger shows the chosen option's icon too.
+        items={options.map((option) => ({
+          value: option.value,
+          label: <IconLabel icon={option.icon}>{option.label}</IconLabel>,
+        }))}
         value={value || null}
         onValueChange={(next: string | null) => {
           if (next !== null) onChange(next);
@@ -315,7 +335,7 @@ function OptionSelect({
         <SelectContent>
           {options.map((option) => (
             <SelectItem key={option.value} value={option.value}>
-              {option.label}
+              <IconLabel icon={option.icon}>{option.label}</IconLabel>
             </SelectItem>
           ))}
         </SelectContent>
@@ -479,24 +499,34 @@ export function ItemForm({
     );
   };
 
-  const modeOptions = CALENDAR_MODES.map((value) => ({ value, label: MODE_LABELS[value] }));
+  const modeOptions = CALENDAR_MODES.map((value) => ({
+    value,
+    label: MODE_LABELS[value],
+    icon: MODE_ICONS[value],
+  }));
   const categoryOptions = CATEGORIES_BY_MODE[values.mode].map((value) => ({
     value,
     label: CATEGORY_LABELS[value],
+    icon: CATEGORY_ICONS[value],
   }));
   const statusOptions = statusesFor(values.mode).map((value) => ({
     value,
     label: STATUS_LABELS[value],
+    icon: STATUS_ICONS[value],
   }));
-  const personOptions =
-    people.data?.items.map((person) => ({ value: person.id, label: person.name })) ?? [];
-  const ownerOptions = [
+  /** People to pick for a role, with "not yet" first; `icon` marks the role. */
+  const peopleFor = (icon: LucideIcon): Option[] => [
+    { value: NONE, label: "ยังไม่ระบุ", icon: OPTION_ICONS.none },
+    ...(people.data?.items.map((person) => ({ value: person.id, label: person.name, icon })) ?? []),
+  ];
+  const ownerOptions: Option[] = [
     ...(original?.owner && !people.data?.items.some((p) => p.id === original.owner?.id)
-      ? [{ value: original.owner.id, label: original.owner.name }]
+      ? [{ value: original.owner.id, label: original.owner.name, icon: OPTION_ICONS.person }]
       : []),
     ...(people.data?.items.map((person) => ({
       value: person.id,
       label: person.departmentName ? `${person.name} (${person.departmentName})` : person.name,
+      icon: OPTION_ICONS.person,
     })) ?? []),
   ];
   const isOperations = values.mode === "operations";
@@ -614,8 +644,12 @@ export function ItemForm({
                   label="ทำซ้ำ"
                   value={field.state.value}
                   options={[
-                    { value: NONE, label: "ไม่ทำซ้ำ" },
-                    ...REPEAT_UNITS.map((unit) => ({ value: unit, label: REPEAT_LABELS[unit] })),
+                    { value: NONE, label: "ไม่ทำซ้ำ", icon: OPTION_ICONS.none },
+                    ...REPEAT_UNITS.map((unit) => ({
+                      value: unit,
+                      label: REPEAT_LABELS[unit],
+                      icon: REPEAT_ICONS[unit],
+                    })),
                   ]}
                   onChange={field.handleChange}
                 />
@@ -661,8 +695,12 @@ export function ItemForm({
                     label="เกม"
                     value={field.state.value}
                     options={[
-                      { value: NONE, label: "ไม่ระบุ" },
-                      ...GAMES.map((game) => ({ value: game, label: GAME_LABELS[game] })),
+                      { value: NONE, label: "ไม่ระบุ", icon: OPTION_ICONS.none },
+                      ...GAMES.map((game) => ({
+                        value: game,
+                        label: GAME_LABELS[game],
+                        icon: GAME_ICONS[game],
+                      })),
                     ]}
                     onChange={field.handleChange}
                   />
@@ -679,7 +717,7 @@ export function ItemForm({
                     id="calendar-on-call"
                     label="On-call"
                     value={field.state.value}
-                    options={[{ value: NONE, label: "ยังไม่ระบุ" }, ...personOptions]}
+                    options={peopleFor(OPTION_ICONS.onCall)}
                     onChange={field.handleChange}
                   />
                 )}
@@ -690,7 +728,7 @@ export function ItemForm({
                     id="calendar-scoreboard-operator"
                     label="คนคุม Scoreboard"
                     value={field.state.value}
-                    options={[{ value: NONE, label: "ยังไม่ระบุ" }, ...personOptions]}
+                    options={peopleFor(OPTION_ICONS.scoreboard)}
                     onChange={field.handleChange}
                   />
                 )}
@@ -712,6 +750,7 @@ export function ItemForm({
               options={Object.entries(MEETING_TEMPLATES).map(([value, template]) => ({
                 value,
                 label: template.label,
+                icon: TEMPLATE_ICONS[value],
               }))}
               onChange={(key) => {
                 const template = MEETING_TEMPLATES[key as keyof typeof MEETING_TEMPLATES];
@@ -745,6 +784,7 @@ export function ItemForm({
                       options={RELEASE_ENVIRONMENTS.map((value) => ({
                         value,
                         label: RELEASE_ENVIRONMENT_LABELS[value],
+                        icon: ENVIRONMENT_ICONS[value],
                       }))}
                       onChange={field.handleChange}
                     />
@@ -764,8 +804,12 @@ export function ItemForm({
                     label="ผล QA"
                     value={field.state.value}
                     options={[
-                      { value: NONE, label: "ยังไม่มี" },
-                      ...QA_RESULTS.map((value) => ({ value, label: QA_RESULT_LABELS[value] })),
+                      { value: NONE, label: "ยังไม่มี", icon: OPTION_ICONS.none },
+                      ...QA_RESULTS.map((value) => ({
+                        value,
+                        label: QA_RESULT_LABELS[value],
+                        icon: QA_RESULT_ICONS[value],
+                      })),
                     ]}
                     onChange={field.handleChange}
                   />
@@ -778,7 +822,7 @@ export function ItemForm({
                       id="calendar-monitoring-owner"
                       label="ผู้ดูแลการ monitor"
                       value={field.state.value}
-                      options={[{ value: NONE, label: "ยังไม่ระบุ" }, ...personOptions]}
+                      options={peopleFor(OPTION_ICONS.monitoring)}
                       onChange={field.handleChange}
                     />
                   )}
@@ -829,7 +873,7 @@ export function ItemForm({
                         }
                       />
                       <FieldLabel htmlFor={id} className="font-normal">
-                        {department.name}
+                        <DepartmentLabel department={department} />
                       </FieldLabel>
                     </Field>
                   );
@@ -847,8 +891,12 @@ export function ItemForm({
                 label="ความเสี่ยง"
                 value={field.state.value}
                 options={[
-                  { value: NONE, label: "ไม่ระบุ" },
-                  ...RISK_LEVELS.map((risk) => ({ value: risk, label: RISK_LABELS[risk] })),
+                  { value: NONE, label: "ไม่ระบุ", icon: OPTION_ICONS.none },
+                  ...RISK_LEVELS.map((risk) => ({
+                    value: risk,
+                    label: RISK_LABELS[risk],
+                    icon: RISK_ICONS[risk],
+                  })),
                 ]}
                 onChange={field.handleChange}
               />
@@ -864,6 +912,7 @@ export function ItemForm({
                   options={(["internal", "public"] as const).map((value) => ({
                     value,
                     label: VISIBILITY_LABELS[value],
+                    icon: VISIBILITY_ICONS[value],
                   }))}
                   onChange={(next) => field.handleChange(next as "internal" | "public")}
                 />

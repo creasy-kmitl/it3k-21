@@ -4,10 +4,17 @@ import type {
   CalendarCategory,
   CalendarChangeAction,
   CalendarMode,
+  CalendarStatus,
+  CalendarVisibility,
   ConflictKind,
+  Game,
   LiveChecklistKey,
   NotificationKind,
   PublicStatus,
+  QaResult,
+  ReleaseEnvironment,
+  RepeatUnit,
+  RiskLevel,
 } from "@it3k/db/calendar-rules";
 import {
   Activity,
@@ -16,56 +23,77 @@ import {
   ArrowRightLeft,
   BadgeCheck,
   Ban,
+  CalendarCheck,
   CalendarClock,
   CalendarDays,
   CalendarRange,
   CalendarSync,
   CalendarX,
   CircleCheck,
+  CircleCheckBig,
   CircleDashed,
   CirclePlay,
   CircleX,
   ClipboardCheck,
   Code,
+  Construction,
   Copy,
+  Crosshair,
+  Crown,
+  Eye,
+  Flag,
   FlaskConical,
   Gavel,
   GitBranch,
   GitPullRequest,
   Globe,
+  Hammer,
   Handshake,
   Headset,
   History,
   Hourglass,
+  Inbox,
   Layers,
   List,
   ListChecks,
+  ListFilter,
   ListTodo,
+  Lock,
   type LucideIcon,
   MapPin,
   Megaphone,
   MessageCircleQuestion,
   MessageSquareReply,
+  Minus,
   MonitorPlay,
   Network,
-  PenTool,
+  PackageCheck,
   Pencil,
+  PencilLine,
+  PenTool,
   Plus,
   Presentation,
   Radio,
   RadioTower,
   Repeat,
   Rocket,
+  Server,
   ShieldAlert,
   ShieldCheck,
+  SignalHigh,
+  SignalLow,
+  SignalMedium,
   Siren,
   SquarePen,
+  Sun,
   Swords,
   Timer,
   TriangleAlert,
   Trophy,
   Tv,
+  Undo2,
   UserPlus,
+  UserRound,
   Users,
   Volume2,
   Wrench,
@@ -186,4 +214,73 @@ export const SECTION_ICONS = {
   actionItems: ListTodo,
   edit: Pencil,
   announce: Megaphone,
+} satisfies Record<string, LucideIcon>;
+
+export const STATUS_ICONS: Record<CalendarStatus, LucideIcon> = {
+  draft: PencilLine,
+  confirmed: CircleCheck,
+  ready: CircleCheckBig,
+  live: Radio,
+  completed: Flag,
+  delayed: Hourglass,
+  cancelled: CircleX,
+  backlog: Inbox,
+  planned: CalendarCheck,
+  in_progress: Hammer,
+  in_review: Eye,
+  qa: FlaskConical,
+  ready_to_release: PackageCheck,
+  released: Rocket,
+  rolled_back: Undo2,
+};
+
+export const GAME_ICONS: Record<Game, LucideIcon> = {
+  tft: Crown,
+  valorant: Crosshair,
+  rov: Swords,
+};
+
+export const RISK_ICONS: Record<RiskLevel, LucideIcon> = {
+  low: SignalLow,
+  medium: SignalMedium,
+  high: SignalHigh,
+};
+
+export const VISIBILITY_ICONS: Record<CalendarVisibility, LucideIcon> = {
+  internal: Lock,
+  public: Globe,
+};
+
+export const ENVIRONMENT_ICONS: Record<ReleaseEnvironment, LucideIcon> = {
+  preview: Eye,
+  staging: Construction,
+  prod: Server,
+};
+
+export const QA_RESULT_ICONS: Record<QaResult, LucideIcon> = {
+  passed: CircleCheck,
+  failed: CircleX,
+};
+
+export const REPEAT_ICONS: Record<RepeatUnit, LucideIcon> = {
+  day: Sun,
+  week: CalendarRange,
+};
+
+/** Keyed like MEETING_TEMPLATES in calendar-labels. */
+export const TEMPLATE_ICONS: Record<string, LucideIcon> = {
+  planning: ListTodo,
+  rehearsal: Repeat,
+  checkIn: Radio,
+  retro: History,
+};
+
+/** Options that mean "none", "all" or a person. */
+export const OPTION_ICONS = {
+  none: Minus,
+  all: ListFilter,
+  person: UserRound,
+  onCall: Headset,
+  scoreboard: Trophy,
+  monitoring: Activity,
 } satisfies Record<string, LucideIcon>;
