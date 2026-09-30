@@ -1,10 +1,11 @@
 import { CALENDAR_STATUSES } from "@it3k/db/calendar-rules";
 import { Button } from "@it3k/ui/components/button";
 import { Skeleton } from "@it3k/ui/components/skeleton";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { CalendarDays, CloudAlert, Info, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { z } from "zod";
 
 import { AgendaView } from "@/components/calendar/agenda-view";
@@ -16,6 +17,11 @@ import {
   DepartmentScopePicker,
   VIEWS,
 } from "@/components/calendar/calendar-toolbar";
+import {
+  type CalendarShortcuts,
+  CalendarShortcutsProvider,
+  type ItemIntent,
+} from "@/components/calendar/calendar-shortcuts";
 import { ItemSheet } from "@/components/calendar/item-sheet";
 import { MonthView } from "@/components/calendar/month-view";
 import { TimeGridView } from "@/components/calendar/time-grid-view";
@@ -35,6 +41,7 @@ import {
   startOfWeek,
 } from "@/lib/bangkok-time";
 import type { CalendarItem, CalendarQuery } from "@/lib/calendar";
+import { ApiError } from "@/lib/leadership";
 
 const AGENDA_DAYS = 14;
 /** Remembers the last department scope, so the calendar reopens on it. */
@@ -170,6 +177,9 @@ export function CalendarPage({
   const [agendaByDefault] = useState(prefersAgenda);
   const [storedScope] = useState(readStoredScope);
   const [createAt, setCreateAt] = useState<number | null>(null);
+  // What a shortcut asked the item panel to open straight into.
+  const [intent, setIntent] = useState<ItemIntent | null>(null);
+  const queryClient = useQueryClient();
   const [searchText, setSearchText] = useState(search.q ?? "");
   const debouncedSearch = useDebouncedValue(searchText);
 
@@ -218,8 +228,10 @@ export function CalendarPage({
     staleTime: 5 * 60_000,
   });
 
-  const select = (item: CalendarItem | string) =>
+  const select = (item: CalendarItem | string) => {
+    setIntent(null);
     onSearch({ item: typeof item === "string" ? item : item.id });
+  };
   const openDay = (day: number) => onSearch({ view: "day", date: dateKey(day) });
 
   const list = items.data?.items ?? [];
@@ -228,6 +240,29 @@ export function CalendarPage({
     departmentId: items.data?.myDepartmentId ?? myDepartmentId,
     isAdmin: items.data?.isAdmin ?? false,
   };
+  const confirm = useMutation({
+    mutationFn: (item: CalendarItem) =>
+      calendar.update(item.id, { status: "confirmed", version: item.version }),
+    onSuccess: () => toast.success("ยืนยันรายการแล้ว"),
+    onError: (error) =>
+      toast.error(
+        error instanceof ApiError && error.status === 409
+          ? "มีคนแก้ไขรายการนี้ก่อนคุณ ข้อมูลล่าสุดโหลดให้แล้ว"
+          : `บันทึกไม่สำเร็จ: ${error.message}`,
+      ),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["calendar"] }),
+  });
+  const shortcuts: CalendarShortcuts = {
+    open: (item, next) => {
+      setCreateAt(null);
+      setIntent(next ?? null);
+      onSearch({ item: item.id });
+    },
+    confirm: (item) => confirm.mutate(item),
+    openDay,
+    createAt: canCreate ? (start) => setCreateAt(start) : null,
+  };
+
   const showSkeleton = items.isPending || (items.isPlaceholderData && items.isFetching);
   const departmentName = (id: string | null | undefined) =>
     departments.data?.find((d) => d.id === id)?.name;
@@ -320,53 +355,63 @@ export function CalendarPage({
           <Skeleton className="h-64" />
         </div>
       ) : (
-        <div
-          className={showSkeleton ? "opacity-60 transition-opacity" : undefined}
-          aria-busy={showSkeleton}
-        >
-          {view === "month" && (
-            <div className="overflow-x-auto">
-              <div className="min-w-[48rem]">
-                <MonthView
-                  date={date}
-                  now={now}
-                  items={list}
-                  onSelect={select}
-                  onOpenDay={openDay}
-                />
+        <CalendarShortcutsProvider value={shortcuts}>
+          <div
+            className={showSkeleton ? "opacity-60 transition-opacity" : undefined}
+            aria-busy={showSkeleton}
+          >
+            {view === "month" && (
+              <div className="overflow-x-auto">
+                <div className="min-w-[48rem]">
+                  <MonthView
+                    date={date}
+                    now={now}
+                    items={list}
+                    onSelect={select}
+                    onOpenDay={openDay}
+                  />
+                </div>
               </div>
-            </div>
-          )}
-          {(view === "week" || view === "day") && (
-            <div className="overflow-x-auto">
-              <div className={view === "week" ? "min-w-[48rem]" : undefined}>
-                <TimeGridView
-                  start={from}
-                  days={view === "week" ? 7 : 1}
-                  now={now}
-                  items={list}
-                  onSelect={select}
-                  onOpenDay={openDay}
-                />
+            )}
+            {(view === "week" || view === "day") && (
+              <div className="overflow-x-auto">
+                <div className={view === "week" ? "min-w-[48rem]" : undefined}>
+                  <TimeGridView
+                    start={from}
+                    days={view === "week" ? 7 : 1}
+                    now={now}
+                    items={list}
+                    onSelect={select}
+                    onOpenDay={openDay}
+                  />
+                </div>
               </div>
-            </div>
-          )}
-          {view === "agenda" && (
-            <AgendaView start={from} days={AGENDA_DAYS} now={now} items={list} onSelect={select} />
-          )}
-        </div>
+            )}
+            {view === "agenda" && (
+              <AgendaView
+                start={from}
+                days={AGENDA_DAYS}
+                now={now}
+                items={list}
+                onSelect={select}
+              />
+            )}
+          </div>
+        </CalendarShortcutsProvider>
       )}
 
       <ItemSheet
         itemId={search.item ?? null}
         create={createAt === null ? null : { start: createAt, departmentId: createDepartmentId }}
         viewer={viewer}
+        intent={intent}
         onSelect={(id) => {
           setCreateAt(null);
           select(id);
         }}
         onClose={() => {
           setCreateAt(null);
+          setIntent(null);
           onSearch({ item: undefined });
         }}
       />

@@ -10,11 +10,42 @@ import {
   DropdownMenuTrigger,
 } from "@it3k/ui/components/dropdown-menu";
 import { Building, CalendarPlus, ChevronDown, Download, Mail } from "lucide-react";
+import type { ComponentType } from "react";
 
 import { downloadIcs, eventFor, googleCalendarUrl, outlookUrl } from "@/lib/add-to-calendar";
 import type { CalendarItem } from "@/lib/calendar";
 
 const open = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
+const event = (item: CalendarItem) => eventFor(item, window.location.origin);
+
+type CalendarTarget = {
+  label: string;
+  icon: ComponentType<{ "aria-hidden"?: boolean }>;
+  add: (item: CalendarItem) => void;
+};
+
+/** Where an item can be copied to, in menu order. */
+export const CALENDAR_TARGETS: CalendarTarget[] = [
+  {
+    label: "Google Calendar",
+    icon: SiGooglecalendar,
+    add: (item) => open(googleCalendarUrl(event(item))),
+  },
+  { label: "Apple Calendar", icon: SiApple, add: (item) => downloadIcs(event(item), item.title) },
+  { label: "Outlook.com", icon: Mail, add: (item) => open(outlookUrl(event(item), "personal")) },
+  {
+    label: "Microsoft 365 (องค์กร/มหาวิทยาลัย)",
+    icon: Building,
+    add: (item) => open(outlookUrl(event(item), "work")),
+  },
+];
+
+/** The same file Apple Calendar gets, for any other calendar app. */
+export const ICS_TARGET: CalendarTarget = {
+  label: "ดาวน์โหลดไฟล์ .ics",
+  icon: Download,
+  add: (item) => downloadIcs(event(item), item.title),
+};
 
 /**
  * Copies one item into the viewer's own calendar app. Cancelled items have
@@ -22,7 +53,6 @@ const open = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
  */
 export function AddToCalendar({ item }: { item: CalendarItem }) {
   if (item.status === "cancelled") return null;
-  const event = () => eventFor(item, window.location.origin);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button type="button" size="sm" variant="outline" />}>
@@ -33,27 +63,17 @@ export function AddToCalendar({ item }: { item: CalendarItem }) {
       <DropdownMenuContent className="w-64">
         <DropdownMenuGroup>
           <DropdownMenuLabel>เพิ่มลงปฏิทินของฉัน</DropdownMenuLabel>
-          <DropdownMenuItem onClick={() => open(googleCalendarUrl(event()))}>
-            <SiGooglecalendar aria-hidden />
-            Google Calendar
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => downloadIcs(event(), item.title)}>
-            <SiApple aria-hidden />
-            Apple Calendar
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => open(outlookUrl(event(), "personal"))}>
-            <Mail aria-hidden />
-            Outlook.com
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => open(outlookUrl(event(), "work"))}>
-            <Building aria-hidden />
-            Microsoft 365 (องค์กร/มหาวิทยาลัย)
-          </DropdownMenuItem>
+          {CALENDAR_TARGETS.map((target) => (
+            <DropdownMenuItem key={target.label} onClick={() => target.add(item)}>
+              <target.icon aria-hidden />
+              {target.label}
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => downloadIcs(event(), item.title)}>
-          <Download aria-hidden />
-          ดาวน์โหลดไฟล์ .ics
+        <DropdownMenuItem onClick={() => ICS_TARGET.add(item)}>
+          <ICS_TARGET.icon aria-hidden />
+          {ICS_TARGET.label}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

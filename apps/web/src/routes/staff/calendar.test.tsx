@@ -680,4 +680,139 @@ describe("/staff/calendar", () => {
       await waitFor(() => expect(updates[0]?.collaboratorIds).toEqual([]));
     });
   });
+
+  describe("shortcuts on right-click", () => {
+    const menu = () => screen.findByRole("menu");
+    const rightClick = (element: HTMLElement) =>
+      fireEvent.contextMenu(element, { clientX: 10, clientY: 10 });
+    const chip = async (title: string) =>
+      (await screen.findAllByRole("button", { name: new RegExp(title) }))[0] as HTMLElement;
+
+    test("open the item, straight into editing when asked", async () => {
+      const item = calendarItem({ title: "ซ้อมใหญ่" });
+      setup({ items: [item], api: { get: async () => detail(item) } });
+      rightClick(await chip("ซ้อมใหญ่"));
+      const shortcuts = await menu();
+      expect(within(shortcuts).getByText("ซ้อมใหญ่")).toBeTruthy();
+      fireEvent.click(within(shortcuts).getByRole("menuitem", { name: "แก้ไข" }));
+      expect(await screen.findByRole("form", { name: "แก้ไขรายการ" })).toBeTruthy();
+    });
+
+    test("confirm a draft without opening it", async () => {
+      const item = calendarItem({ title: "ร่างแผน", status: "draft", version: 2 });
+      const updates: [string, CalendarUpdate][] = [];
+      setup({
+        items: [item],
+        api: {
+          update: async (id, json) => {
+            updates.push([id, json]);
+            return item;
+          },
+        },
+      });
+      rightClick(await chip("ร่างแผน"));
+      fireEvent.click(within(await menu()).getByRole("menuitem", { name: "ยืนยันรายการ" }));
+      await waitFor(() =>
+        expect(updates).toEqual([[item.id, { status: "confirmed", version: 2 }]]),
+      );
+    });
+
+    test("cancel opens its reason form in the panel", async () => {
+      const item = calendarItem({ title: "ซ้อมใหญ่" });
+      setup({ items: [item], api: { get: async () => detail(item) } });
+      rightClick(await chip("ซ้อมใหญ่"));
+      fireEvent.click(within(await menu()).getByRole("menuitem", { name: "ยกเลิกรายการ…" }));
+      expect(await screen.findByLabelText("เหตุผลที่ยกเลิก")).toBeTruthy();
+    });
+
+    test("delete opens its confirmation in the panel", async () => {
+      const item = calendarItem({ title: "ซ้อมใหญ่" });
+      setup({ items: [item], api: { get: async () => detail(item) } });
+      rightClick(await chip("ซ้อมใหญ่"));
+      fireEvent.click(within(await menu()).getByRole("menuitem", { name: "ลบ…" }));
+      expect(await screen.findByRole("button", { name: "ยืนยันลบรายการ" })).toBeTruthy();
+    });
+
+    test("readers get only the actions that change nothing", async () => {
+      setup({ items: [calendarItem({ title: "ของฝ่ายอื่น", canEdit: false })] });
+      rightClick(await chip("ของฝ่ายอื่น"));
+      const shortcuts = await menu();
+      const names = within(shortcuts)
+        .getAllByRole("menuitem")
+        .map((entry) => entry.textContent);
+      expect(names).toEqual(["เปิดรายละเอียด", "ดูทั้งวัน", "เพิ่มลงปฏิทิน", "คัดลอกลิงก์"]);
+    });
+
+    test("copy a link to the item", async () => {
+      const copied: string[] = [];
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText: async (text: string) => void copied.push(text) },
+      });
+      const item = calendarItem({ title: "ซ้อมใหญ่" });
+      setup({ items: [item] });
+      rightClick(await chip("ซ้อมใหญ่"));
+      fireEvent.click(within(await menu()).getByRole("menuitem", { name: "คัดลอกลิงก์" }));
+      await waitFor(() => expect(copied).toHaveLength(1));
+      expect(copied[0]).toContain(`/staff/calendar?view=day&date=2026-10-10&item=${item.id}`);
+    });
+
+    test("add a copy to Google Calendar from the submenu", async () => {
+      const opened: string[] = [];
+      const original = window.open;
+      window.open = ((url: string) => {
+        opened.push(url);
+        return null;
+      }) as typeof window.open;
+      try {
+        setup({ items: [calendarItem({ title: "ซ้อมใหญ่" })] });
+        rightClick(await chip("ซ้อมใหญ่"));
+        fireEvent.click(within(await menu()).getByRole("menuitem", { name: "เพิ่มลงปฏิทิน" }));
+        fireEvent.click(await screen.findByRole("menuitem", { name: "Google Calendar" }));
+        expect(opened[0]).toStartWith("https://calendar.google.com/calendar/render?");
+      } finally {
+        window.open = original;
+      }
+    });
+
+    test("add an item on a month day at 09:00, or open the day", async () => {
+      setup({ items: [], search: { view: "month" } });
+      const cell = defined(
+        (await screen.findByRole("button", { name: /15 ตุลาคม/ })).parentElement,
+        "day cell",
+      );
+      rightClick(cell);
+      const shortcuts = await menu();
+      fireEvent.click(within(shortcuts).getByRole("menuitem", { name: "เพิ่มรายการเวลา 09:00 น." }));
+      const form = await screen.findByRole("form", { name: "เพิ่มรายการ" });
+      expect(within(form).getByRole("button", { name: /^เวลาเริ่ม/ }).textContent).toContain("09:00");
+    });
+
+    test("add an item at the hour under the pointer in the day view", async () => {
+      setup({ items: [], search: { view: "day" } });
+      const column = defined(
+        (await screen.findByRole("list", { name: /10 ตุลาคม/ })).parentElement,
+        "day column",
+      );
+      // jsdom puts every box at 0, so the pointer's y is the offset into the day.
+      fireEvent.contextMenu(column, { clientX: 10, clientY: 48 * 14 + 20 });
+      fireEvent.click(
+        within(await menu()).getByRole("menuitem", { name: "เพิ่มรายการเวลา 14:00 น." }),
+      );
+      expect(await screen.findByRole("form", { name: "เพิ่มรายการ" })).toBeTruthy();
+    });
+
+    test("readers who cannot add items are only offered the day", async () => {
+      setup({ items: [], search: { view: "month" }, viewer: { canCreate: false } });
+      const cell = defined(
+        (await screen.findByRole("button", { name: /15 ตุลาคม/ })).parentElement,
+        "day cell",
+      );
+      rightClick(cell);
+      const names = within(await menu())
+        .getAllByRole("menuitem")
+        .map((entry) => entry.textContent);
+      expect(names).toEqual(["ดูทั้งวัน"]);
+    });
+  });
 });

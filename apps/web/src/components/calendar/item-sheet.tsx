@@ -25,7 +25,7 @@ import {
   User,
   UserRound,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { DepartmentBadge, DepartmentIcon } from "@/components/department-icon";
@@ -38,6 +38,7 @@ import { ACTION_LABELS, FIELD_LABELS, STATUS_LABELS } from "@/lib/calendar-label
 import { ApiError, type LeadershipDepartment } from "@/lib/leadership";
 
 import { AddToCalendar } from "./add-to-calendar";
+import type { ItemIntent } from "./calendar-shortcuts";
 import { Hint } from "./hint";
 import { IconLabel } from "./icon-label";
 import { type CalendarViewer, ItemForm, type ItemFormMode } from "./item-form";
@@ -253,16 +254,19 @@ type Asking = "cancel" | "delete";
 
 function Actions({
   item,
+  initialAsking,
   onEdit,
   onDeleted,
 }: {
   item: CalendarItemDetail;
+  /** Opens straight into cancelling or deleting, from a shortcut. */
+  initialAsking?: Asking;
   onEdit: () => void;
   onDeleted: () => void;
 }) {
   const { calendar } = useApis();
   const queryClient = useQueryClient();
-  const [asking, setAsking] = useState<Asking>();
+  const [asking, setAsking] = useState<Asking | undefined>(initialAsking);
   const [reason, setReason] = useState("");
 
   const onError = (error: Error) =>
@@ -415,6 +419,7 @@ export function ItemSheet({
   itemId,
   create,
   viewer,
+  intent = null,
   onSelect,
   onClose,
 }: {
@@ -422,11 +427,17 @@ export function ItemSheet({
   /** Opens the create form, starting at this time in this department. */
   create: { start: number; departmentId: string | null } | null;
   viewer: CalendarViewer;
+  /** Opens straight into editing, cancelling or deleting, from a shortcut. */
+  intent?: ItemIntent | null;
   onSelect: (id: string) => void;
   onClose: () => void;
 }) {
   const { calendar, leadership } = useApis();
   const [editing, setEditing] = useState(false);
+  // A shortcut to edit opens the form; picking another item starts on its details.
+  useEffect(() => {
+    setEditing(intent === "edit");
+  }, [itemId, intent]);
   const open = itemId !== null || create !== null;
 
   const detail = useQuery({
@@ -508,7 +519,14 @@ export function ItemSheet({
           </div>
         ) : detail.data ? (
           <>
-            <Actions item={detail.data} onEdit={() => setEditing(true)} onDeleted={close} />
+            <Actions
+              // Fresh per item and shortcut, so each opens where it was asked to.
+              key={`${detail.data.id}:${intent ?? ""}`}
+              item={detail.data}
+              initialAsking={intent === "cancel" || intent === "delete" ? intent : undefined}
+              onEdit={() => setEditing(true)}
+              onDeleted={close}
+            />
             <ItemDetails item={detail.data} />
             <section className="flex flex-col gap-2">
               <h3 className="flex items-center gap-2 text-sm font-semibold">

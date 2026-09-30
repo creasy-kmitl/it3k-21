@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { DAY_MS, HOUR_MS, addDays, formatBangkok, sameDay } from "@/lib/bangkok-time";
 import type { CalendarItem } from "@/lib/calendar";
 
+import { SlotContextMenu } from "./calendar-shortcuts";
 import { ItemChip } from "./item-chip";
 import { itemsOnDay } from "./month-view";
 
@@ -106,38 +107,48 @@ export function TimeGridView({
             ))}
           </div>
           {columns.map((day) => (
-            <div key={day} className="relative min-w-0 flex-1 border-l">
-              {HOURS.map((hour) => (
-                <div
-                  key={hour}
-                  className="border-b border-dashed border-border/60"
-                  style={{ height: HOUR_PX }}
-                />
-              ))}
-              <ul className="absolute inset-0" aria-label={formatBangkok(day, "longDay")}>
-                {layoutDay(itemsOnDay(items, day), day).map((entry) => (
-                  <li
-                    key={entry.item.id}
-                    className="absolute px-0.5"
-                    style={{
-                      top: entry.top,
-                      height: entry.height,
-                      left: `${(entry.lane / entry.lanes) * 100}%`,
-                      width: `${100 / entry.lanes}%`,
-                    }}
-                  >
-                    <ItemChip item={entry.item} onSelect={onSelect} className="h-full" />
-                  </li>
+            <SlotContextMenu
+              key={day}
+              day={day}
+              timeAt={(event) => {
+                const top = event.currentTarget.getBoundingClientRect().top;
+                const hour = Math.floor((event.clientY - top) / HOUR_PX);
+                return day + Math.min(23, Math.max(0, hour)) * HOUR_MS;
+              }}
+            >
+              <div className="relative min-w-0 flex-1 border-l">
+                {HOURS.map((hour) => (
+                  <div
+                    key={hour}
+                    className="border-b border-dashed border-border/60"
+                    style={{ height: HOUR_PX }}
+                  />
                 ))}
-              </ul>
-              {sameDay(day, now) && (
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-red-500"
-                  style={{ top: ((now - day) / HOUR_MS) * HOUR_PX }}
-                />
-              )}
-            </div>
+                <ul className="absolute inset-0" aria-label={formatBangkok(day, "longDay")}>
+                  {layoutDay(itemsOnDay(items, day), day).map((entry) => (
+                    <li
+                      key={entry.item.id}
+                      className="absolute px-0.5"
+                      style={{
+                        top: entry.top,
+                        height: entry.height,
+                        left: `${(entry.lane / entry.lanes) * 100}%`,
+                        width: `${100 / entry.lanes}%`,
+                      }}
+                    >
+                      <ItemChip item={entry.item} onSelect={onSelect} className="h-full" />
+                    </li>
+                  ))}
+                </ul>
+                {sameDay(day, now) && (
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-red-500"
+                    style={{ top: ((now - day) / HOUR_MS) * HOUR_PX }}
+                  />
+                )}
+              </div>
+            </SlotContextMenu>
           ))}
         </div>
       </div>

@@ -10,6 +10,7 @@ import {
 } from "@/lib/bangkok-time";
 import type { CalendarItem } from "@/lib/calendar";
 
+import { SlotContextMenu } from "./calendar-shortcuts";
 import { ItemChip } from "./item-chip";
 
 const VISIBLE_PER_DAY = 3;
@@ -52,38 +53,39 @@ export function MonthView({
             const outside = bangkokParts(day).month !== month;
             const today = sameDay(day, now);
             return (
-              <div
-                key={day}
-                className={cn(
-                  "flex min-h-28 min-w-0 flex-col gap-1 border-r p-1 last:border-r-0",
-                  outside && "bg-muted/30",
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => onOpenDay(startOfDay(day))}
-                  aria-label={formatBangkok(day, "longDay")}
+              <SlotContextMenu key={day} day={startOfDay(day)}>
+                <div
                   className={cn(
-                    "flex size-6 items-center justify-center self-end rounded-full text-xs tabular-nums hover:bg-muted",
-                    outside && "text-muted-foreground",
-                    today && "bg-primary font-semibold text-primary-foreground hover:bg-primary",
+                    "flex min-h-28 min-w-0 flex-col gap-1 border-r p-1 last:border-r-0",
+                    outside && "bg-muted/30",
                   )}
                 >
-                  {bangkokParts(day).day}
-                </button>
-                {dayItems.slice(0, VISIBLE_PER_DAY).map((item) => (
-                  <ItemChip key={item.id} item={item} onSelect={onSelect} />
-                ))}
-                {dayItems.length > VISIBLE_PER_DAY && (
                   <button
                     type="button"
                     onClick={() => onOpenDay(startOfDay(day))}
-                    className="text-left text-xs text-muted-foreground hover:underline"
+                    aria-label={formatBangkok(day, "longDay")}
+                    className={cn(
+                      "flex size-6 items-center justify-center self-end rounded-full text-xs tabular-nums hover:bg-muted",
+                      outside && "text-muted-foreground",
+                      today && "bg-primary font-semibold text-primary-foreground hover:bg-primary",
+                    )}
                   >
-                    +{dayItems.length - VISIBLE_PER_DAY} รายการ
+                    {bangkokParts(day).day}
                   </button>
-                )}
-              </div>
+                  {dayItems.slice(0, VISIBLE_PER_DAY).map((item) => (
+                    <ItemChip key={item.id} item={item} onSelect={onSelect} />
+                  ))}
+                  {dayItems.length > VISIBLE_PER_DAY && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenDay(startOfDay(day))}
+                      className="text-left text-xs text-muted-foreground hover:underline"
+                    >
+                      +{dayItems.length - VISIBLE_PER_DAY} รายการ
+                    </button>
+                  )}
+                </div>
+              </SlotContextMenu>
             );
           })}
         </div>
