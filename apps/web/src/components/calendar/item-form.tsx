@@ -22,8 +22,6 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from "@it3k/ui/components/field";
 import { Input } from "@it3k/ui/components/input";
 import {
@@ -37,17 +35,25 @@ import { Spinner } from "@it3k/ui/components/spinner";
 import { Textarea } from "@it3k/ui/components/textarea";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Badge } from "@it3k/ui/components/badge";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@it3k/ui/components/collapsible";
+import { cn } from "@it3k/ui/lib/utils";
 import {
   Building2,
-  Handshake,
-  RadioTower,
-  Rocket,
+  ChevronDown,
+  Layers,
+  Repeat,
   Save,
   ShieldAlert,
+  StickyNote,
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { z } from "zod";
 
 import { DepartmentLabel } from "@/components/department-icon";
@@ -99,6 +105,7 @@ import {
 import { ApiError } from "@/lib/leadership";
 
 import { DateTimePicker } from "./date-time-picker";
+import { CONTEXT_FIELDS, type ContextField, WIDE_FIELDS, fieldsFor } from "./form-fields";
 import { IconLabel } from "./icon-label";
 
 export type ItemFormMode =
@@ -296,6 +303,24 @@ function payload(values: FormValues, canApprove: boolean): Omit<CalendarInput, "
   };
 }
 
+/**
+ * Details that do not apply to the item's mode and category are cleared, so
+ * switching a match to a meeting does not keep its teams and stream.
+ */
+function withoutStaleDetails(
+  body: Omit<CalendarInput, "confirm">,
+  values: FormValues,
+): Omit<CalendarInput, "confirm"> {
+  const applies = new Set<string>(fieldsFor(values.mode, values.category as CalendarCategory));
+  const cleared = Object.fromEntries(
+    CONTEXT_FIELDS.filter((name) => name !== "template" && !applies.has(name)).map((name) => [
+      name,
+      null,
+    ]),
+  );
+  return { ...body, ...cleared };
+}
+
 type Option = { value: string; label: string; icon?: LucideIcon | null };
 
 function OptionSelect({
@@ -361,6 +386,62 @@ function ConflictIcons({ kinds }: { kinds: CalendarConflict["kinds"] }) {
   );
 }
 
+/**
+ * An optional part of the form, folded by default. The trigger says how much
+ * is filled in, and the section opens itself when a field inside is invalid.
+ */
+function FormSection({
+  title,
+  icon: Icon,
+  filled,
+  invalid,
+  children,
+}: {
+  title: string;
+  icon: LucideIcon;
+  filled: number;
+  invalid: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const shown = open || invalid;
+  return (
+    <Collapsible
+      open={shown}
+      onOpenChange={setOpen}
+      className={cn("rounded-2xl border", invalid && "border-destructive/60")}
+    >
+      <CollapsibleTrigger
+        render={
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-sm font-medium hover:bg-muted/50"
+          />
+        }
+      >
+        <Icon aria-hidden className="size-4 shrink-0 text-primary" />
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+        {invalid ? (
+          <Badge variant="destructive">มีช่องที่ต้องแก้</Badge>
+        ) : (
+          filled > 0 && <Badge variant="secondary">กรอกแล้ว {filled}</Badge>
+        )}
+        <ChevronDown
+          aria-hidden
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform",
+            shown && "rotate-180",
+          )}
+        />
+      </CollapsibleTrigger>
+      {/* Kept mounted, so folded fields still validate and keep their values. */}
+      <CollapsibleContent keepMounted className="flex flex-col gap-4 border-t p-3">
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 const STALE_MESSAGE = "มีคนแก้ไขรายการนี้ก่อนคุณ โหลดข้อมูลล่าสุดแล้วลองอีกครั้ง";
 
 export function ItemForm({
@@ -404,7 +485,7 @@ export function ItemForm({
   const save = useMutation({
     mutationFn: ({ values, mitigation }: { values: FormValues; mitigation?: string }) => {
       const body = {
-        ...payload(values, canApprove),
+        ...withoutStaleDetails(payload(values, canApprove), values),
         // Saving past clashes the editor has seen, with how they will be handled.
         ...(mitigation ? { acceptConflicts: true as const, mitigation } : {}),
       };
@@ -529,10 +610,167 @@ export function ItemForm({
       icon: OPTION_ICONS.person,
     })) ?? []),
   ];
-  const isOperations = values.mode === "operations";
-  const isDelivery = values.mode === "delivery";
   const isRelease = values.category === "release";
-  const isMeeting = values.mode === "coordination" || values.mode === "meetings";
+  const context = fieldsFor(values.mode, values.category as CalendarCategory);
+
+  const fieldMeta = useStore(form.store, (state) => state.fieldMeta) as Record<
+    string,
+    { errors?: unknown[] } | undefined
+  >;
+  const hasErrors = (names: readonly string[]) =>
+    names.some((name) => (fieldMeta[name]?.errors?.length ?? 0) > 0);
+  /** How many of these fields hold something, shown while a section is folded. */
+  const filledCount = (names: readonly string[]) =>
+    names.filter((name) => {
+      const value = (values as Record<string, unknown>)[name];
+      return typeof value === "string" ? value.trim() !== "" && value !== NONE : false;
+    }).length;
+
+  const personField = (
+    name: "onCallOwnerId" | "scoreboardOperatorId" | "monitoringOwnerId",
+    label: string,
+    icon: LucideIcon,
+  ) => (
+    <form.Field name={name}>
+      {(field) => (
+        <OptionSelect
+          id={`calendar-${name}`}
+          label={label}
+          value={field.state.value}
+          options={peopleFor(icon)}
+          onChange={field.handleChange}
+        />
+      )}
+    </form.Field>
+  );
+
+  /** One detail field of the category section. */
+  const contextField = (name: ContextField): ReactNode => {
+    switch (name) {
+      case "game":
+        return (
+          <form.Field name="game">
+            {(field) => (
+              <OptionSelect
+                id="calendar-game"
+                label="เกม"
+                value={field.state.value}
+                options={[
+                  { value: NONE, label: "ไม่ระบุ", icon: OPTION_ICONS.none },
+                  ...GAMES.map((game) => ({
+                    value: game,
+                    label: GAME_LABELS[game],
+                    icon: GAME_ICONS[game],
+                  })),
+                ]}
+                onChange={field.handleChange}
+              />
+            )}
+          </form.Field>
+        );
+      case "matchId":
+        return textField("matchId", "Match ID");
+      case "teams":
+        return textField("teams", "ทีม", { description: "คั่นแต่ละทีมด้วยจุลภาค" });
+      case "venue":
+        return textField("venue", "สถานที่");
+      case "streamPlatform":
+        return textField("streamPlatform", "แพลตฟอร์มสตรีม");
+      case "scoreboardUrl":
+        return textField("scoreboardUrl", "ลิงก์ Scoreboard", { type: "url" });
+      case "onCallOwnerId":
+        return personField("onCallOwnerId", "On-call", OPTION_ICONS.onCall);
+      case "scoreboardOperatorId":
+        return personField("scoreboardOperatorId", "คนคุม Scoreboard", OPTION_ICONS.scoreboard);
+      case "monitoringOwnerId":
+        return personField("monitoringOwnerId", "ผู้ดูแลการ monitor", OPTION_ICONS.monitoring);
+      case "template":
+        return (
+          <OptionSelect
+            id="calendar-template"
+            label="เทมเพลตวาระ"
+            value=""
+            options={Object.entries(MEETING_TEMPLATES).map(([value, template]) => ({
+              value,
+              label: template.label,
+              icon: TEMPLATE_ICONS[value],
+            }))}
+            onChange={(key) => {
+              const template = MEETING_TEMPLATES[key as keyof typeof MEETING_TEMPLATES];
+              const agenda = form.getFieldValue("agenda").trim();
+              form.setFieldValue(
+                "agenda",
+                agenda ? `${agenda}\n\n${template.agenda}` : template.agenda,
+              );
+            }}
+          />
+        );
+      case "meetingLink":
+        return textField("meetingLink", "ลิงก์ประชุม", { type: "url" });
+      case "agenda":
+        return textField("agenda", "วาระ", { multiline: true });
+      case "feature":
+        return textField("feature", "ฟีเจอร์/Release");
+      case "environment":
+        return isRelease ? (
+          <form.Field name="environment">
+            {(field) => (
+              <OptionSelect
+                id="calendar-environment"
+                label="Environment"
+                value={field.state.value}
+                options={RELEASE_ENVIRONMENTS.map((value) => ({
+                  value,
+                  label: RELEASE_ENVIRONMENT_LABELS[value],
+                  icon: ENVIRONMENT_ICONS[value],
+                }))}
+                onChange={field.handleChange}
+              />
+            )}
+          </form.Field>
+        ) : (
+          textField("environment", "Environment")
+        );
+      case "specUrl":
+        return textField("specUrl", "ลิงก์ spec", { type: "url" });
+      case "designUrl":
+        return textField("designUrl", "ลิงก์ design", { type: "url" });
+      case "pullRequestUrl":
+        return textField("pullRequestUrl", "Pull request", { type: "url" });
+      case "qaUrl":
+        return textField("qaUrl", "ลิงก์ผล QA", { type: "url" });
+      case "qaResult":
+        return (
+          <form.Field name="qaResult">
+            {(field) => (
+              <OptionSelect
+                id="calendar-qa-result"
+                label="ผล QA"
+                value={field.state.value}
+                options={[
+                  { value: NONE, label: "ยังไม่มี", icon: OPTION_ICONS.none },
+                  ...QA_RESULTS.map((value) => ({
+                    value,
+                    label: QA_RESULT_LABELS[value],
+                    icon: QA_RESULT_ICONS[value],
+                  })),
+                ]}
+                onChange={field.handleChange}
+              />
+            )}
+          </form.Field>
+        );
+      case "incidentUrl":
+        return textField("incidentUrl", "ลิงก์ incident", { type: "url" });
+      case "rolloutPlan":
+        return textField("rolloutPlan", "Rollout checklist", { multiline: true });
+      case "rollbackPlan":
+        return textField("rollbackPlan", "แผน rollback", {
+          multiline: true,
+          description: "ต้องมีก่อนตั้งเป็น Released",
+        });
+    }
+  };
 
   return (
     <form
@@ -635,34 +873,6 @@ export function ItemForm({
           {textField("source", "แหล่งข้อมูล", { description: "เช่น ตารางแข่งจากฝ่ายกีฬา v2" })}
         </div>
 
-        {!original && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <form.Field name="repeatEvery">
-              {(field) => (
-                <OptionSelect
-                  id="calendar-repeat"
-                  label="ทำซ้ำ"
-                  value={field.state.value}
-                  options={[
-                    { value: NONE, label: "ไม่ทำซ้ำ", icon: OPTION_ICONS.none },
-                    ...REPEAT_UNITS.map((unit) => ({
-                      value: unit,
-                      label: REPEAT_LABELS[unit],
-                      icon: REPEAT_ICONS[unit],
-                    })),
-                  ]}
-                  onChange={field.handleChange}
-                />
-              )}
-            </form.Field>
-            {values.repeatEvery !== NONE &&
-              textField("repeatCount", "จำนวนครั้ง (รวมครั้งแรก)", {
-                type: "number",
-                description: `สูงสุด ${MAX_REPEAT_COUNT} ครั้ง`,
-              })}
-          </div>
-        )}
-
         <form.Field name="confirm">
           {(field) => (
             <Field orientation="horizontal">
@@ -681,180 +891,36 @@ export function ItemForm({
             description: "บันทึกไว้ในประวัติการเปลี่ยนแปลง",
           })}
 
-        {isOperations && (
-          <FieldSet>
-            <FieldLegend variant="label" className="flex items-center gap-1.5">
-              <RadioTower aria-hidden className="size-4 text-primary" />
-              การแข่งขันและไลฟ์
-            </FieldLegend>
+        {context.length > 0 && (
+          <FormSection
+            title={`รายละเอียด${CATEGORY_LABELS[values.category as CalendarCategory] ?? ""}`}
+            icon={CATEGORY_ICONS[values.category as CalendarCategory] ?? Layers}
+            filled={filledCount(context)}
+            invalid={hasErrors(context)}
+          >
             <div className="grid gap-4 sm:grid-cols-2">
-              <form.Field name="game">
-                {(field) => (
-                  <OptionSelect
-                    id="calendar-game"
-                    label="เกม"
-                    value={field.state.value}
-                    options={[
-                      { value: NONE, label: "ไม่ระบุ", icon: OPTION_ICONS.none },
-                      ...GAMES.map((game) => ({
-                        value: game,
-                        label: GAME_LABELS[game],
-                        icon: GAME_ICONS[game],
-                      })),
-                    ]}
-                    onChange={field.handleChange}
-                  />
-                )}
-              </form.Field>
-              {textField("matchId", "Match ID")}
-              {textField("teams", "ทีม", { description: "คั่นแต่ละทีมด้วยจุลภาค" })}
-              {textField("venue", "สถานที่")}
-              {textField("streamPlatform", "แพลตฟอร์มสตรีม")}
-              {textField("scoreboardUrl", "ลิงก์ Scoreboard", { type: "url" })}
-              <form.Field name="onCallOwnerId">
-                {(field) => (
-                  <OptionSelect
-                    id="calendar-on-call"
-                    label="On-call"
-                    value={field.state.value}
-                    options={peopleFor(OPTION_ICONS.onCall)}
-                    onChange={field.handleChange}
-                  />
-                )}
-              </form.Field>
-              <form.Field name="scoreboardOperatorId">
-                {(field) => (
-                  <OptionSelect
-                    id="calendar-scoreboard-operator"
-                    label="คนคุม Scoreboard"
-                    value={field.state.value}
-                    options={peopleFor(OPTION_ICONS.scoreboard)}
-                    onChange={field.handleChange}
-                  />
-                )}
-              </form.Field>
+              {context.map((name) => (
+                <div key={name} className={cn("min-w-0", WIDE_FIELDS.has(name) && "sm:col-span-2")}>
+                  {contextField(name)}
+                </div>
+              ))}
             </div>
-          </FieldSet>
-        )}
-
-        {isMeeting && (
-          <FieldSet>
-            <FieldLegend variant="label" className="flex items-center gap-1.5">
-              <Handshake aria-hidden className="size-4 text-primary" />
-              การประชุมและประสานงาน
-            </FieldLegend>
-            <OptionSelect
-              id="calendar-template"
-              label="เทมเพลตวาระ"
-              value=""
-              options={Object.entries(MEETING_TEMPLATES).map(([value, template]) => ({
-                value,
-                label: template.label,
-                icon: TEMPLATE_ICONS[value],
-              }))}
-              onChange={(key) => {
-                const template = MEETING_TEMPLATES[key as keyof typeof MEETING_TEMPLATES];
-                const agenda = form.getFieldValue("agenda").trim();
-                form.setFieldValue(
-                  "agenda",
-                  agenda ? `${agenda}\n\n${template.agenda}` : template.agenda,
-                );
-              }}
-            />
-            {textField("meetingLink", "ลิงก์ประชุม", { type: "url" })}
-            {textField("agenda", "วาระ", { multiline: true })}
-          </FieldSet>
-        )}
-
-        {isDelivery && (
-          <FieldSet>
-            <FieldLegend variant="label" className="flex items-center gap-1.5">
-              <Rocket aria-hidden className="size-4 text-primary" />
-              ฟีเจอร์และ Release
-            </FieldLegend>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {textField("feature", "ฟีเจอร์/Release")}
-              {isRelease ? (
-                <form.Field name="environment">
-                  {(field) => (
-                    <OptionSelect
-                      id="calendar-environment"
-                      label="Environment"
-                      value={field.state.value}
-                      options={RELEASE_ENVIRONMENTS.map((value) => ({
-                        value,
-                        label: RELEASE_ENVIRONMENT_LABELS[value],
-                        icon: ENVIRONMENT_ICONS[value],
-                      }))}
-                      onChange={field.handleChange}
-                    />
-                  )}
-                </form.Field>
-              ) : (
-                textField("environment", "Environment")
-              )}
-              {textField("specUrl", "ลิงก์ spec", { type: "url" })}
-              {textField("designUrl", "ลิงก์ design", { type: "url" })}
-              {textField("pullRequestUrl", "Pull request", { type: "url" })}
-              {textField("qaUrl", "ลิงก์ผล QA", { type: "url" })}
-              <form.Field name="qaResult">
-                {(field) => (
-                  <OptionSelect
-                    id="calendar-qa-result"
-                    label="ผล QA"
-                    value={field.state.value}
-                    options={[
-                      { value: NONE, label: "ยังไม่มี", icon: OPTION_ICONS.none },
-                      ...QA_RESULTS.map((value) => ({
-                        value,
-                        label: QA_RESULT_LABELS[value],
-                        icon: QA_RESULT_ICONS[value],
-                      })),
-                    ]}
-                    onChange={field.handleChange}
-                  />
-                )}
-              </form.Field>
-              {isRelease && (
-                <form.Field name="monitoringOwnerId">
-                  {(field) => (
-                    <OptionSelect
-                      id="calendar-monitoring-owner"
-                      label="ผู้ดูแลการ monitor"
-                      value={field.state.value}
-                      options={peopleFor(OPTION_ICONS.monitoring)}
-                      onChange={field.handleChange}
-                    />
-                  )}
-                </form.Field>
-              )}
-              {values.category === "monitoring" &&
-                textField("incidentUrl", "ลิงก์ incident", { type: "url" })}
-            </div>
-            {isRelease && (
-              <>
-                {textField("rolloutPlan", "Rollout checklist", { multiline: true })}
-                {textField("rollbackPlan", "แผน rollback", {
-                  multiline: true,
-                  description: "ต้องมีก่อนตั้งเป็น Released",
-                })}
-                {original?.releaseApprovedAt && (
-                  <FieldDescription>
-                    แก้ช่วงเวลา, environment, ฟีเจอร์ หรือแผน จะต้องขออนุมัติ release ใหม่
-                  </FieldDescription>
-                )}
-              </>
+            {isRelease && original?.releaseApprovedAt && (
+              <FieldDescription>
+                แก้ช่วงเวลา, environment, ฟีเจอร์ หรือแผน จะต้องขออนุมัติ release ใหม่
+              </FieldDescription>
             )}
-          </FieldSet>
+          </FormSection>
         )}
 
-        <form.Field name="departmentIds">
-          {(field) => (
-            <FieldSet>
-              <FieldLegend variant="label" className="flex items-center gap-1.5">
-                <Building2 aria-hidden className="size-4 text-primary" />
-                ฝ่ายที่เกี่ยวข้อง
-              </FieldLegend>
+        <FormSection
+          title="ฝ่ายที่เกี่ยวข้อง"
+          icon={Building2}
+          filled={values.departmentIds.length}
+          invalid={false}
+        >
+          <form.Field name="departmentIds">
+            {(field) => (
               <div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
                 {departments.data?.map((department) => {
                   const id = `calendar-department-${department.id}`;
@@ -879,51 +945,103 @@ export function ItemForm({
                   );
                 })}
               </div>
-            </FieldSet>
-          )}
-        </form.Field>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <form.Field name="riskLevel">
-            {(field) => (
-              <OptionSelect
-                id="calendar-risk"
-                label="ความเสี่ยง"
-                value={field.state.value}
-                options={[
-                  { value: NONE, label: "ไม่ระบุ", icon: OPTION_ICONS.none },
-                  ...RISK_LEVELS.map((risk) => ({
-                    value: risk,
-                    label: RISK_LABELS[risk],
-                    icon: RISK_ICONS[risk],
-                  })),
-                ]}
-                onChange={field.handleChange}
-              />
             )}
           </form.Field>
-          {canApprove && (
-            <form.Field name="visibility">
+        </FormSection>
+
+        <FormSection
+          title="ความเสี่ยงและการเผยแพร่"
+          icon={TriangleAlert}
+          filled={
+            filledCount(["riskLevel", "blockedReason"]) + (values.visibility === "public" ? 1 : 0)
+          }
+          invalid={hasErrors(["blockedReason"])}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <form.Field name="riskLevel">
               {(field) => (
                 <OptionSelect
-                  id="calendar-visibility"
-                  label="การเผยแพร่"
+                  id="calendar-risk"
+                  label="ความเสี่ยง"
                   value={field.state.value}
-                  options={(["internal", "public"] as const).map((value) => ({
-                    value,
-                    label: VISIBILITY_LABELS[value],
-                    icon: VISIBILITY_ICONS[value],
-                  }))}
-                  onChange={(next) => field.handleChange(next as "internal" | "public")}
+                  options={[
+                    { value: NONE, label: "ไม่ระบุ", icon: OPTION_ICONS.none },
+                    ...RISK_LEVELS.map((risk) => ({
+                      value: risk,
+                      label: RISK_LABELS[risk],
+                      icon: RISK_ICONS[risk],
+                    })),
+                  ]}
+                  onChange={field.handleChange}
                 />
               )}
             </form.Field>
-          )}
-        </div>
-        {textField("blockedReason", "สิ่งที่ติดขัด (Blocked)", {
-          description: "เว้นว่างถ้าไม่มี ถ้าใส่ รายการจะแสดงป้าย Blocked",
-        })}
-        {textField("notes", "โน้ตภายใน", { multiline: true })}
+            {canApprove && (
+              <form.Field name="visibility">
+                {(field) => (
+                  <OptionSelect
+                    id="calendar-visibility"
+                    label="การเผยแพร่"
+                    value={field.state.value}
+                    options={(["internal", "public"] as const).map((value) => ({
+                      value,
+                      label: VISIBILITY_LABELS[value],
+                      icon: VISIBILITY_ICONS[value],
+                    }))}
+                    onChange={(next) => field.handleChange(next as "internal" | "public")}
+                  />
+                )}
+              </form.Field>
+            )}
+          </div>
+          {textField("blockedReason", "สิ่งที่ติดขัด (Blocked)", {
+            description: "เว้นว่างถ้าไม่มี ถ้าใส่ รายการจะแสดงป้าย Blocked",
+          })}
+        </FormSection>
+
+        <FormSection
+          title="โน้ตภายใน"
+          icon={StickyNote}
+          filled={filledCount(["notes"])}
+          invalid={hasErrors(["notes"])}
+        >
+          {textField("notes", "โน้ตภายใน", { multiline: true })}
+        </FormSection>
+
+        {!original && (
+          <FormSection
+            title="ทำซ้ำ"
+            icon={Repeat}
+            filled={values.repeatEvery !== NONE ? 1 : 0}
+            invalid={hasErrors(["repeatCount"])}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <form.Field name="repeatEvery">
+                {(field) => (
+                  <OptionSelect
+                    id="calendar-repeat"
+                    label="ทำซ้ำ"
+                    value={field.state.value}
+                    options={[
+                      { value: NONE, label: "ไม่ทำซ้ำ", icon: OPTION_ICONS.none },
+                      ...REPEAT_UNITS.map((unit) => ({
+                        value: unit,
+                        label: REPEAT_LABELS[unit],
+                        icon: REPEAT_ICONS[unit],
+                      })),
+                    ]}
+                    onChange={field.handleChange}
+                  />
+                )}
+              </form.Field>
+              {values.repeatEvery !== NONE &&
+                textField("repeatCount", "จำนวนครั้ง (รวมครั้งแรก)", {
+                  type: "number",
+                  description: `สูงสุด ${MAX_REPEAT_COUNT} ครั้ง`,
+                })}
+            </div>
+          </FormSection>
+        )}
 
         {conflicts && (
           <div

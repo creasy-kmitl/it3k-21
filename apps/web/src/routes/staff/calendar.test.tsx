@@ -327,6 +327,7 @@ describe("/staff/calendar", () => {
       target: { value: "Weekly sync" },
     });
     fireEvent.change(within(form).getByLabelText("แหล่งข้อมูล"), { target: { value: "ทีม" } });
+    fireEvent.click(within(form).getByRole("button", { name: /^ทำซ้ำ/ }));
     await choose(within(form).getByRole("combobox", { name: "ทำซ้ำ" }), "ทุกสัปดาห์");
     fireEvent.change(await within(form).findByLabelText("จำนวนครั้ง (รวมครั้งแรก)"), {
       target: { value: "3" },
@@ -485,5 +486,85 @@ describe("/staff/calendar", () => {
     fireEvent.click(live);
     await waitFor(() => expect(trigger.textContent).toContain("Live"));
     expect(trigger.querySelector("svg")).not.toBeNull();
+  });
+
+  describe("form sections", () => {
+    async function openCreateForm(created: CalendarInput[] = []) {
+      setup({
+        items: [],
+        api: {
+          create: async (json) => {
+            created.push(json);
+            return calendarItem({ title: json.title });
+          },
+          get: async () => detail(calendarItem()),
+        },
+      });
+      fireEvent.click(await screen.findByRole("button", { name: "เพิ่มรายการ" }));
+      return screen.findByRole("form", { name: "เพิ่มรายการ" });
+    }
+
+    test("optional sections start folded and open on request", async () => {
+      const form = await openCreateForm();
+      expect(within(form).queryByRole("combobox", { name: "ความเสี่ยง" })).toBeNull();
+      fireEvent.click(within(form).getByRole("button", { name: /^ความเสี่ยงและการเผยแพร่/ }));
+      expect(within(form).getByRole("combobox", { name: "ความเสี่ยง" })).toBeTruthy();
+    });
+
+    test("details follow the category", async () => {
+      const form = await openCreateForm();
+      fireEvent.click(within(form).getByRole("button", { name: /^รายละเอียดแข่งขัน/ }));
+      expect(within(form).getByLabelText("ทีม")).toBeTruthy();
+      expect(within(form).queryByLabelText("ลิงก์ประชุม")).toBeNull();
+      expect(within(form).queryByLabelText("Pull request")).toBeNull();
+
+      await choose(within(form).getByRole("combobox", { name: "ประเภท" }), "ถ่ายทอดสด");
+      expect(within(form).queryByLabelText("ทีม")).toBeNull();
+      expect(within(form).getByLabelText("แพลตฟอร์มสตรีม")).toBeTruthy();
+
+      await choose(within(form).getByRole("combobox", { name: "โหมด" }), "ประชุม");
+      expect(within(form).getByRole("button", { name: /^รายละเอียดวางแผน/ })).toBeTruthy();
+    });
+
+    test("a folded section with an invalid field opens itself on save", async () => {
+      const form = await openCreateForm();
+      fireEvent.change(within(form).getByLabelText("ชื่อรายการ"), { target: { value: "SF" } });
+      fireEvent.change(within(form).getByLabelText("แหล่งข้อมูล"), { target: { value: "Sports" } });
+      const section = within(form).getByRole("button", { name: /^รายละเอียดแข่งขัน/ });
+      fireEvent.click(section);
+      fireEvent.change(within(form).getByLabelText("ลิงก์ Scoreboard"), {
+        target: { value: "http://insecure.example" },
+      });
+      fireEvent.click(section);
+      // Folded fields stay mounted (so they still validate) but hidden.
+      await waitFor(() =>
+        expect(within(form).getByLabelText("ลิงก์ Scoreboard").closest("[hidden]")).not.toBeNull(),
+      );
+      fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+      expect(await within(form).findByText("มีช่องที่ต้องแก้")).toBeTruthy();
+      expect(within(form).getByText("ลิงก์ต้องขึ้นต้นด้วย https://")).toBeTruthy();
+      await waitFor(() =>
+        expect(within(form).getByLabelText("ลิงก์ Scoreboard").closest("[hidden]")).toBeNull(),
+      );
+    });
+
+    test("details that no longer apply are cleared on save", async () => {
+      const created: CalendarInput[] = [];
+      const form = await openCreateForm(created);
+      fireEvent.change(within(form).getByLabelText("ชื่อรายการ"), { target: { value: "Sync" } });
+      fireEvent.change(within(form).getByLabelText("แหล่งข้อมูล"), { target: { value: "ทีม" } });
+      fireEvent.click(within(form).getByRole("button", { name: /^รายละเอียดแข่งขัน/ }));
+      fireEvent.change(within(form).getByLabelText("ทีม"), { target: { value: "A, B" } });
+      await choose(within(form).getByRole("combobox", { name: "โหมด" }), "ประชุม");
+      fireEvent.click(within(form).getByRole("button", { name: "บันทึก" }));
+      await waitFor(() => expect(created).toHaveLength(1));
+      expect(created[0]).toMatchObject({
+        mode: "meetings",
+        category: "planning",
+        teams: null,
+        game: null,
+        venue: null,
+      });
+    });
   });
 });
