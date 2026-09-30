@@ -11,6 +11,7 @@ import {
 import { Link } from "@tanstack/react-router";
 import {
   Building2Icon,
+  CalendarDaysIcon,
   LayoutDashboardIcon,
   TrophyIcon,
   UserCogIcon,
@@ -32,6 +33,7 @@ export function AppSidebar({
       label: "ภาพรวม",
       items: [
         { title: "หน้าหลัก", to: "/staff/dashboard", icon: <LayoutDashboardIcon /> },
+        { title: "ปฏิทิน", to: "/staff/calendar", icon: <CalendarDaysIcon /> },
         { title: "หัวหน้าฝ่าย", to: "/staff/head", icon: <UsersIcon /> },
       ],
     },

@@ -15,11 +15,15 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { authClient } from "@/lib/auth-client";
 import { clearCacheOnUserChange } from "@/lib/query-cache";
 
-// Every staff page uses the same reading width.
+// Every staff page uses the same reading width, except the calendar, whose
+// grids need the room.
 const COLUMN = "mx-auto w-full max-w-3xl";
+const WIDE_COLUMN = "mx-auto w-full max-w-7xl";
+const WIDE_PAGES = new Set(["/staff/calendar"]);
 
 const PAGE_TITLES: Record<string, string> = {
   "/staff/dashboard": "หน้าหลัก",
+  "/staff/calendar": "ปฏิทิน",
   "/staff/head": "หัวหน้าฝ่าย",
   "/staff/departments": "ฝ่าย",
   "/staff/users": "ผู้ใช้",
@@ -49,6 +53,7 @@ function AuthLayout() {
   const { session } = Route.useRouteContext();
   const pathname = useLocation({ select: (location) => location.pathname });
   const title = PAGE_TITLES[pathname];
+  const column = WIDE_PAGES.has(pathname) ? WIDE_COLUMN : COLUMN;
 
   return (
     <TooltipProvider>
@@ -58,7 +63,7 @@ function AuthLayout() {
           {/* Header and page share one centered column, so the breadcrumb lines up
               with the content whether the sidebar is open or closed. */}
           <header className="flex h-16 shrink-0 items-center px-4">
-            <div className={cn(COLUMN, "flex items-center gap-2")}>
+            <div className={cn(column, "flex items-center gap-2")}>
               <SidebarTrigger className="-ml-1" />
               <Separator
                 orientation="vertical"
@@ -76,7 +81,7 @@ function AuthLayout() {
             </div>
           </header>
           <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-            <div className={cn(COLUMN, "flex flex-1 flex-col gap-4")}>
+            <div className={cn(column, "flex flex-1 flex-col gap-4")}>
               <Outlet />
             </div>
           </div>
