@@ -73,6 +73,8 @@ import {
 } from "@/lib/calendar-labels";
 import { ApiError } from "@/lib/leadership";
 
+import { DateTimePicker } from "./date-time-picker";
+
 export type ItemFormMode =
   | { kind: "create"; start: number }
   | { kind: "edit"; item: CalendarItemDetail };
@@ -542,11 +544,27 @@ export function ItemForm({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          {textField("start", "เริ่ม", {
-            description: "เวลาไทย (UTC+07:00)",
-            type: "datetime-local",
-          })}
-          {textField("end", "สิ้นสุด", { type: "datetime-local" })}
+          {(["start", "end"] as const).map((name) => (
+            <form.Field key={name} name={name}>
+              {(field) => (
+                <Field data-invalid={!field.state.meta.isValid}>
+                  <FieldLabel htmlFor={`calendar-${name}`}>
+                    {name === "start" ? "เริ่ม" : "สิ้นสุด"}
+                  </FieldLabel>
+                  <DateTimePicker
+                    id={`calendar-${name}`}
+                    label={name === "start" ? "เริ่ม" : "สิ้นสุด"}
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                    onBlur={field.handleBlur}
+                    invalid={!field.state.meta.isValid}
+                  />
+                  {name === "start" && <FieldDescription>เวลาไทย (UTC+07:00)</FieldDescription>}
+                  <FieldError errors={field.state.meta.errors} />
+                </Field>
+              )}
+            </form.Field>
+          ))}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

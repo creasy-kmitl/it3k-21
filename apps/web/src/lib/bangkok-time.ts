@@ -140,6 +140,13 @@ const formatters = {
     year: "numeric",
   }),
   weekday: new Intl.DateTimeFormat("th-TH", { timeZone: CALENDAR_TIMEZONE, weekday: "short" }),
+  date: new Intl.DateTimeFormat("th-TH", {
+    timeZone: CALENDAR_TIMEZONE,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }),
   dateTime: new Intl.DateTimeFormat("th-TH", {
     timeZone: CALENDAR_TIMEZONE,
     day: "numeric",

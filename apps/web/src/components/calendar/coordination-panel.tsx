@@ -26,6 +26,8 @@ import type {
 import { REQUEST_STATE_LABELS, REQUEST_STATE_STYLES } from "@/lib/calendar-labels";
 import { ApiError } from "@/lib/leadership";
 
+import { DateTimePicker } from "./date-time-picker";
+
 const NONE = "__none__";
 
 function failure(error: Error) {
@@ -108,11 +110,11 @@ function RequestForm({
       </Field>
       <Field>
         <FieldLabel htmlFor={`request-due-${link.id}`}>กำหนดส่ง (เวลาไทย)</FieldLabel>
-        <Input
+        <DateTimePicker
           id={`request-due-${link.id}`}
-          type="datetime-local"
+          label="กำหนดส่ง"
           value={due}
-          onChange={(e) => setDue(e.target.value)}
+          onChange={setDue}
         />
       </Field>
       <div className="flex justify-end gap-2">
@@ -319,7 +321,7 @@ function AddActionItem({ item }: { item: CalendarItemDetail }) {
         onChange={(e) => setTitle(e.target.value)}
         maxLength={300}
       />
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-2">
         <Select
           items={ownerItems}
           value={ownerId}
@@ -352,13 +354,16 @@ function AddActionItem({ item }: { item: CalendarItemDetail }) {
             ))}
           </SelectContent>
         </Select>
-        <Input
-          aria-label="กำหนดส่ง"
-          type="datetime-local"
-          value={due}
-          onChange={(e) => setDue(e.target.value)}
-        />
       </div>
+      <Field>
+        <FieldLabel htmlFor={`action-due-${item.id}`}>กำหนดส่ง (เวลาไทย)</FieldLabel>
+        <DateTimePicker
+          id={`action-due-${item.id}`}
+          label="กำหนดส่ง"
+          value={due}
+          onChange={setDue}
+        />
+      </Field>
       <Button
         type="submit"
         size="sm"

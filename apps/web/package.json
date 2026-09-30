@@ -28,6 +28,7 @@
     "next-themes": "catalog:",
     "nitro": "3.0.260903-beta",
     "react": "catalog:",
+    "react-day-picker": "^10.0.1",
     "react-dom": "catalog:",
     "sonner": "catalog:",
     "tailwindcss": "catalog:",
