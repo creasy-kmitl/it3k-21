@@ -209,3 +209,34 @@ export const LIVE_BLOCK_CATEGORIES: readonly CalendarCategory[] = ["match", "bro
 export function canClash(item: { mode: CalendarMode; category: CalendarCategory }) {
   return holdsASlot(item) || item.category === "release";
 }
+
+/** Why someone is told about an item. */
+export const NOTIFICATION_KINDS = [
+  // Given an item: as owner, on-call, scoreboard operator or monitoring owner.
+  "assignment",
+  "reschedule",
+  "cancel",
+  // Something the recipient's item depends on moved or was cancelled.
+  "dependency",
+  // A department contact was asked for something.
+  "request",
+  "action_item",
+  // A release window clashed with a live block, or its approval was withdrawn.
+  "release_risk",
+] as const;
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+
+/** What the public sees of an item's status; drafts never reach the public. */
+export const PUBLIC_STATUSES = ["scheduled", "live", "completed", "delayed", "cancelled"] as const;
+export type PublicStatus = (typeof PUBLIC_STATUSES)[number];
+
+export function publicStatus(status: CalendarStatus): PublicStatus {
+  if (status === "live" || status === "completed" || status === "delayed") return status;
+  if (status === "cancelled") return "cancelled";
+  return "scheduled";
+}
+
+/** Only live operations (matches, broadcasts, results…) may be published. */
+export function canBePublic(item: { mode: CalendarMode }) {
+  return item.mode === "operations";
+}

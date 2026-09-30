@@ -17,6 +17,7 @@ import {
   QA_RESULTS,
   READY_STATUSES,
   RELEASE_ENVIRONMENTS,
+  canBePublic,
   canClash,
   calendarChecklistItem,
   isTbd,
@@ -47,6 +48,7 @@ import {
   stillCalendarEditor,
 } from "../../policies/calendar";
 import { containsAny } from "../leadership";
+import { createNotificationRoutes, downstreamOwners, notify, peopleOn } from "./notifications";
 import {
   createDeliveryRoutes,
   dependenciesSatisfied,
@@ -271,6 +273,7 @@ type ItemInput = {
   environment?: string | null;
 };
 
+const PUBLIC_MODE_MESSAGE = "Only live operations (matches, broadcasts…) can be public";
 const READINESS_MESSAGE = "Finish the live checklist and name who is on call first";
 const RELEASE_MESSAGE =
   "A release needs QA, approval, a rollback plan and a monitoring owner first";
@@ -620,6 +623,9 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       if (approving && isTbd({ status: fields.status, lastConfirmedAt: confirmedAt })) {
         return c.json({ message: "Unconfirmed (TBD) items cannot be public" }, 400);
       }
+      if (approving && !canBePublic(fields)) {
+        return c.json({ message: PUBLIC_MODE_MESSAGE }, 400);
+      }
       const invalid =
         (await ownerProblem(db, fields.ownerId)) ??
         (fields.onCallOwnerId ? await ownerProblem(db, fields.onCallOwnerId) : null) ??
@@ -697,6 +703,15 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
           db.insert(calendarItem).values({ id: itemId, ...values, createdById: actor.id }),
           ...insertDepartments(db, itemId, ids),
           logChange(db, actor, itemId, "create", logged),
+          // One notice for a whole series, on its first item.
+          ...(index === 0
+            ? notify(db, actor, peopleOn({ ...values, ownerId: fields.ownerId }), {
+                kind: "assignment",
+                itemId,
+                itemTitle: fields.title,
+                data: { startAt: fields.startAt, series: repeat?.count ?? null },
+              })
+            : []),
         ];
       });
       try {
@@ -832,6 +847,9 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         ) {
           return c.json({ message: "Unconfirmed (TBD) items cannot be public" }, 400);
         }
+        if (visibility === "public" && !canBePublic(next)) {
+          return c.json({ message: PUBLIC_MODE_MESSAGE }, 400);
+        }
         if (approving) {
           set.approvedAt = visibility === "public" ? now : null;
           set.approvedById = visibility === "public" ? actor.id : null;
@@ -904,6 +922,65 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
         // A release that overlaps a live block is high risk.
         if (conflicts.length > 0 && next.category === "release") record("riskLevel", "high");
 
+        // Who to tell, in the same batch as the change.
+        const people = {
+          ownerId: after.ownerId ?? null,
+          onCallOwnerId: after.onCallOwnerId ?? null,
+          scoreboardOperatorId: after.scoreboardOperatorId ?? null,
+          monitoringOwnerId: after.monitoringOwnerId ?? null,
+        };
+        const itemTitle = after.title;
+        const notices = [];
+        for (const role of Object.keys(people) as (keyof typeof people)[]) {
+          if (role in changes && people[role]) {
+            notices.push(
+              ...notify(db, actor, [people[role]], {
+                kind: "assignment",
+                itemId,
+                itemTitle,
+                data: { role, startAt: next.startAt },
+              }),
+            );
+          }
+        }
+        if (action === "reschedule" || action === "cancel") {
+          const data = {
+            startAt: next.startAt,
+            endAt: next.endAt,
+            previousStartAt: current.startAt.getTime(),
+            reason: reason ?? null,
+          };
+          notices.push(
+            ...notify(db, actor, [...peopleOn(current), ...peopleOn(people)], {
+              kind: action,
+              itemId,
+              itemTitle,
+              data,
+            }),
+            ...notify(db, actor, await downstreamOwners(db, itemId), {
+              kind: "dependency",
+              itemId,
+              itemTitle,
+              data: { ...data, change: action },
+            }),
+          );
+        }
+        const approvalWithdrawn =
+          !approvingRelease && planChanged && current.releaseApprovedAt !== null;
+        if (next.category === "release" && (conflicts.length > 0 || approvalWithdrawn)) {
+          notices.push(
+            ...notify(db, actor, [people.ownerId, people.monitoringOwnerId], {
+              kind: "release_risk",
+              itemId,
+              itemTitle,
+              data: {
+                conflicts: conflicts.map((conflict) => conflict.title),
+                approvalWithdrawn,
+              },
+            }),
+          );
+        }
+
         const closing =
           next.status === "completed" && current.status !== "completed" && needsCloseOut(next);
         if (closing) {
@@ -970,6 +1047,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
                 )
               : []),
             logChange(db, actor, itemId, action, changes, reason ?? null),
+            ...notices,
           ]);
           updated = results[1] as { id: string }[];
         } catch (error) {
@@ -1054,6 +1132,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
 
     .route("/", createCoordinationRoutes())
     .route("/", createLiveRoutes())
-    .route("/", createDeliveryRoutes());
+    .route("/", createDeliveryRoutes())
+    .route("/", createNotificationRoutes());
 
 export type CalendarRoutes = ReturnType<typeof createCalendarRoutes>;

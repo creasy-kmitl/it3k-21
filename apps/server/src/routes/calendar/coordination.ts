@@ -25,6 +25,7 @@ import {
   stillInDepartment,
   stillMember,
 } from "../../policies/calendar";
+import { notify } from "./notifications";
 import {
   type Change,
   STALE_MESSAGE,
@@ -223,9 +224,10 @@ export async function loadCoordination(
 
 async function findLink(db: Database, itemId: string, departmentId: string) {
   const [row] = await db
-    .select({ link: calendarItemDepartment, name: department.name })
+    .select({ link: calendarItemDepartment, name: department.name, itemTitle: calendarItem.title })
     .from(calendarItemDepartment)
     .innerJoin(department, eq(department.id, calendarItemDepartment.departmentId))
+    .innerJoin(calendarItem, eq(calendarItem.id, calendarItemDepartment.itemId))
     .where(
       and(
         eq(calendarItemDepartment.itemId, itemId),
@@ -235,12 +237,12 @@ async function findLink(db: Database, itemId: string, departmentId: string) {
   return row ?? null;
 }
 
-async function itemExists(db: Database, itemId: string) {
+async function itemTitle(db: Database, itemId: string) {
   const [row] = await db
-    .select({ id: calendarItem.id })
+    .select({ title: calendarItem.title })
     .from(calendarItem)
     .where(eq(calendarItem.id, itemId));
-  return !!row;
+  return row?.title ?? null;
 }
 
 /** SQL: the department link still has the state and request the route read. */
@@ -350,6 +352,15 @@ export const createCoordinationRoutes = () =>
           abortUnless(db, actor.id, and(stillCalendarEditor(), linkIsAsRead(db, link)) ?? sql`1`),
           db.update(calendarItemDepartment).set(set).where(eq(calendarItemDepartment.id, link.id)),
           logChange(db, actor, itemId, "request", changes),
+          // The department's contact hears about a new or changed request.
+          ...(state === "requested"
+            ? notify(db, actor, [set.contactUserId], {
+                kind: "request",
+                itemId,
+                itemTitle: found.itemTitle,
+                data: { department: found.name, request, dueAt: set.dueAt?.getTime() ?? null },
+              })
+            : []),
         ]);
         if (!result.ok) return c.json({ message: result.message }, result.status);
         return c.json({ ok: true }, 200);
@@ -401,7 +412,8 @@ export const createCoordinationRoutes = () =>
         const input = c.req.valid("json");
         const db = c.var.db;
         const actor = c.var.user;
-        if (!(await itemExists(db, itemId))) return c.json({ message: "Item not found" }, 404);
+        const title = await itemTitle(db, itemId);
+        if (title === null) return c.json({ message: "Item not found" }, 404);
         const invalid =
           (input.ownerId ? await ownerProblem(db, input.ownerId) : null) ??
           (input.departmentId ? await departmentsProblem(db, [input.departmentId]) : null);
@@ -419,6 +431,12 @@ export const createCoordinationRoutes = () =>
             createdById: actor.id,
           }),
           logChange(db, actor, itemId, "action_item", { actionItem: [null, input.title] }),
+          ...notify(db, actor, [input.ownerId], {
+            kind: "action_item",
+            itemId,
+            itemTitle: title,
+            data: { title: input.title, dueAt: input.dueAt ?? null },
+          }),
         ]);
         if (!result.ok) return c.json({ message: result.message }, result.status);
         const [row] = await selectActionItems(db).where(eq(calendarActionItem.id, actionId));
@@ -501,6 +519,17 @@ export const createCoordinationRoutes = () =>
               and(eq(calendarActionItem.id, actionId), eq(calendarActionItem.version, version)),
             ),
           logChange(db, actor, current.itemId, "action_item", changes),
+          ...(set.ownerId
+            ? notify(db, actor, [set.ownerId], {
+                kind: "action_item",
+                itemId: current.itemId,
+                itemTitle: (await itemTitle(db, current.itemId)) ?? "",
+                data: {
+                  title: set.title ?? current.title,
+                  dueAt: (set.dueAt ?? current.dueAt)?.getTime() ?? null,
+                },
+              })
+            : []),
         ]);
         if (!result.ok) return c.json({ message: result.message }, result.status);
         return c.json({ ok: true }, 200);
@@ -537,7 +566,9 @@ export const createCoordinationRoutes = () =>
         const { text } = c.req.valid("json");
         const db = c.var.db;
         const actor = c.var.user;
-        if (!(await itemExists(db, itemId))) return c.json({ message: "Item not found" }, 404);
+        if ((await itemTitle(db, itemId)) === null) {
+          return c.json({ message: "Item not found" }, 404);
+        }
         const result = await runBatch(db, [
           abortUnless(db, actor.id, stillCalendarEditor()),
           db.insert(calendarDecision).values({ itemId, text, createdById: actor.id }),

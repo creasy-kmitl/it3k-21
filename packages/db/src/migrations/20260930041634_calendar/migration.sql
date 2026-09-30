@@ -151,6 +151,21 @@ CREATE TABLE `calendar_item_department` (
 	CONSTRAINT "calendar_item_department_state_check" CHECK("state" IN ('involved', 'requested', 'answered'))
 );
 --> statement-breakpoint
+CREATE TABLE `calendar_notification` (
+	`id` text PRIMARY KEY,
+	`user_id` text NOT NULL,
+	`item_id` text NOT NULL,
+	`kind` text NOT NULL,
+	`item_title` text NOT NULL,
+	`data` text NOT NULL,
+	`actor_user_id` text,
+	`read_at` integer,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	CONSTRAINT `fk_calendar_notification_user_id_user_id_fk` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE,
+	CONSTRAINT `fk_calendar_notification_item_id_calendar_item_id_fk` FOREIGN KEY (`item_id`) REFERENCES `calendar_item`(`id`) ON DELETE CASCADE,
+	CONSTRAINT "calendar_notification_kind_check" CHECK("kind" IN ('assignment', 'reschedule', 'cancel', 'dependency', 'request', 'action_item', 'release_risk'))
+);
+--> statement-breakpoint
 CREATE INDEX `calendar_action_item_item_id_idx` ON `calendar_action_item` (`item_id`);--> statement-breakpoint
 CREATE INDEX `calendar_action_item_owner_id_idx` ON `calendar_action_item` (`owner_id`,`status`);--> statement-breakpoint
 CREATE INDEX `calendar_action_item_department_id_idx` ON `calendar_action_item` (`department_id`,`status`);--> statement-breakpoint
@@ -165,4 +180,5 @@ CREATE INDEX `calendar_item_owner_id_idx` ON `calendar_item` (`owner_id`);--> st
 CREATE INDEX `calendar_item_mode_idx` ON `calendar_item` (`mode`);--> statement-breakpoint
 CREATE INDEX `calendar_item_series_id_idx` ON `calendar_item` (`series_id`,`start_at`);--> statement-breakpoint
 CREATE UNIQUE INDEX `calendar_item_department_uidx` ON `calendar_item_department` (`item_id`,`department_id`);--> statement-breakpoint
-CREATE INDEX `calendar_item_department_department_id_idx` ON `calendar_item_department` (`department_id`);
+CREATE INDEX `calendar_item_department_department_id_idx` ON `calendar_item_department` (`department_id`);--> statement-breakpoint
+CREATE INDEX `calendar_notification_user_id_idx` ON `calendar_notification` (`user_id`,`created_at`);

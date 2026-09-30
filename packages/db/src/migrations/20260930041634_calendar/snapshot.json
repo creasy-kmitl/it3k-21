@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "b047555b-e477-4846-b2a7-f28cd31fdd4d",
+  "id": "a44f2229-43ef-4df0-b7ba-08ed7d5271b0",
   "prevIds": [
     "f830fd90-f191-4873-86fb-9e50f0448861"
   ],
@@ -64,6 +64,10 @@
     },
     {
       "name": "calendar_item_department",
+      "entityType": "tables"
+    },
+    {
+      "name": "calendar_notification",
       "entityType": "tables"
     },
     {
@@ -1707,6 +1711,96 @@
       "table": "calendar_item_department"
     },
     {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "calendar_notification"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "table": "calendar_notification"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "item_id",
+      "entityType": "columns",
+      "table": "calendar_notification"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "kind",
+      "entityType": "columns",
+      "table": "calendar_notification"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "item_title",
+      "entityType": "columns",
+      "table": "calendar_notification"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "calendar_notification"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "actor_user_id",
+      "entityType": "columns",
+      "table": "calendar_notification"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "read_at",
+      "entityType": "columns",
+      "table": "calendar_notification"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "(cast(unixepoch('subsecond') * 1000 as integer))",
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "calendar_notification"
+    },
+    {
       "columns": [
         "user_id"
       ],
@@ -2158,6 +2252,36 @@
     },
     {
       "columns": [
+        "user_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_calendar_notification_user_id_user_id_fk",
+      "entityType": "fks",
+      "table": "calendar_notification"
+    },
+    {
+      "columns": [
+        "item_id"
+      ],
+      "tableTo": "calendar_item",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_calendar_notification_item_id_calendar_item_id_fk",
+      "entityType": "fks",
+      "table": "calendar_notification"
+    },
+    {
+      "columns": [
         "id"
       ],
       "nameExplicit": false,
@@ -2289,6 +2413,15 @@
       "nameExplicit": false,
       "name": "calendar_item_department_pk",
       "table": "calendar_item_department",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "calendar_notification_pk",
+      "table": "calendar_notification",
       "entityType": "pks"
     },
     {
@@ -2709,6 +2842,24 @@
     },
     {
       "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "calendar_notification_user_id_idx",
+      "entityType": "indexes",
+      "table": "calendar_notification"
+    },
+    {
+      "columns": [
         "token"
       ],
       "nameExplicit": false,
@@ -2817,6 +2968,12 @@
       "name": "calendar_item_department_state_check",
       "entityType": "checks",
       "table": "calendar_item_department"
+    },
+    {
+      "value": "\"kind\" IN ('assignment', 'reschedule', 'cancel', 'dependency', 'request', 'action_item', 'release_risk')",
+      "name": "calendar_notification_kind_check",
+      "entityType": "checks",
+      "table": "calendar_notification"
     }
   ],
   "renames": []

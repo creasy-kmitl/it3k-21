@@ -11,6 +11,7 @@ import {
   CALENDAR_VISIBILITIES,
   GAMES,
   LIVE_CHECKLIST,
+  NOTIFICATION_KINDS,
   QA_RESULTS,
   REQUEST_STATES,
   RISK_LEVELS,
@@ -248,6 +249,39 @@ export const calendarDependency = sqliteTable(
     uniqueIndex("calendar_dependency_uidx").on(table.itemId, table.dependsOnId),
     index("calendar_dependency_depends_on_id_idx").on(table.dependsOnId),
     check("calendar_dependency_self_check", sql`${table.itemId} <> ${table.dependsOnId}`),
+  ],
+);
+
+/**
+ * In-app notifications, written in the same batch as the change that causes
+ * them. `data` holds what the web app needs to word the message.
+ */
+export const calendarNotification = sqliteTable(
+  "calendar_notification",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    itemId: text("item_id")
+      .notNull()
+      .references(() => calendarItem.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: NOTIFICATION_KINDS }).notNull(),
+    // The item's title when this was sent.
+    itemTitle: text("item_title").notNull(),
+    data: text("data", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+    actorUserId: text("actor_user_id"),
+    readAt: integer("read_at", { mode: "timestamp_ms" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("calendar_notification_user_id_idx").on(table.userId, table.createdAt),
+    check(
+      "calendar_notification_kind_check",
+      sql`${table.kind} IN (${inList(NOTIFICATION_KINDS)})`,
+    ),
   ],
 );
 
