@@ -2,6 +2,7 @@ import { cn } from "@it3k/ui/lib/utils";
 
 import { formatBangkok, formatRange } from "@/lib/bangkok-time";
 import type { CalendarItem } from "@/lib/calendar";
+import { FLAG_HINTS } from "@/lib/calendar-hints";
 import { CATEGORY_ICONS, FLAG_ICONS } from "@/lib/calendar-icons";
 import { CATEGORY_LABELS, MODE_STYLES, itemFlags } from "@/lib/calendar-labels";
 
@@ -15,6 +16,7 @@ export function ItemFlags({ item, className }: { item: CalendarItem; className?:
         return (
           <span
             key={flag.key}
+            title={FLAG_HINTS[flag.key]}
             className={cn(
               "inline-flex h-4 items-center gap-0.5 rounded-full px-1.5 text-[10px] leading-none font-semibold",
               flag.className,

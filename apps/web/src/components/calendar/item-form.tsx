@@ -58,6 +58,7 @@ import { z } from "zod";
 
 import { DepartmentLabel } from "@/components/department-icon";
 import { useApis } from "@/lib/api-context";
+import type { HintKey } from "@/lib/calendar-hints";
 import {
   HOUR_MS,
   formatBangkok,
@@ -105,6 +106,7 @@ import {
 import { ApiError } from "@/lib/leadership";
 
 import { DateTimePicker } from "./date-time-picker";
+import { Hint } from "./hint";
 import { CONTEXT_FIELDS, type ContextField, WIDE_FIELDS, fieldsFor } from "./form-fields";
 import { IconLabel } from "./icon-label";
 
@@ -321,6 +323,16 @@ function withoutStaleDetails(
   return { ...body, ...cleared };
 }
 
+/** A field label with an optional (?) beside it, outside the `<label>`. */
+function LabelRow({ htmlFor, label, hint }: { htmlFor: string; label: string; hint?: HintKey }) {
+  return (
+    <div className="flex items-center gap-1">
+      <FieldLabel htmlFor={htmlFor}>{label}</FieldLabel>
+      {hint && <Hint hint={hint} label={label} />}
+    </div>
+  );
+}
+
 type Option = { value: string; label: string; icon?: LucideIcon | null };
 
 function OptionSelect({
@@ -331,6 +343,7 @@ function OptionSelect({
   onChange,
   invalid,
   errors,
+  hint,
 }: {
   id: string;
   label: string;
@@ -339,10 +352,11 @@ function OptionSelect({
   onChange: (value: string) => void;
   invalid?: boolean;
   errors?: unknown[];
+  hint?: HintKey;
 }) {
   return (
     <Field data-invalid={invalid}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <LabelRow htmlFor={id} label={label} hint={hint} />
       <Select
         // Labels are elements, so the trigger shows the chosen option's icon too.
         items={options.map((option) => ({
@@ -395,12 +409,14 @@ function FormSection({
   icon: Icon,
   filled,
   invalid,
+  hint,
   children,
 }: {
   title: string;
   icon: LucideIcon;
   filled: number;
   invalid: boolean;
+  hint?: HintKey;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -411,29 +427,33 @@ function FormSection({
       onOpenChange={setOpen}
       className={cn("rounded-2xl border", invalid && "border-destructive/60")}
     >
-      <CollapsibleTrigger
-        render={
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-sm font-medium hover:bg-muted/50"
-          />
-        }
-      >
-        <Icon aria-hidden className="size-4 shrink-0 text-primary" />
-        <span className="min-w-0 flex-1 truncate">{title}</span>
-        {invalid ? (
-          <Badge variant="destructive">มีช่องที่ต้องแก้</Badge>
-        ) : (
-          filled > 0 && <Badge variant="secondary">กรอกแล้ว {filled}</Badge>
-        )}
-        <ChevronDown
-          aria-hidden
-          className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform",
-            shown && "rotate-180",
+      <div className="flex items-center gap-1 pr-2">
+        <CollapsibleTrigger
+          render={
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-sm font-medium hover:bg-muted/50"
+            />
+          }
+        >
+          <Icon aria-hidden className="size-4 shrink-0 text-primary" />
+          <span className="min-w-0 flex-1 truncate">{title}</span>
+          {invalid ? (
+            <Badge variant="destructive">มีช่องที่ต้องแก้</Badge>
+          ) : (
+            filled > 0 && <Badge variant="secondary">กรอกแล้ว {filled}</Badge>
           )}
-        />
-      </CollapsibleTrigger>
+          <ChevronDown
+            aria-hidden
+            className={cn(
+              "size-4 shrink-0 text-muted-foreground transition-transform",
+              shown && "rotate-180",
+            )}
+          />
+        </CollapsibleTrigger>
+        {/* Beside the trigger, not in it: a button cannot hold another button. */}
+        {hint && <Hint hint={hint} label={title} />}
+      </div>
       {/* Kept mounted, so folded fields still validate and keep their values. */}
       <CollapsibleContent keepMounted className="flex flex-col gap-4 border-t p-3">
         {children}
@@ -546,14 +566,14 @@ export function ItemForm({
   const textField = (
     name: TextKey,
     label: string,
-    options: { description?: string; type?: string; multiline?: boolean } = {},
+    options: { description?: string; type?: string; multiline?: boolean; hint?: HintKey } = {},
   ) => {
     const id = `calendar-${name}`;
     return (
       <form.Field name={name}>
         {(field) => (
           <Field data-invalid={!field.state.meta.isValid}>
-            <FieldLabel htmlFor={id}>{label}</FieldLabel>
+            <LabelRow htmlFor={id} label={label} hint={options.hint} />
             {options.multiline ? (
               <Textarea
                 id={id}
@@ -636,6 +656,7 @@ export function ItemForm({
         <OptionSelect
           id={`calendar-${name}`}
           label={label}
+          hint={name}
           value={field.state.value}
           options={peopleFor(icon)}
           onChange={field.handleChange}
@@ -669,15 +690,15 @@ export function ItemForm({
           </form.Field>
         );
       case "matchId":
-        return textField("matchId", "Match ID");
+        return textField("matchId", "Match ID", { hint: "matchId" });
       case "teams":
-        return textField("teams", "ทีม", { description: "คั่นแต่ละทีมด้วยจุลภาค" });
+        return textField("teams", "ทีม", { hint: "teams" });
       case "venue":
-        return textField("venue", "สถานที่");
+        return textField("venue", "สถานที่", { hint: "venue" });
       case "streamPlatform":
-        return textField("streamPlatform", "แพลตฟอร์มสตรีม");
+        return textField("streamPlatform", "แพลตฟอร์มสตรีม", { hint: "streamPlatform" });
       case "scoreboardUrl":
-        return textField("scoreboardUrl", "ลิงก์ Scoreboard", { type: "url" });
+        return textField("scoreboardUrl", "ลิงก์ Scoreboard", { type: "url", hint: "scoreboardUrl" });
       case "onCallOwnerId":
         return personField("onCallOwnerId", "On-call", OPTION_ICONS.onCall);
       case "scoreboardOperatorId":
@@ -688,6 +709,7 @@ export function ItemForm({
         return (
           <OptionSelect
             id="calendar-template"
+            hint="template"
             label="เทมเพลตวาระ"
             value=""
             options={Object.entries(MEETING_TEMPLATES).map(([value, template]) => ({
@@ -708,7 +730,7 @@ export function ItemForm({
       case "meetingLink":
         return textField("meetingLink", "ลิงก์ประชุม", { type: "url" });
       case "agenda":
-        return textField("agenda", "วาระ", { multiline: true });
+        return textField("agenda", "วาระ", { multiline: true, hint: "agenda" });
       case "feature":
         return textField("feature", "ฟีเจอร์/Release");
       case "environment":
@@ -717,6 +739,7 @@ export function ItemForm({
             {(field) => (
               <OptionSelect
                 id="calendar-environment"
+                hint="environment"
                 label="Environment"
                 value={field.state.value}
                 options={RELEASE_ENVIRONMENTS.map((value) => ({
@@ -745,6 +768,7 @@ export function ItemForm({
             {(field) => (
               <OptionSelect
                 id="calendar-qa-result"
+                hint="qaResult"
                 label="ผล QA"
                 value={field.state.value}
                 options={[
@@ -763,11 +787,15 @@ export function ItemForm({
       case "incidentUrl":
         return textField("incidentUrl", "ลิงก์ incident", { type: "url" });
       case "rolloutPlan":
-        return textField("rolloutPlan", "Rollout checklist", { multiline: true });
+        return textField("rolloutPlan", "Rollout checklist", {
+          multiline: true,
+          hint: "rolloutPlan",
+        });
       case "rollbackPlan":
         return textField("rollbackPlan", "แผน rollback", {
           multiline: true,
           description: "ต้องมีก่อนตั้งเป็น Released",
+          hint: "rollbackPlan",
         });
     }
   };
@@ -789,6 +817,7 @@ export function ItemForm({
             {(field) => (
               <OptionSelect
                 id="calendar-mode"
+                hint="mode"
                 label="โหมด"
                 value={field.state.value}
                 options={modeOptions}
@@ -812,6 +841,7 @@ export function ItemForm({
             {(field) => (
               <OptionSelect
                 id="calendar-category"
+                hint="category"
                 label="ประเภท"
                 value={field.state.value}
                 options={categoryOptions}
@@ -823,6 +853,7 @@ export function ItemForm({
             {(field) => (
               <OptionSelect
                 id="calendar-status"
+                hint="status"
                 label="สถานะ"
                 value={field.state.value}
                 options={statusOptions}
@@ -837,9 +868,11 @@ export function ItemForm({
             <form.Field key={name} name={name}>
               {(field) => (
                 <Field data-invalid={!field.state.meta.isValid}>
-                  <FieldLabel htmlFor={`calendar-${name}`}>
-                    {name === "start" ? "เริ่ม" : "สิ้นสุด"}
-                  </FieldLabel>
+                  <LabelRow
+                    htmlFor={`calendar-${name}`}
+                    label={name === "start" ? "เริ่ม" : "สิ้นสุด"}
+                    hint={name === "start" ? "start" : undefined}
+                  />
                   <DateTimePicker
                     id={`calendar-${name}`}
                     label={name === "start" ? "เริ่ม" : "สิ้นสุด"}
@@ -861,6 +894,7 @@ export function ItemForm({
             {(field) => (
               <OptionSelect
                 id="calendar-owner"
+                hint="owner"
                 label="ผู้รับผิดชอบ"
                 value={field.state.value}
                 options={ownerOptions}
@@ -870,7 +904,10 @@ export function ItemForm({
               />
             )}
           </form.Field>
-          {textField("source", "แหล่งข้อมูล", { description: "เช่น ตารางแข่งจากฝ่ายกีฬา v2" })}
+          {textField("source", "แหล่งข้อมูล", {
+            description: "เช่น ตารางแข่งจากฝ่ายกีฬา v2",
+            hint: "source",
+          })}
         </div>
 
         <form.Field name="confirm">
@@ -882,12 +919,14 @@ export function ItemForm({
                 onCheckedChange={(checked) => field.handleChange(checked)}
               />
               <FieldLabel htmlFor="calendar-confirm">ตรวจกับแหล่งข้อมูลแล้ว (ยืนยันข้อมูลตอนนี้)</FieldLabel>
+              <Hint hint="confirm" label="ยืนยันข้อมูล" />
             </Field>
           )}
         </form.Field>
 
         {askReason &&
           textField("reason", "เหตุผลที่เลื่อนหรือยกเลิก", {
+            hint: "reason",
             description: "บันทึกไว้ในประวัติการเปลี่ยนแปลง",
           })}
 
@@ -915,6 +954,7 @@ export function ItemForm({
 
         <FormSection
           title="ฝ่ายที่เกี่ยวข้อง"
+          hint="departments"
           icon={Building2}
           filled={values.departmentIds.length}
           invalid={false}
@@ -951,6 +991,7 @@ export function ItemForm({
 
         <FormSection
           title="ความเสี่ยงและการเผยแพร่"
+          hint="riskLevel"
           icon={TriangleAlert}
           filled={
             filledCount(["riskLevel", "blockedReason"]) + (values.visibility === "public" ? 1 : 0)
@@ -962,6 +1003,7 @@ export function ItemForm({
               {(field) => (
                 <OptionSelect
                   id="calendar-risk"
+                  hint="riskLevel"
                   label="ความเสี่ยง"
                   value={field.state.value}
                   options={[
@@ -981,6 +1023,7 @@ export function ItemForm({
                 {(field) => (
                   <OptionSelect
                     id="calendar-visibility"
+                    hint="visibility"
                     label="การเผยแพร่"
                     value={field.state.value}
                     options={(["internal", "public"] as const).map((value) => ({
@@ -995,22 +1038,25 @@ export function ItemForm({
             )}
           </div>
           {textField("blockedReason", "สิ่งที่ติดขัด (Blocked)", {
-            description: "เว้นว่างถ้าไม่มี ถ้าใส่ รายการจะแสดงป้าย Blocked",
+            description: "เว้นว่างถ้าไม่มี",
+            hint: "blockedReason",
           })}
         </FormSection>
 
         <FormSection
           title="โน้ตภายใน"
+          hint="notes"
           icon={StickyNote}
           filled={filledCount(["notes"])}
           invalid={hasErrors(["notes"])}
         >
-          {textField("notes", "โน้ตภายใน", { multiline: true })}
+          {textField("notes", "โน้ตภายใน", { multiline: true, hint: "notes" })}
         </FormSection>
 
         {!original && (
           <FormSection
             title="ทำซ้ำ"
+            hint="repeat"
             icon={Repeat}
             filled={values.repeatEvery !== NONE ? 1 : 0}
             invalid={hasErrors(["repeatCount"])}
@@ -1020,6 +1066,7 @@ export function ItemForm({
                 {(field) => (
                   <OptionSelect
                     id="calendar-repeat"
+                    hint="repeat"
                     label="ทำซ้ำ"
                     value={field.state.value}
                     options={[

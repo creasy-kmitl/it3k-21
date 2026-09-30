@@ -77,12 +77,14 @@ import {
   STATUS_ICONS,
   VISIBILITY_ICONS,
 } from "@/lib/calendar-icons";
+import type { HintKey } from "@/lib/calendar-hints";
 import { ApiError } from "@/lib/leadership";
 
 import { CategoryBadge } from "./agenda-view";
 import { CoordinationPanel } from "./coordination-panel";
 import { DeliveryPanel } from "./delivery-panel";
 import { IconLabel } from "./icon-label";
+import { Hint } from "./hint";
 import { ItemFlags } from "./item-chip";
 import { SideDrawer } from "./side-drawer";
 import { ItemForm, type ItemFormMode } from "./item-form";
@@ -307,13 +309,27 @@ const DETAIL_ICONS: Record<string, LucideIcon> = {
   โน้ตภายใน: StickyNote,
 };
 
+const DETAIL_HINTS: Record<string, HintKey> = {
+  สถานะ: "status",
+  "On-call": "onCallOwnerId",
+  แผนรับมือการชน: "mitigation",
+  แหล่งข้อมูล: "source",
+  ยืนยันล่าสุด: "lastConfirmedAt",
+  การเผยแพร่: "visibility",
+  ความเสี่ยง: "riskLevel",
+  สิ่งที่ติดขัด: "blockedReason",
+  โน้ตภายใน: "notes",
+};
+
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   const Icon = DETAIL_ICONS[label];
+  const hint = DETAIL_HINTS[label];
   return (
     <div className="grid grid-cols-[8.5rem_1fr] gap-2 text-sm">
       <dt className="flex items-start gap-1.5 text-muted-foreground">
         {Icon && <Icon aria-hidden className="mt-0.5 size-4 shrink-0" />}
         {label}
+        {hint && <Hint hint={hint} label={label} />}
       </dt>
       <dd className="min-w-0 break-words">{children}</dd>
     </div>

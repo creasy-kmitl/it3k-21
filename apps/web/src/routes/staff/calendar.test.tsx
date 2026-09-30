@@ -504,6 +504,27 @@ describe("/staff/calendar", () => {
       return screen.findByRole("form", { name: "เพิ่มรายการ" });
     }
 
+    test("hints explain who sees notes and what blocked means", async () => {
+      const form = await openCreateForm();
+      fireEvent.click(within(form).getByRole("button", { name: "คำอธิบาย: โน้ตภายใน" }));
+      const notes = await waitFor(() =>
+        defined(document.querySelector<HTMLElement>('[data-slot="popover-content"][data-open]')),
+      );
+      expect(notes.textContent).toContain("เห็นเฉพาะทีมงานที่ล็อกอิน");
+      expect(notes.textContent).toContain("ไม่แสดงในหน้าสาธารณะ");
+      fireEvent.keyDown(notes, { key: "Escape" });
+
+      fireEvent.click(within(form).getByRole("button", { name: /^ความเสี่ยงและการเผยแพร่/ }));
+      fireEvent.click(within(form).getByRole("button", { name: "คำอธิบาย: สิ่งที่ติดขัด (Blocked)" }));
+      await waitFor(() =>
+        expect(
+          [...document.querySelectorAll('[data-slot="popover-content"][data-open]')].some((el) =>
+            el.textContent?.includes("รายการจะขึ้นป้าย Blocked"),
+          ),
+        ).toBe(true),
+      );
+    });
+
     test("optional sections start folded and open on request", async () => {
       const form = await openCreateForm();
       expect(within(form).queryByRole("combobox", { name: "ความเสี่ยง" })).toBeNull();
