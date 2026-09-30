@@ -12,7 +12,18 @@ import {
 import { Textarea } from "@it3k/ui/components/textarea";
 import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
+import {
+  Building2,
+  Gavel,
+  Hourglass,
+  ListTodo,
+  type LucideIcon,
+  MessageCircleQuestion,
+  MessageSquareReply,
+  Plus,
+  Send,
+  Trash2,
+} from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
@@ -49,10 +60,21 @@ function useCalendarMutation<T>(run: (input: T) => Promise<unknown>, success?: s
   });
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  icon: LucideIcon;
+  children: React.ReactNode;
+}) {
   return (
     <section className="flex flex-col gap-2" aria-label={title}>
-      <h3 className="text-sm font-semibold">{title}</h3>
+      <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <Icon aria-hidden className="size-4 text-primary" />
+        {title}
+      </h3>
       {children}
     </section>
   );
@@ -122,6 +144,7 @@ function RequestForm({
           ยกเลิก
         </Button>
         <Button type="submit" size="sm" disabled={save.isPending}>
+          <Send data-icon="inline-start" />
           บันทึกคำขอ
         </Button>
       </div>
@@ -158,6 +181,7 @@ function AnswerForm({ itemId, link }: { itemId: string; link: CalendarDepartment
         className="self-end"
         disabled={!response.trim() || save.isPending}
       >
+        <MessageSquareReply data-icon="inline-start" />
         ส่งคำตอบ
       </Button>
     </form>
@@ -193,6 +217,7 @@ function DepartmentRequests({ item }: { item: CalendarItemDetail }) {
                 className="ml-auto"
                 onClick={() => setEditing(link.id)}
               >
+                <MessageCircleQuestion data-icon="inline-start" />
                 {link.request ? "แก้คำขอ" : "ขอข้อมูล"}
               </Button>
             )}
@@ -370,6 +395,7 @@ function AddActionItem({ item }: { item: CalendarItemDetail }) {
         className="self-end"
         disabled={!title.trim() || add.isPending}
       >
+        <Plus data-icon="inline-start" />
         เพิ่ม
       </Button>
     </form>
@@ -433,6 +459,7 @@ function Decisions({ item }: { item: CalendarItemDetail }) {
             className="self-end"
             disabled={!text.trim() || add.isPending}
           >
+            <Gavel data-icon="inline-start" />
             บันทึกการตัดสินใจ
           </Button>
         </form>
@@ -445,11 +472,11 @@ function Decisions({ item }: { item: CalendarItemDetail }) {
 export function CoordinationPanel({ item }: { item: CalendarItemDetail }) {
   return (
     <div className="flex flex-col gap-6">
-      <Section title="ฝ่ายที่เกี่ยวข้อง">
+      <Section title="ฝ่ายที่เกี่ยวข้อง" icon={Building2}>
         <DepartmentRequests item={item} />
       </Section>
       {item.carriedOver.length > 0 && (
-        <Section title="ค้างจากครั้งก่อน">
+        <Section title="ค้างจากครั้งก่อน" icon={Hourglass}>
           <ul className="flex flex-col divide-y rounded-xl border">
             {item.carriedOver.map((action) => (
               <ActionRow key={action.id} action={action} showSource />
@@ -457,7 +484,7 @@ export function CoordinationPanel({ item }: { item: CalendarItemDetail }) {
           </ul>
         </Section>
       )}
-      <Section title="Action items">
+      <Section title="Action items" icon={ListTodo}>
         {item.actionItems.length > 0 && (
           <ul className="flex flex-col divide-y rounded-xl border">
             {item.actionItems.map((action) => (
@@ -470,7 +497,7 @@ export function CoordinationPanel({ item }: { item: CalendarItemDetail }) {
         )}
         {item.canEdit && <AddActionItem item={item} />}
       </Section>
-      <Section title="การตัดสินใจ">
+      <Section title="การตัดสินใจ" icon={Gavel}>
         <Decisions item={item} />
       </Section>
     </div>

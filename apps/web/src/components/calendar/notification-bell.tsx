@@ -2,12 +2,13 @@ import { Button } from "@it3k/ui/components/button";
 import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Bell } from "lucide-react";
+import { Bell, CheckCheck, Inbox, ListChecks, ShieldAlert, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 
 import { useApis } from "@/lib/api-context";
 import { dateKey, formatBangkok } from "@/lib/bangkok-time";
 import type { CalendarAttention, CalendarInbox, CalendarNotification } from "@/lib/calendar";
+import { NOTIFICATION_ICONS } from "@/lib/calendar-icons";
 import { LIVE_CHECKLIST_SIZE, describeNotification } from "@/lib/calendar-labels";
 
 import { SideDrawer } from "./side-drawer";
@@ -34,6 +35,11 @@ function describeAttention(entry: CalendarAttention) {
     .join(", ")}`;
 }
 
+function NoticeIcon({ kind }: { kind: CalendarNotification["kind"] }) {
+  const Icon = NOTIFICATION_ICONS[kind];
+  return <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />;
+}
+
 /** The inbox itself: what needs attention now, then notifications newest first. */
 export function NotificationList({
   inbox,
@@ -48,15 +54,23 @@ export function NotificationList({
     <div className="flex flex-col gap-6">
       {inbox.attention.length > 0 && (
         <section aria-label="ต้องดูตอนนี้" className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold text-destructive">ต้องดูตอนนี้</h3>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-destructive">
+            <TriangleAlert aria-hidden className="size-4" />
+            ต้องดูตอนนี้
+          </h3>
           <ul className="flex flex-col divide-y rounded-xl border border-destructive/40">
             {inbox.attention.map((entry) => (
               <li key={`${entry.kind}-${entry.itemId}`}>
                 <button
                   type="button"
-                  className="w-full p-2 text-left text-sm hover:bg-muted/60"
+                  className="flex w-full items-start gap-2 p-2 text-left text-sm hover:bg-muted/60"
                   onClick={() => onOpen({ itemId: entry.itemId, startAt: entry.startAt })}
                 >
+                  {entry.kind === "readiness" ? (
+                    <ListChecks aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
+                  ) : (
+                    <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
+                  )}
                   {describeAttention(entry)}
                 </button>
               </li>
@@ -66,9 +80,13 @@ export function NotificationList({
       )}
       <section aria-label="การแจ้งเตือน" className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">การแจ้งเตือน</h3>
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <Inbox aria-hidden className="size-4 text-primary" />
+            การแจ้งเตือน
+          </h3>
           {inbox.unread > 0 && (
             <Button variant="ghost" size="sm" onClick={onReadAll}>
+              <CheckCheck data-icon="inline-start" />
               อ่านทั้งหมด
             </Button>
           )}
@@ -94,6 +112,7 @@ export function NotificationList({
                     })
                   }
                 >
+                  <NoticeIcon kind={notice.kind} />
                   {notice.readAt === null && (
                     <>
                       <span

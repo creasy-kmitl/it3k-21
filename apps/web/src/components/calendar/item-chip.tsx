@@ -2,6 +2,7 @@ import { cn } from "@it3k/ui/lib/utils";
 
 import { formatBangkok, formatRange } from "@/lib/bangkok-time";
 import type { CalendarItem } from "@/lib/calendar";
+import { CATEGORY_ICONS, FLAG_ICONS } from "@/lib/calendar-icons";
 import { CATEGORY_LABELS, MODE_STYLES, itemFlags } from "@/lib/calendar-labels";
 
 export function ItemFlags({ item, className }: { item: CalendarItem; className?: string }) {
@@ -9,17 +10,21 @@ export function ItemFlags({ item, className }: { item: CalendarItem; className?:
   if (flags.length === 0) return null;
   return (
     <span className={cn("inline-flex flex-wrap gap-1", className)}>
-      {flags.map((flag) => (
-        <span
-          key={flag.key}
-          className={cn(
-            "inline-flex h-4 items-center rounded-full px-1.5 text-[10px] leading-none font-semibold",
-            flag.className,
-          )}
-        >
-          {flag.label}
-        </span>
-      ))}
+      {flags.map((flag) => {
+        const Icon = FLAG_ICONS[flag.key];
+        return (
+          <span
+            key={flag.key}
+            className={cn(
+              "inline-flex h-4 items-center gap-0.5 rounded-full px-1.5 text-[10px] leading-none font-semibold",
+              flag.className,
+            )}
+          >
+            {Icon && <Icon aria-hidden className="size-2.5 shrink-0" />}
+            {flag.label}
+          </span>
+        );
+      })}
     </span>
   );
 }
@@ -39,6 +44,7 @@ export function ItemChip({
   style?: React.CSSProperties;
 }) {
   const muted = item.status === "cancelled" || item.archivedAt !== null;
+  const Icon = CATEGORY_ICONS[item.category];
   return (
     <button
       type="button"
@@ -59,6 +65,7 @@ export function ItemChip({
             {formatBangkok(item.startAt, "time")}
           </span>
         )}
+        <Icon aria-hidden className="size-3 shrink-0 opacity-80" />
         <span className="truncate font-medium">{item.title}</span>
       </span>
       <span className="flex w-full min-w-0 items-center gap-1">

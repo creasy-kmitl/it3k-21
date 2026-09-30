@@ -2,10 +2,11 @@ import { GAMES, type Game, type PublicStatus } from "@it3k/db/calendar-rules";
 import { Button, buttonVariants } from "@it3k/ui/components/button";
 import { cn } from "@it3k/ui/lib/utils";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { CalendarPlus } from "lucide-react";
+import { CalendarDays, CalendarPlus, Download, Gamepad2, LayoutGrid, Trophy } from "lucide-react";
 import { useState } from "react";
 
 import { formatBangkok, formatRange, sameDay, startOfDay } from "@/lib/bangkok-time";
+import { CATEGORY_ICONS, PUBLIC_STATUS_ICONS } from "@/lib/calendar-icons";
 import { CATEGORY_LABELS, GAME_LABELS } from "@/lib/calendar-labels";
 import { type PublicCalendarItem, publicCalendarApi } from "@/lib/public-calendar";
 
@@ -58,13 +59,16 @@ export function PublicCalendar({
           <Link to="/" className="text-sm text-muted-foreground hover:underline">
             IT·3·Kings
           </Link>
-          <h1 className="text-4xl font-bold tracking-tight text-primary">ตารางการแข่งขัน</h1>
+          <h1 className="flex items-center gap-3 text-4xl font-bold tracking-tight text-primary">
+            <CalendarDays aria-hidden className="size-9" />
+            ตารางการแข่งขัน
+          </h1>
           <p className="text-sm text-muted-foreground">
             เวลาทั้งหมดเป็นเวลาไทย (UTC+07:00) · แสดงเฉพาะรายการที่ยืนยันแล้ว
           </p>
           <div className="flex flex-wrap gap-2">
             <a href={webcal(feedUrl)} className={cn(buttonVariants({ size: "sm" }))}>
-              <CalendarPlus />
+              <CalendarPlus data-icon="inline-start" />
               เพิ่มลงปฏิทินของฉัน
             </a>
             <a
@@ -72,6 +76,7 @@ export function PublicCalendar({
               className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
               download
             >
+              <Download data-icon="inline-start" />
               ดาวน์โหลด .ics
             </a>
           </div>
@@ -84,6 +89,7 @@ export function PublicCalendar({
             aria-pressed={!game}
             onClick={() => setGame(undefined)}
           >
+            <LayoutGrid data-icon="inline-start" />
             ทุกเกม
           </Button>
           {GAMES.map((value) => (
@@ -94,6 +100,7 @@ export function PublicCalendar({
               aria-pressed={game === value}
               onClick={() => setGame(value)}
             >
+              <Gamepad2 data-icon="inline-start" />
               {GAME_LABELS[value]}
             </Button>
           ))}
@@ -127,8 +134,16 @@ export function PublicCalendar({
 
 function PublicItem({ item }: { item: PublicCalendarItem }) {
   const status = STATUS[item.status];
+  const Icon = CATEGORY_ICONS[item.category];
+  const StatusIcon = PUBLIC_STATUS_ICONS[item.status];
   return (
     <li className="flex items-start gap-3 px-3 py-3">
+      <span
+        aria-hidden
+        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
+      >
+        <Icon className="size-4" />
+      </span>
       <span className="w-28 shrink-0 text-sm tabular-nums text-muted-foreground">
         {formatRange(item.startAt, item.endAt)}
       </span>
@@ -142,10 +157,11 @@ function PublicItem({ item }: { item: PublicCalendarItem }) {
           {status && (
             <span
               className={cn(
-                "inline-flex h-5 items-center rounded-full px-2 text-[11px] font-semibold",
+                "inline-flex h-5 items-center gap-1 rounded-full px-2 text-[11px] font-semibold",
                 status.className,
               )}
             >
+              {StatusIcon && <StatusIcon aria-hidden className="size-3" />}
               {status.label}
             </span>
           )}
@@ -166,8 +182,9 @@ function PublicItem({ item }: { item: PublicCalendarItem }) {
             href={item.scoreboardUrl}
             target="_blank"
             rel="noreferrer noopener"
-            className="text-xs text-primary underline"
+            className="inline-flex items-center gap-1 text-xs text-primary underline"
           >
+            <Trophy aria-hidden className="size-3.5" />
             ดูผลคะแนน
           </a>
         )}

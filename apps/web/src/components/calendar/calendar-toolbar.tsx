@@ -18,6 +18,7 @@ import {
 } from "@it3k/ui/components/collapsible";
 import { Field, FieldLabel } from "@it3k/ui/components/field";
 import { Input } from "@it3k/ui/components/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@it3k/ui/components/input-group";
 import {
   Select,
   SelectContent,
@@ -26,8 +27,22 @@ import {
   SelectValue,
 } from "@it3k/ui/components/select";
 import { cn } from "@it3k/ui/lib/utils";
-import { ChevronLeft, ChevronRight, Plus, SlidersHorizontal } from "lucide-react";
+import {
+  Archive,
+  CalendarCheck,
+  CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  LayoutGrid,
+  Plus,
+  Radio,
+  Rocket,
+  Search,
+  SlidersHorizontal,
+  User,
+} from "lucide-react";
 
+import { MODE_ICONS, VIEW_ICONS } from "@/lib/calendar-icons";
 import {
   CATEGORY_LABELS,
   GAME_LABELS,
@@ -117,6 +132,7 @@ export function CalendarToolbar({
             <ChevronLeft />
           </Button>
           <Button variant="outline" size="sm" onClick={onToday}>
+            <CalendarCheck data-icon="inline-start" />
             วันนี้
           </Button>
           <Button variant="outline" size="icon-sm" onClick={onNext} aria-label="ถัดไป">
@@ -127,15 +143,19 @@ export function CalendarToolbar({
           {label}
         </h2>
         <fieldset className="m-0 flex min-w-0 items-center gap-1 border-0 p-0" aria-label="มุมมอง">
-          {VIEWS.map((option) => (
-            <Toggle key={option} pressed={view === option} onClick={() => onView(option)}>
-              {VIEW_LABELS[option]}
-            </Toggle>
-          ))}
+          {VIEWS.map((option) => {
+            const Icon = VIEW_ICONS[option];
+            return (
+              <Toggle key={option} pressed={view === option} onClick={() => onView(option)}>
+                <Icon data-icon="inline-start" />
+                {VIEW_LABELS[option]}
+              </Toggle>
+            );
+          })}
         </fieldset>
         {canCreate && (
           <Button size="sm" onClick={onCreate}>
-            <Plus />
+            <Plus data-icon="inline-start" />
             เพิ่มรายการ
           </Button>
         )}
@@ -145,12 +165,15 @@ export function CalendarToolbar({
         aria-label="ไปที่"
       >
         <Button variant="ghost" size="sm" onClick={() => onJump("week")}>
+          <CalendarRange data-icon="inline-start" />
           สัปดาห์นี้
         </Button>
         <Button variant="ghost" size="sm" onClick={() => onJump("live")}>
+          <Radio data-icon="inline-start" />
           Live ถัดไป
         </Button>
         <Button variant="ghost" size="sm" onClick={() => onJump("release")}>
+          <Rocket data-icon="inline-start" />
           Release ถัดไป
         </Button>
       </fieldset>
@@ -234,24 +257,33 @@ export function CalendarFilters({
         aria-label="โหมด"
       >
         <Toggle pressed={modes.length === 0} onClick={() => onChange({ modes: undefined })}>
+          <LayoutGrid data-icon="inline-start" />
           ทั้งหมด
         </Toggle>
-        {CALENDAR_MODES.map((mode) => (
-          <Toggle key={mode} pressed={modes.includes(mode)} onClick={() => toggleMode(mode)}>
-            <span aria-hidden className={cn("size-2 rounded-full", MODE_STYLES[mode].dot)} />
-            {MODE_LABELS[mode]}
-          </Toggle>
-        ))}
+        {CALENDAR_MODES.map((mode) => {
+          const Icon = MODE_ICONS[mode];
+          const pressed = modes.includes(mode);
+          return (
+            <Toggle key={mode} pressed={pressed} onClick={() => toggleMode(mode)}>
+              <Icon data-icon="inline-start" className={cn(!pressed && MODE_STYLES[mode].icon)} />
+              {MODE_LABELS[mode]}
+            </Toggle>
+          );
+        })}
       </fieldset>
       <div className="flex flex-wrap items-center gap-2">
-        <Input
-          type="search"
-          placeholder="ค้นหาชื่อ, Match ID, ทีม, ฟีเจอร์, ผู้รับผิดชอบ"
-          aria-label="ค้นหา"
-          value={search}
-          onChange={(e) => onSearch(e.target.value)}
-          className="w-full sm:w-72"
-        />
+        <InputGroup className="w-full sm:w-72">
+          <InputGroupAddon>
+            <Search />
+          </InputGroupAddon>
+          <InputGroupInput
+            type="search"
+            placeholder="ค้นหาชื่อ, Match ID, ทีม, ฟีเจอร์, ผู้รับผิดชอบ"
+            aria-label="ค้นหา"
+            value={search}
+            onChange={(e) => onSearch(e.target.value)}
+          />
+        </InputGroup>
         <FilterSelect
           id="filter-category"
           label="ประเภท"
@@ -290,6 +322,7 @@ export function CalendarFilters({
               onCheckedChange={(checked) => onChange({ mine: checked || undefined })}
             />
             <FieldLabel htmlFor="filter-mine" className="font-normal">
+              <User aria-hidden className="size-4 text-muted-foreground" />
               เฉพาะงานของฉัน
             </FieldLabel>
           </Field>
@@ -300,11 +333,12 @@ export function CalendarFilters({
               onCheckedChange={(checked) => onChange({ archived: checked || undefined })}
             />
             <FieldLabel htmlFor="filter-archived" className="font-normal">
+              <Archive aria-hidden className="size-4 text-muted-foreground" />
               แสดงที่เก็บถาวร
             </FieldLabel>
           </Field>
           <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-            <SlidersHorizontal />
+            <SlidersHorizontal data-icon="inline-start" />
             ตัวกรองเพิ่มเติม{extraCount > 0 && ` (${extraCount})`}
           </CollapsibleTrigger>
         </div>

@@ -10,7 +10,7 @@ import { Button } from "@it3k/ui/components/button";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, CloudAlert, Info, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -278,16 +278,19 @@ export function CalendarPage({
           role="alert"
           className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
         >
+          <CloudAlert aria-hidden className="size-4 shrink-0" />
           {items.data
             ? `โหลดข้อมูลล่าสุดไม่สำเร็จ กำลังแสดงข้อมูลเมื่อ ${formatBangkok(items.dataUpdatedAt, "time")} น.`
             : `โหลดปฏิทินไม่สำเร็จ: ${items.error.message}`}
           <Button variant="outline" size="sm" onClick={() => void items.refetch()}>
+            <RefreshCw data-icon="inline-start" />
             ลองอีกครั้ง
           </Button>
         </div>
       )}
       {items.data?.truncated && (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Info aria-hidden className="size-4" />
           แสดง 500 รายการแรก ใช้ตัวกรองเพื่อดูส่วนที่เหลือ
         </p>
       )}

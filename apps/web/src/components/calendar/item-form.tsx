@@ -37,6 +37,15 @@ import { Spinner } from "@it3k/ui/components/spinner";
 import { Textarea } from "@it3k/ui/components/textarea";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Building2,
+  Handshake,
+  RadioTower,
+  Rocket,
+  Save,
+  ShieldAlert,
+  TriangleAlert,
+} from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 
@@ -71,6 +80,7 @@ import {
   STATUS_LABELS,
   VISIBILITY_LABELS,
 } from "@/lib/calendar-labels";
+import { CONFLICT_ICONS } from "@/lib/calendar-icons";
 import { ApiError } from "@/lib/leadership";
 
 import { DateTimePicker } from "./date-time-picker";
@@ -319,6 +329,17 @@ function OptionSelect({
 type TextKey = {
   [K in keyof FormValues]: FormValues[K] extends string ? K : never;
 }[keyof FormValues];
+
+function ConflictIcons({ kinds }: { kinds: CalendarConflict["kinds"] }) {
+  return (
+    <span aria-hidden className="mt-0.5 flex shrink-0 gap-0.5 text-amber-600">
+      {kinds.map((kind) => {
+        const Icon = CONFLICT_ICONS[kind];
+        return <Icon key={kind} className="size-4" />;
+      })}
+    </span>
+  );
+}
 
 const STALE_MESSAGE = "มีคนแก้ไขรายการนี้ก่อนคุณ โหลดข้อมูลล่าสุดแล้วลองอีกครั้ง";
 
@@ -628,7 +649,10 @@ export function ItemForm({
 
         {isOperations && (
           <FieldSet>
-            <FieldLegend variant="label">การแข่งขันและไลฟ์</FieldLegend>
+            <FieldLegend variant="label" className="flex items-center gap-1.5">
+              <RadioTower aria-hidden className="size-4 text-primary" />
+              การแข่งขันและไลฟ์
+            </FieldLegend>
             <div className="grid gap-4 sm:grid-cols-2">
               <form.Field name="game">
                 {(field) => (
@@ -677,7 +701,10 @@ export function ItemForm({
 
         {isMeeting && (
           <FieldSet>
-            <FieldLegend variant="label">การประชุมและประสานงาน</FieldLegend>
+            <FieldLegend variant="label" className="flex items-center gap-1.5">
+              <Handshake aria-hidden className="size-4 text-primary" />
+              การประชุมและประสานงาน
+            </FieldLegend>
             <OptionSelect
               id="calendar-template"
               label="เทมเพลตวาระ"
@@ -702,7 +729,10 @@ export function ItemForm({
 
         {isDelivery && (
           <FieldSet>
-            <FieldLegend variant="label">ฟีเจอร์และ Release</FieldLegend>
+            <FieldLegend variant="label" className="flex items-center gap-1.5">
+              <Rocket aria-hidden className="size-4 text-primary" />
+              ฟีเจอร์และ Release
+            </FieldLegend>
             <div className="grid gap-4 sm:grid-cols-2">
               {textField("feature", "ฟีเจอร์/Release")}
               {isRelease ? (
@@ -777,7 +807,10 @@ export function ItemForm({
         <form.Field name="departmentIds">
           {(field) => (
             <FieldSet>
-              <FieldLegend variant="label">ฝ่ายที่เกี่ยวข้อง</FieldLegend>
+              <FieldLegend variant="label" className="flex items-center gap-1.5">
+                <Building2 aria-hidden className="size-4 text-primary" />
+                ฝ่ายที่เกี่ยวข้อง
+              </FieldLegend>
               <div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
                 {departments.data?.map((department) => {
                   const id = `calendar-department-${department.id}`;
@@ -848,10 +881,14 @@ export function ItemForm({
             role="alert"
             className="flex flex-col gap-2 rounded-xl border border-amber-500/60 bg-amber-500/10 p-3 text-sm"
           >
-            <p className="font-medium">รายการนี้ชนกับ:</p>
+            <p className="flex items-center gap-1.5 font-medium">
+              <TriangleAlert aria-hidden className="size-4 text-amber-600" />
+              รายการนี้ชนกับ:
+            </p>
             <ul className="flex flex-col gap-1">
               {conflicts.map((conflict) => (
-                <li key={conflict.id}>
+                <li key={conflict.id} className="flex items-start gap-1.5">
+                  <ConflictIcons kinds={conflict.kinds} />
                   <span className="font-medium">{conflict.title}</span>{" "}
                   <span className="text-muted-foreground">
                     {formatBangkok(conflict.startAt, "day")}{" "}
@@ -887,6 +924,7 @@ export function ItemForm({
                 save.mutate({ values: form.state.values, mitigation: mitigation.trim() })
               }
             >
+              <ShieldAlert data-icon="inline-start" />
               บันทึกทั้งที่ชน
             </Button>
           </div>
@@ -913,7 +951,11 @@ export function ItemForm({
             ยกเลิก
           </Button>
           <Button type="submit" disabled={save.isPending}>
-            {save.isPending && <Spinner />}
+            {save.isPending ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <Save data-icon="inline-start" />
+            )}
             บันทึก
           </Button>
         </div>

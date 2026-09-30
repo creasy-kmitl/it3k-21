@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { LayoutDashboard } from "lucide-react";
+import { CalendarDays, LayoutDashboard, Users } from "lucide-react";
 
 import { RunSheet } from "@/components/calendar/run-sheet";
 import { PageHeader } from "@/components/page-header";
@@ -22,10 +22,18 @@ function RouteComponent() {
       />
       <RunSheet now={now} />
       <div className="flex gap-4">
-        <Link to="/staff/calendar" className="text-primary underline-offset-4 hover:underline">
+        <Link
+          to="/staff/calendar"
+          className="inline-flex items-center gap-1.5 text-primary underline-offset-4 hover:underline"
+        >
+          <CalendarDays aria-hidden className="size-4" />
           ปฏิทิน Tech/Live
         </Link>
-        <Link to="/staff/head" className="text-primary underline-offset-4 hover:underline">
+        <Link
+          to="/staff/head"
+          className="inline-flex items-center gap-1.5 text-primary underline-offset-4 hover:underline"
+        >
+          <Users aria-hidden className="size-4" />
           หัวหน้าฝ่าย
         </Link>
       </div>

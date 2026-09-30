@@ -2,7 +2,23 @@ import { Button } from "@it3k/ui/components/button";
 import { Input } from "@it3k/ui/components/input";
 import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Trash2, X } from "lucide-react";
+import {
+  Check,
+  FileText,
+  FlaskConical,
+  GitBranch,
+  GitPullRequest,
+  Link,
+  type LucideIcon,
+  PenTool,
+  Plus,
+  ShieldCheck,
+  ShieldOff,
+  Siren,
+  Trash2,
+  Workflow,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -38,10 +54,21 @@ function useRefreshingMutation<T>(run: (input: T) => Promise<unknown>, success: 
   });
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  icon: LucideIcon;
+  children: React.ReactNode;
+}) {
   return (
     <section className="flex flex-col gap-2" aria-label={title}>
-      <h3 className="text-sm font-semibold">{title}</h3>
+      <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <Icon aria-hidden className="size-4 text-primary" />
+        {title}
+      </h3>
       {children}
     </section>
   );
@@ -74,7 +101,7 @@ function ReleaseGates({ item }: { item: CalendarItemDetail }) {
   const environment = item.environment as keyof typeof RELEASE_ENVIRONMENT_LABELS | null;
   const waiting = item.dependsOn.filter((link) => !link.satisfied).length;
   return (
-    <Section title="ก่อนปล่อย release">
+    <Section title="ก่อนปล่อย release" icon={ShieldCheck}>
       <ul className="flex flex-col gap-1.5 rounded-xl border p-3">
         <Gate
           ok={!!environment}
@@ -117,6 +144,11 @@ function ReleaseGates({ item }: { item: CalendarItemDetail }) {
           disabled={approve.isPending}
           onClick={() => approve.mutate(item.releaseApprovedAt === null)}
         >
+          {item.releaseApprovedAt ? (
+            <ShieldOff data-icon="inline-start" />
+          ) : (
+            <ShieldCheck data-icon="inline-start" />
+          )}
           {item.releaseApprovedAt ? "ถอนการอนุมัติ" : "อนุมัติ release"}
         </Button>
       )}
@@ -254,6 +286,7 @@ function AddDependency({ item }: { item: CalendarItemDetail }) {
           })
         }
       >
+        <Plus data-icon="inline-start" />
         เพิ่ม dependency
       </Button>
     </div>
@@ -261,25 +294,29 @@ function AddDependency({ item }: { item: CalendarItemDetail }) {
 }
 
 function ExternalLinks({ item }: { item: CalendarItemDetail }) {
-  const links = [
-    ["Spec", item.specUrl],
-    ["Design", item.designUrl],
-    ["Pull request", item.pullRequestUrl],
-    ["ผล QA", item.qaUrl],
-    ["Incident", item.incidentUrl],
-  ].filter((entry): entry is [string, string] => !!entry[1]);
+  const candidates: [string, LucideIcon, string | null][] = [
+    ["Spec", FileText, item.specUrl],
+    ["Design", PenTool, item.designUrl],
+    ["Pull request", GitPullRequest, item.pullRequestUrl],
+    ["ผล QA", FlaskConical, item.qaUrl],
+    ["Incident", Siren, item.incidentUrl],
+  ];
+  const links = candidates.filter(
+    (entry): entry is [string, LucideIcon, string] => entry[2] !== null,
+  );
   if (links.length === 0) return null;
   return (
-    <Section title="ลิงก์">
+    <Section title="ลิงก์" icon={Link}>
       <ul className="flex flex-wrap gap-2 text-sm">
-        {links.map(([label, href]) => (
+        {links.map(([label, Icon, href]) => (
           <li key={label}>
             <a
               href={href}
               target="_blank"
               rel="noreferrer noopener"
-              className="text-primary underline"
+              className="inline-flex items-center gap-1 text-primary underline"
             >
+              <Icon aria-hidden className="size-4" />
               {label}
             </a>
           </li>
@@ -295,7 +332,7 @@ export function DeliveryPanel({ item }: { item: CalendarItemDetail }) {
     <div className="flex flex-col gap-6">
       {item.category === "release" && <ReleaseGates item={item} />}
       <ExternalLinks item={item} />
-      <Section title="รอรายการ">
+      <Section title="รอรายการ" icon={GitBranch}>
         {item.dependsOn.length > 0 ? (
           <ul className="flex flex-col divide-y rounded-xl border">
             {item.dependsOn.map((link) => (
@@ -308,7 +345,7 @@ export function DeliveryPanel({ item }: { item: CalendarItemDetail }) {
         {item.canEdit && <AddDependency item={item} />}
       </Section>
       {item.blocks.length > 0 && (
-        <Section title="รายการที่รออันนี้">
+        <Section title="รายการที่รออันนี้" icon={Workflow}>
           <ul className="flex flex-col divide-y rounded-xl border">
             {item.blocks.map((link) => (
               <LinkRow key={link.id} link={link} canRemove={false} />

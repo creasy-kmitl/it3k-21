@@ -6,6 +6,41 @@ import { Skeleton } from "@it3k/ui/components/skeleton";
 import { Textarea } from "@it3k/ui/components/textarea";
 import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Archive,
+  ArchiveRestore,
+  Ban,
+  CalendarX,
+  CircleCheck,
+  CircleDot,
+  Clock,
+  Copy,
+  Eye,
+  EyeOff,
+  FileText,
+  Gamepad2,
+  Globe,
+  Hash,
+  Headset,
+  History,
+  Layers,
+  ListChecks,
+  ListOrdered,
+  type LucideIcon,
+  MapPin,
+  Pencil,
+  Plus,
+  Server,
+  ShieldAlert,
+  Sparkles,
+  StickyNote,
+  TriangleAlert,
+  Trophy,
+  Tv,
+  User,
+  Users,
+  Video,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -31,8 +66,10 @@ import {
   STATUS_LABELS,
   VISIBILITY_LABELS,
 } from "@/lib/calendar-labels";
+import { ACTION_ICONS, CHECKLIST_ICONS } from "@/lib/calendar-icons";
 import { ApiError } from "@/lib/leadership";
 
+import { CategoryBadge } from "./agenda-view";
 import { CoordinationPanel } from "./coordination-panel";
 import { DeliveryPanel } from "./delivery-panel";
 import { ItemFlags } from "./item-chip";
@@ -90,6 +127,11 @@ function fieldLabel(field: string) {
   return FIELD_LABELS[field] ?? field;
 }
 
+function ChecklistIcon({ entryKey }: { entryKey: CalendarChecklistEntry["key"] }) {
+  const Icon = CHECKLIST_ICONS[entryKey];
+  return <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />;
+}
+
 function ChecklistPanel({ item }: { item: CalendarItemDetail }) {
   const { calendar } = useApis();
   const queryClient = useQueryClient();
@@ -109,6 +151,7 @@ function ChecklistPanel({ item }: { item: CalendarItemDetail }) {
   return (
     <section className="flex flex-col gap-2" aria-label="Checklist ไลฟ์">
       <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <ListChecks aria-hidden className="size-4 text-primary" />
         Checklist ไลฟ์
         <span
           className={cn(
@@ -135,7 +178,10 @@ function ChecklistPanel({ item }: { item: CalendarItemDetail }) {
                 className="mt-0.5"
               />
               <label htmlFor={id} className="flex min-w-0 flex-col">
-                <span>{CHECKLIST_LABELS[entry.key]}</span>
+                <span className="flex items-center gap-1.5">
+                  <ChecklistIcon entryKey={entry.key} />
+                  {CHECKLIST_LABELS[entry.key]}
+                </span>
                 {entry.checked && entry.checkedAt && (
                   <span className="text-xs text-muted-foreground">
                     {entry.checkedBy ?? "—"} · {formatBangkok(entry.checkedAt, "dateTime")}
@@ -174,6 +220,11 @@ export function isImportantChange(change: Pick<CalendarChange, "action" | "chang
   return typeof status === "string" && IMPORTANT_STATUSES.has(status);
 }
 
+function ActionIcon({ action }: { action: CalendarChange["action"] }) {
+  const Icon = ACTION_ICONS[action];
+  return <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />;
+}
+
 function ChangeLog({
   changes,
   departmentNames,
@@ -192,6 +243,7 @@ function ChangeLog({
           )}
         >
           <p className="flex items-center gap-1.5 font-medium">
+            <ActionIcon action={change.action} />
             {ACTION_LABELS[change.action]} · {change.actorName ?? "ผู้ใช้ที่ถูกลบ"}
             {isImportantChange(change) && (
               <span className="rounded-full bg-amber-500 px-1.5 text-[10px] text-black">สำคัญ</span>
@@ -218,10 +270,40 @@ function ChangeLog({
   );
 }
 
+const DETAIL_ICONS: Record<string, LucideIcon> = {
+  เวลา: Clock,
+  โหมด: Layers,
+  สถานะ: CircleDot,
+  ผู้รับผิดชอบ: User,
+  "On-call": Headset,
+  "คนคุม Scoreboard": Trophy,
+  แผนรับมือการชน: ShieldAlert,
+  แหล่งข้อมูล: FileText,
+  ยืนยันล่าสุด: CircleCheck,
+  การเผยแพร่: Eye,
+  ความเสี่ยง: TriangleAlert,
+  สิ่งที่ติดขัด: Ban,
+  เกม: Gamepad2,
+  "Match ID": Hash,
+  ทีม: Users,
+  สถานที่: MapPin,
+  แพลตฟอร์มสตรีม: Tv,
+  Scoreboard: Trophy,
+  ลิงก์ประชุม: Video,
+  ฟีเจอร์: Sparkles,
+  Environment: Server,
+  วาระ: ListOrdered,
+  โน้ตภายใน: StickyNote,
+};
+
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+  const Icon = DETAIL_ICONS[label];
   return (
-    <div className="grid grid-cols-[7rem_1fr] gap-2 text-sm">
-      <dt className="text-muted-foreground">{label}</dt>
+    <div className="grid grid-cols-[8.5rem_1fr] gap-2 text-sm">
+      <dt className="flex items-start gap-1.5 text-muted-foreground">
+        {Icon && <Icon aria-hidden className="mt-0.5 size-4 shrink-0" />}
+        {label}
+      </dt>
       <dd className="min-w-0 break-words">{children}</dd>
     </div>
   );
@@ -380,6 +462,7 @@ function Actions({
             size="sm"
             disabled={!reason.trim() || pending}
           >
+            <CalendarX data-icon="inline-start" />
             ยืนยันยกเลิกรายการ
           </Button>
         </div>
@@ -390,6 +473,7 @@ function Actions({
   return (
     <div className="flex flex-wrap gap-2">
       <Button size="sm" onClick={onEdit} disabled={pending}>
+        <Pencil data-icon="inline-start" />
         แก้ไข
       </Button>
       {item.tbd && item.status !== "cancelled" && (
@@ -405,10 +489,12 @@ function Actions({
             })
           }
         >
+          <CircleCheck data-icon="inline-start" />
           ยืนยันข้อมูล
         </Button>
       )}
       <Button size="sm" variant="outline" disabled={pending} onClick={() => duplicate.mutate()}>
+        <Copy data-icon="inline-start" />
         ทำสำเนา
       </Button>
       {item.canApprove && (
@@ -421,11 +507,17 @@ function Actions({
             update.mutate({ visibility: item.visibility === "public" ? "internal" : "public" })
           }
         >
+          {item.visibility === "public" ? (
+            <EyeOff data-icon="inline-start" />
+          ) : (
+            <Globe data-icon="inline-start" />
+          )}
           {item.visibility === "public" ? "เลิกเผยแพร่" : "อนุมัติเผยแพร่สาธารณะ"}
         </Button>
       )}
       {operational && item.status !== "cancelled" && (
         <Button size="sm" variant="outline" disabled={pending} onClick={() => setAsking("cancel")}>
+          <CalendarX data-icon="inline-start" />
           ยกเลิกรายการ
         </Button>
       )}
@@ -435,6 +527,11 @@ function Actions({
         disabled={pending}
         onClick={() => update.mutate({ archived: item.archivedAt === null })}
       >
+        {item.archivedAt === null ? (
+          <Archive data-icon="inline-start" />
+        ) : (
+          <ArchiveRestore data-icon="inline-start" />
+        )}
         {item.archivedAt === null ? "เก็บถาวร" : "นำกลับมา"}
       </Button>
     </div>
@@ -494,7 +591,16 @@ export function ItemSheet({
     <SideDrawer
       open={open}
       onOpenChange={(next) => !next && close()}
-      title={title}
+      title={
+        <span className="flex items-center gap-2">
+          {createAt !== null ? (
+            <Plus aria-hidden className="size-5 text-primary" />
+          ) : (
+            detail.data && <CategoryBadge item={detail.data as CalendarItem} />
+          )}
+          {title}
+        </span>
+      }
       description={
         detail.data && !formMode ? <ItemFlags item={detail.data as CalendarItem} /> : undefined
       }
@@ -540,7 +646,10 @@ export function ItemSheet({
             <DeliveryPanel item={detail.data} />
             <CoordinationPanel item={detail.data} />
             <section className="flex flex-col gap-2">
-              <h3 className="text-sm font-semibold">ประวัติการเปลี่ยนแปลง</h3>
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <History aria-hidden className="size-4 text-primary" />
+                ประวัติการเปลี่ยนแปลง
+              </h3>
               <ChangeLog changes={detail.data.changes} departmentNames={departmentNames} />
             </section>
           </>

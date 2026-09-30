@@ -27,22 +27,26 @@ export const MODE_LABELS: Record<CalendarMode, string> = {
 };
 
 /** Class names per mode. Written out in full so Tailwind can find them. */
-export const MODE_STYLES: Record<CalendarMode, { chip: string; dot: string }> = {
+export const MODE_STYLES: Record<CalendarMode, { chip: string; dot: string; icon: string }> = {
   operations: {
     chip: "border-l-rose-500 bg-rose-500/10 text-rose-950 dark:text-rose-100",
     dot: "bg-rose-500",
+    icon: "text-rose-500",
   },
   coordination: {
     chip: "border-l-amber-500 bg-amber-500/10 text-amber-950 dark:text-amber-100",
     dot: "bg-amber-500",
+    icon: "text-amber-500",
   },
   delivery: {
     chip: "border-l-sky-500 bg-sky-500/10 text-sky-950 dark:text-sky-100",
     dot: "bg-sky-500",
+    icon: "text-sky-500",
   },
   meetings: {
     chip: "border-l-violet-500 bg-violet-500/10 text-violet-950 dark:text-violet-100",
     dot: "bg-violet-500",
+    icon: "text-violet-500",
   },
 };
 
