@@ -1,0 +1,73 @@
+CREATE TABLE `calendar_change` (
+	`id` text PRIMARY KEY,
+	`item_id` text NOT NULL,
+	`actor_user_id` text NOT NULL,
+	`impersonated_by` text,
+	`action` text NOT NULL,
+	`changes` text NOT NULL,
+	`reason` text,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE `calendar_item` (
+	`id` text PRIMARY KEY,
+	`title` text NOT NULL,
+	`mode` text NOT NULL,
+	`category` text NOT NULL,
+	`status` text NOT NULL,
+	`start_at` integer NOT NULL,
+	`end_at` integer NOT NULL,
+	`timezone` text DEFAULT 'Asia/Bangkok' NOT NULL,
+	`owner_id` text,
+	`source` text NOT NULL,
+	`last_confirmed_at` integer,
+	`last_confirmed_by_id` text,
+	`visibility` text DEFAULT 'internal' NOT NULL,
+	`approved_at` integer,
+	`approved_by_id` text,
+	`risk_level` text,
+	`blocked_reason` text,
+	`notes` text,
+	`game` text,
+	`match_id` text,
+	`teams` text,
+	`venue` text,
+	`stream_platform` text,
+	`scoreboard_url` text,
+	`meeting_link` text,
+	`agenda` text,
+	`feature` text,
+	`environment` text,
+	`archived_at` integer,
+	`version` integer DEFAULT 1 NOT NULL,
+	`created_by_id` text,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	CONSTRAINT `fk_calendar_item_owner_id_user_id_fk` FOREIGN KEY (`owner_id`) REFERENCES `user`(`id`) ON DELETE SET NULL,
+	CONSTRAINT `fk_calendar_item_last_confirmed_by_id_user_id_fk` FOREIGN KEY (`last_confirmed_by_id`) REFERENCES `user`(`id`) ON DELETE SET NULL,
+	CONSTRAINT `fk_calendar_item_approved_by_id_user_id_fk` FOREIGN KEY (`approved_by_id`) REFERENCES `user`(`id`) ON DELETE SET NULL,
+	CONSTRAINT `fk_calendar_item_created_by_id_user_id_fk` FOREIGN KEY (`created_by_id`) REFERENCES `user`(`id`) ON DELETE SET NULL,
+	CONSTRAINT "calendar_item_mode_check" CHECK("mode" IN ('operations', 'coordination', 'delivery', 'meetings')),
+	CONSTRAINT "calendar_item_category_check" CHECK("category" IN ('match', 'broadcast', 'result_update', 'technical_check', 'rehearsal', 'cross_team_meeting', 'handoff', 'approval', 'information_request', 'planning', 'design', 'development', 'code_review', 'qa', 'release', 'monitoring', 'incident', 'post_event_review')),
+	CONSTRAINT "calendar_item_status_check" CHECK("status" IN ('draft', 'confirmed', 'ready', 'live', 'completed', 'delayed', 'cancelled', 'backlog', 'planned', 'in_progress', 'in_review', 'qa', 'ready_to_release', 'released', 'rolled_back')),
+	CONSTRAINT "calendar_item_visibility_check" CHECK("visibility" IN ('internal', 'public')),
+	CONSTRAINT "calendar_item_risk_level_check" CHECK("risk_level" IS NULL OR "risk_level" IN ('low', 'medium', 'high')),
+	CONSTRAINT "calendar_item_game_check" CHECK("game" IS NULL OR "game" IN ('tft', 'valorant', 'rov')),
+	CONSTRAINT "calendar_item_time_check" CHECK("end_at" > "start_at")
+);
+--> statement-breakpoint
+CREATE TABLE `calendar_item_department` (
+	`id` text PRIMARY KEY,
+	`item_id` text NOT NULL,
+	`department_id` text NOT NULL,
+	CONSTRAINT `fk_calendar_item_department_item_id_calendar_item_id_fk` FOREIGN KEY (`item_id`) REFERENCES `calendar_item`(`id`) ON DELETE CASCADE,
+	CONSTRAINT `fk_calendar_item_department_department_id_department_id_fk` FOREIGN KEY (`department_id`) REFERENCES `department`(`id`) ON DELETE CASCADE
+);
+--> statement-breakpoint
+CREATE INDEX `calendar_change_item_id_idx` ON `calendar_change` (`item_id`,`created_at`);--> statement-breakpoint
+CREATE INDEX `calendar_item_start_at_idx` ON `calendar_item` (`start_at`);--> statement-breakpoint
+CREATE INDEX `calendar_item_end_at_idx` ON `calendar_item` (`end_at`);--> statement-breakpoint
+CREATE INDEX `calendar_item_owner_id_idx` ON `calendar_item` (`owner_id`);--> statement-breakpoint
+CREATE INDEX `calendar_item_mode_idx` ON `calendar_item` (`mode`);--> statement-breakpoint
+CREATE UNIQUE INDEX `calendar_item_department_uidx` ON `calendar_item_department` (`item_id`,`department_id`);--> statement-breakpoint
+CREATE INDEX `calendar_item_department_department_id_idx` ON `calendar_item_department` (`department_id`);
