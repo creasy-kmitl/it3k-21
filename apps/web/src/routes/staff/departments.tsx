@@ -66,7 +66,8 @@ function RouteComponent() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    // The shared column is wide; a one-line form and short rows read better narrower.
+    <div className="flex max-w-3xl flex-col gap-4">
       <PageHeader icon={Building2} title="ฝ่าย" description={`ทั้งหมด ${departments.length} ฝ่าย`} />
 
       {canCreate && (

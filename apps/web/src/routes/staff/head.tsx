@@ -66,7 +66,7 @@ function HeadPage() {
       }
       panel={
         editing && (
-          <Card>
+          <Card className="max-w-3xl">
             <CardHeader>
               <CardTitle>
                 {editing.kind === "create" ? "เพิ่มตำแหน่ง" : `แก้ไข ${editing.seat.displayName}`}
