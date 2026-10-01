@@ -1,4 +1,13 @@
 import { can } from "@it3k/auth/permissions";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@it3k/ui/components/alert-dialog";
 import { Button } from "@it3k/ui/components/button";
 import {
   Card,
@@ -60,7 +69,7 @@ function RouteComponent() {
       await router.invalidate();
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Something went wrong");
+      toast.error(error instanceof Error ? error.message : "เกิดข้อผิดพลาด กรุณาลองอีกครั้ง");
       return false;
     }
   }
@@ -72,8 +81,8 @@ function RouteComponent() {
 
       {canCreate && (
         <DepartmentForm
-          submitLabel="Create"
-          onSubmit={(input) => run(() => departmentsApi.create(input), "Department created")}
+          submitLabel="เพิ่มฝ่าย"
+          onSubmit={(input) => run(() => departmentsApi.create(input), "เพิ่มฝ่ายแล้ว")}
         />
       )}
 
@@ -85,13 +94,9 @@ function RouteComponent() {
             canEdit={canEdit}
             canDelete={canDelete}
             onUpdate={(input) =>
-              run(() => departmentsApi.update(d.id, input), "Department updated")
+              run(() => departmentsApi.update(d.id, input), "บันทึกแล้ว")
             }
-            onDelete={() => {
-              if (confirm(`Delete "${d.name}"? Members will be unassigned.`)) {
-                void run(() => departmentsApi.remove(d.id), "Department deleted");
-              }
-            }}
+            onDelete={() => run(() => departmentsApi.remove(d.id), "ลบแล้ว")}
           />
         ))}
       </ul>
@@ -110,7 +115,7 @@ function DepartmentItem({
   canEdit: boolean;
   canDelete: boolean;
   onUpdate: (input: DepartmentInput) => Promise<boolean>;
-  onDelete: () => void;
+  onDelete: () => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -119,7 +124,7 @@ function DepartmentItem({
       <li>
         <DepartmentForm
           initial={department}
-          submitLabel="Save"
+          submitLabel="บันทึก"
           onCancel={() => setEditing(false)}
           onSubmit={async (input) => {
             const ok = await onUpdate(input);
@@ -150,22 +155,65 @@ function DepartmentItem({
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label="Edit"
+                  aria-label={`แก้ไข ${department.name}`}
                   onClick={() => setEditing(true)}
                 >
                   <Pencil />
                 </Button>
               )}
-              {canDelete && (
-                <Button variant="ghost" size="icon" aria-label="Delete" onClick={onDelete}>
-                  <Trash2 className="text-destructive" />
-                </Button>
-              )}
+              {canDelete && <DeleteDepartmentButton department={department} onDelete={onDelete} />}
             </CardAction>
           )}
         </CardHeader>
       </Card>
     </li>
+  );
+}
+
+function DeleteDepartmentButton({
+  department,
+  onDelete,
+}: {
+  department: Department;
+  onDelete: () => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`ลบ ${department.name}`}
+        onClick={() => setOpen(true)}
+      >
+        <Trash2 className="text-destructive" />
+      </Button>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>ลบ {department.name}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            สมาชิกของฝ่ายนี้จะไม่มีฝ่าย บัญชีผู้ใช้จะไม่ถูกลบ
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+          <Button
+            variant="destructive"
+            disabled={pending}
+            onClick={async () => {
+              setPending(true);
+              const ok = await onDelete();
+              setPending(false);
+              if (ok) setOpen(false);
+            }}
+          >
+            ลบ
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -207,14 +255,14 @@ function DepartmentForm({
           <IconPicker icon={icon} color={color} onChange={setIcon} />
           <ColorPicker color={color} onChange={setColor} />
           <Input
-            placeholder="Name"
+            placeholder="ชื่อฝ่าย"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
             maxLength={100}
           />
           <Input
-            placeholder="Description"
+            placeholder="คำอธิบาย"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             maxLength={500}
@@ -226,7 +274,7 @@ function DepartmentForm({
             </Button>
             {onCancel && (
               <Button type="button" variant="ghost" onClick={onCancel}>
-                Cancel
+                ยกเลิก
               </Button>
             )}
           </div>
@@ -252,7 +300,7 @@ function IconPicker({
         if (value) onChange(value);
       }}
     >
-      <SelectTrigger aria-label="Icon" className="shrink-0">
+      <SelectTrigger aria-label="ไอคอน" className="shrink-0">
         <SelectValue>
           {(value: DepartmentIconKey) => <DepartmentIcon department={{ icon: value, color }} />}
         </SelectValue>
@@ -296,7 +344,7 @@ function ColorPicker({
         if (value) onChange(value);
       }}
     >
-      <SelectTrigger aria-label="Color" className="shrink-0">
+      <SelectTrigger aria-label="สี" className="shrink-0">
         <SelectValue>{(value: DepartmentColorKey) => <Swatch color={value} />}</SelectValue>
       </SelectTrigger>
       <SelectContent>

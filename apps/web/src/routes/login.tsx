@@ -94,7 +94,7 @@ function RouteComponent() {
             <span className="text-primary">IT3Kings</span> Staff
           </CardTitle>
           <CardDescription>
-            {to ? "ต้องเข้าสู่ระบบก่อนจึงจะดูหน้านี้ได้" : "Login to your IT3Kings staff account."}
+            {to ? "ต้องเข้าสู่ระบบก่อนจึงจะดูหน้านี้ได้" : "เข้าสู่ระบบด้วยบัญชีทีมงาน IT3Kings"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -103,11 +103,11 @@ function RouteComponent() {
             disabled={isLoading}
             onClick={handleSignIn}
           >
-            {isLoading ? <Spinner /> : <SiGoogle />} Continue with Google
+            {isLoading ? <Spinner /> : <SiGoogle />} เข้าสู่ระบบด้วย Google
           </Button>
         </CardContent>
         <CardFooter>
-          <p className="text-muted-foreground">Staff account is not yet available.</p>
+          <p className="text-muted-foreground">บัญชีใหม่ต้องรอผู้ดูแลกำหนดสิทธิ์ก่อนเข้าใช้งาน</p>
         </CardFooter>
       </Card>
     </div>

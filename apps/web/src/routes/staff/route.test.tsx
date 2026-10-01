@@ -11,8 +11,8 @@ describe("staffRedirect", () => {
   });
 
   test("keeps guests and athletes out", () => {
-    expect(staffRedirect({ role: "guest" }, "/staff/dashboard")).toEqual({ to: "/" });
-    expect(staffRedirect({ role: "athlete" }, "/staff/dashboard")).toEqual({ to: "/" });
+    expect(staffRedirect({ role: "guest" }, "/staff/dashboard")).toEqual({ to: "/pending" });
+    expect(staffRedirect({ role: "athlete" }, "/staff/dashboard")).toEqual({ to: "/pending" });
   });
 
   test("lets staff and admins in", () => {

@@ -114,7 +114,7 @@ export function NavUser() {
               }}
             >
               <LogOutIcon />
-              Sign Out
+              ออกจากระบบ
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

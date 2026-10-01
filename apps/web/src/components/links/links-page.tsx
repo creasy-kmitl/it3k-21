@@ -276,9 +276,12 @@ export function LinksPage({ browser = qrBrowser }: { browser?: QrBrowser }) {
           <Skeleton className="h-20 w-full rounded-2xl" />
         </div>
       ) : list.isError ? (
-        <p role="alert" className="text-sm text-destructive">
-          โหลดลิงก์ไม่สำเร็จ: {list.error.message}
-        </p>
+        <div role="alert" className="flex flex-col items-start gap-2 text-destructive">
+          <p>โหลดลิงก์ไม่สำเร็จ: {list.error.message}</p>
+          <Button variant="outline" size="sm" onClick={() => void list.refetch()}>
+            ลองอีกครั้ง
+          </Button>
+        </div>
       ) : list.data.items.length === 0 ? (
         <Empty className="flex-none border border-dashed">
           <EmptyHeader>

@@ -37,7 +37,7 @@ const PAGE_TITLES: Record<string, string> = {
 export function staffRedirect(user: { role?: string | null } | undefined, href: string) {
   if (!user) return { to: "/login", search: { to: href } } as const;
   // Guests wait outside until a user manager makes them staff.
-  if (!isMember(user.role)) return { to: "/" } as const;
+  if (!isMember(user.role)) return { to: "/pending" } as const;
   return null;
 }
 
@@ -50,6 +50,10 @@ export const Route = createFileRoute("/staff")({
     const away = staffRedirect(session.data?.user, location.href);
     if (away) throw redirect(away);
     return { session };
+  },
+  head: ({ matches }) => {
+    const title = PAGE_TITLES[matches.at(-1)?.pathname ?? ""];
+    return { meta: title ? [{ title: `${title} · IT3Kings` }] : [] };
   },
 });
 
