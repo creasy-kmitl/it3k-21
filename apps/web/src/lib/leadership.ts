@@ -26,6 +26,11 @@ export async function toApiError(res: { status: number; json(): Promise<unknown>
   return new ApiError(res.status, message, body);
 }
 
+/** The API no longer knows the caller: their session ended while the page was open. */
+export function isSignedOut(error: unknown) {
+  return error instanceof ApiError && error.status === 401;
+}
+
 type Client = ReturnType<typeof hc<LeadershipRoutes>>;
 type Seat = Client[":id"];
 

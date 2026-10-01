@@ -27,9 +27,10 @@ import {
   SearchX,
   Users,
 } from "lucide-react";
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import { type ReactNode, useCallback, useRef } from "react";
 
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { type FilterControl, useFilters, useSearchText } from "@/hooks/use-filters";
+import type { ListFilters } from "@/lib/list-search";
 import {
   ApiError,
   type LeadershipApi,
@@ -89,6 +90,8 @@ type Props = {
   createAction?: ReactNode;
   /** Shown between the toolbar and the list, e.g. the create/edit form. */
   panel?: ReactNode;
+  /** Search, department and page kept by the caller (in the URL); otherwise kept here. */
+  filters?: FilterControl<ListFilters>;
 };
 
 export default function LeadershipDirectory({
@@ -96,16 +99,17 @@ export default function LeadershipDirectory({
   renderActions,
   createAction,
   panel,
+  filters: control,
 }: Props) {
-  const [search, setSearch] = useState("");
-  const [departmentId, setDepartmentId] = useState<string>();
-  const q = useDebouncedValue(search.trim(), 300);
-
-  // The page belongs to one filter; changing the filter starts from page 1.
-  const filterKey = JSON.stringify([q, departmentId]);
-  const [paging, setPaging] = useState({ filterKey, page: 1 });
-  const page = paging.filterKey === filterKey ? paging.page : 1;
-  const goTo = (next: number) => setPaging({ filterKey, page: next });
+  // Changing a filter starts from page 1 again.
+  const [filters, setFilters] = useFilters(control);
+  const q = filters.q ?? "";
+  const departmentId = filters.department;
+  const page = filters.page ?? 1;
+  const [search, setSearch] = useSearchText(q, (next) => setFilters({ q: next, page: undefined }));
+  const setDepartmentId = (id: string | undefined) =>
+    setFilters({ department: id, page: undefined });
+  const goTo = (next: number) => setFilters({ page: next > 1 ? next : undefined });
 
   const searchRef = useRef<HTMLInputElement>(null);
   useHotkey("Mod+K", () => searchRef.current?.focus());

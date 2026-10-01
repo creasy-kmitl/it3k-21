@@ -11,14 +11,17 @@ import { Button } from "@it3k/ui/components/button";
 import { Spinner } from "@it3k/ui/components/spinner";
 import { SiGoogle } from "@icons-pack/react-simple-icons";
 import { authClient } from "@/lib/auth-client";
+import { safeRedirect } from "@/lib/safe-redirect";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import z from "zod";
 
 // Better Auth redirects back to `errorCallbackURL` with the failure reason in `?error=`.
+// `to` is the page a signed-out visitor asked for; they return to it after signing in.
 const searchSchema = z.object({
   error: z.string().optional(),
   error_description: z.string().optional(),
+  to: z.string().max(2048).optional().catch(undefined),
 });
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -38,16 +41,16 @@ export const Route = createFileRoute("/login")({
   ssr: false,
   validateSearch: (search) => searchSchema.parse(search),
   component: RouteComponent,
-  beforeLoad: async () => {
+  beforeLoad: async ({ search }) => {
     const session = await authClient.getSession();
     if (session.data) {
-      throw redirect({ to: "/staff/dashboard" });
+      throw redirect({ href: safeRedirect(search.to) });
     }
   },
 });
 
 function RouteComponent() {
-  const { error, error_description: errorDescription } = Route.useSearch();
+  const { error, error_description: errorDescription, to } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [isLoading, setLoading] = useState(false);
 
@@ -56,17 +59,21 @@ function RouteComponent() {
     toast.error("เกิดข้อผิดพลาดในการเข้าสู่ระบบ", {
       description: ERROR_MESSAGES[error] ?? errorDescription ?? error,
     });
-    // Drop the param so the toast does not reappear on reload.
-    void navigate({ search: {}, replace: true });
+    // Drop the error so the toast does not reappear on reload; keep where to return to.
+    void navigate({ search: (previous) => ({ to: previous.to }), replace: true });
   }, [error, errorDescription, navigate]);
 
   async function handleSignIn() {
     setLoading(true);
     try {
+      const { origin } = window.location;
       await authClient.signIn.social({
         provider: "google",
-        callbackURL: window.location.origin,
-        errorCallbackURL: `${window.location.origin}/login`,
+        callbackURL: `${origin}${safeRedirect(to)}`,
+        // A failed attempt comes back here still knowing where to return to.
+        errorCallbackURL: to
+          ? `${origin}/login?${new URLSearchParams({ to })}`
+          : `${origin}/login`,
       });
     } catch (err) {
       if (err instanceof Error) {
@@ -86,7 +93,9 @@ function RouteComponent() {
           <CardTitle className="font-bold">
             <span className="text-primary">IT3Kings</span> Staff
           </CardTitle>
-          <CardDescription>Login to your IT3Kings staff account.</CardDescription>
+          <CardDescription>
+            {to ? "ต้องเข้าสู่ระบบก่อนจึงจะดูหน้านี้ได้" : "เข้าสู่ระบบด้วยบัญชีทีมงาน IT3Kings"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Button
@@ -94,11 +103,11 @@ function RouteComponent() {
             disabled={isLoading}
             onClick={handleSignIn}
           >
-            {isLoading ? <Spinner /> : <SiGoogle />} Continue with Google
+            {isLoading ? <Spinner /> : <SiGoogle />} เข้าสู่ระบบด้วย Google
           </Button>
         </CardContent>
         <CardFooter>
-          <p className="text-muted-foreground">Staff account is not yet available.</p>
+          <p className="text-muted-foreground">บัญชีใหม่ต้องรอผู้ดูแลกำหนดสิทธิ์ก่อนเข้าใช้งาน</p>
         </CardFooter>
       </Card>
     </div>

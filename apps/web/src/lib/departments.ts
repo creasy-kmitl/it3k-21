@@ -1,6 +1,7 @@
 import type { DepartmentColorKey, DepartmentIconKey } from "@/components/department-icon";
 
 import { ENV } from "../env.public";
+import { toApiError } from "./leadership";
 
 export type Department = {
   id: string;
@@ -26,10 +27,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? res.statusText);
-  }
+  if (!res.ok) throw await toApiError(res);
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 

@@ -4,7 +4,7 @@ import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import type { LeadershipPage } from "@/lib/leadership";
 import { fakeApi, page, renderRoute, summary } from "@/test/query";
 
-import { Route } from "./head";
+import { HeadPage } from "./head";
 
 afterEach(cleanup);
 
@@ -28,7 +28,7 @@ function setup(list: LeadershipPage) {
     list: async () => list,
     remove: async (id) => void removed.push(id),
   });
-  return { removed, view: renderRoute(Route, { leadership: api }) };
+  return { removed, view: renderRoute({ options: { component: HeadPage } }, { leadership: api }) };
 }
 
 describe("/staff/head", () => {

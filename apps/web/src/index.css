@@ -1,5 +1,10 @@
 @import "@it3k/ui/globals.css";
 
+/* Reserve the scrollbar's space, so short and long pages are the same width. */
+html {
+  scrollbar-gutter: stable;
+}
+
 @theme {
   --animate-navigation-progress: navigation-progress 1.2s ease-in-out infinite;
 

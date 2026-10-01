@@ -49,7 +49,7 @@ import { LinkSheet } from "@/components/links/link-sheet";
 import { QrZipPanel } from "@/components/links/qr-zip-panel";
 import { PageHeader } from "@/components/page-header";
 import { type Segment, SegmentedControl } from "@/components/segmented-control";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { type FilterControl, useFilters, useSearchText } from "@/hooks/use-filters";
 import { useApis } from "@/lib/api-context";
 import { xlsxBlob } from "@/lib/xlsx";
 import { type ShortLink, linkError } from "@/lib/links";
@@ -114,18 +114,30 @@ function LinkRow({ link, onOpen }: { link: ShortLink; onOpen: () => void }) {
   );
 }
 
-export function LinksPage({ browser = qrBrowser }: { browser?: QrBrowser }) {
+/** The list's URL filters: search text, only the viewer's links, and one tag. */
+export type LinkFilters = { q?: string; mine?: boolean; tag?: string };
+
+export function LinksPage({
+  browser = qrBrowser,
+  filters: control,
+}: {
+  browser?: QrBrowser;
+  filters?: FilterControl<LinkFilters>;
+}) {
   const { links } = useApis();
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
-  const [mine, setMine] = useState(false);
-  const [tag, setTag] = useState<string | null>(null);
+  const [filters, setFilters] = useFilters(control);
+  const q = filters.q ?? "";
+  const mine = filters.mine ?? false;
+  const tag = filters.tag ?? null;
+  const [search, setSearch] = useSearchText(q, (next) => setFilters({ q: next }));
+  const setMine = (next: boolean) => setFilters({ mine: next || undefined });
+  const setTag = (next: string | null) => setFilters({ tag: next ?? undefined });
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [zipOpen, setZipOpen] = useState(false);
   const [reporting, setReporting] = useState(false);
-  const q = useDebouncedValue(search.trim(), 300);
 
   const list = useQuery({
     queryKey: ["links", "list", { q, mine, tag }],
@@ -276,9 +288,12 @@ export function LinksPage({ browser = qrBrowser }: { browser?: QrBrowser }) {
           <Skeleton className="h-20 w-full rounded-2xl" />
         </div>
       ) : list.isError ? (
-        <p role="alert" className="text-sm text-destructive">
-          โหลดลิงก์ไม่สำเร็จ: {list.error.message}
-        </p>
+        <div role="alert" className="flex flex-col items-start gap-2 text-destructive">
+          <p>โหลดลิงก์ไม่สำเร็จ: {list.error.message}</p>
+          <Button variant="outline" size="sm" onClick={() => void list.refetch()}>
+            ลองอีกครั้ง
+          </Button>
+        </div>
       ) : list.data.items.length === 0 ? (
         <Empty className="flex-none border border-dashed">
           <EmptyHeader>

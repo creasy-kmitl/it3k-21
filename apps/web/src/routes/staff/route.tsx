@@ -16,11 +16,9 @@ import { NotificationBell } from "@/components/calendar/notification-bell";
 import { authClient } from "@/lib/auth-client";
 import { clearCacheOnUserChange } from "@/lib/query-cache";
 
-// Every staff page uses the same reading width, except the calendar, whose
-// grids need the room, and QR Studio, which sets the preview beside its controls.
-const COLUMN = "mx-auto w-full max-w-3xl";
-const WIDE_COLUMN = "mx-auto w-full max-w-7xl";
-const WIDE_PAGES = new Set(["/staff/calendar", "/staff/qr-code"]);
+// Every staff page shares one column, so the header and page title stay put
+// when moving between pages. Pages that read better narrow cap their own content.
+const COLUMN = "mx-auto w-full max-w-7xl";
 
 const PAGE_TITLES: Record<string, string> = {
   "/staff/dashboard": "หน้าหลัก",
@@ -32,23 +30,30 @@ const PAGE_TITLES: Record<string, string> = {
   "/staff/links": "ลิงก์สั้น",
 };
 
+/**
+ * Where to send someone who may not see staff pages, or null to let them in.
+ * `href` is the page they asked for, so signing in can bring them back to it.
+ */
+export function staffRedirect(user: { role?: string | null } | undefined, href: string) {
+  if (!user) return { to: "/login", search: { to: href } } as const;
+  // Guests wait outside until a user manager makes them staff.
+  if (!isMember(user.role)) return { to: "/pending" } as const;
+  return null;
+}
+
 export const Route = createFileRoute("/staff")({
   ssr: false,
   component: AuthLayout,
-  beforeLoad: async ({ context }) => {
+  beforeLoad: async ({ context, location }) => {
     const session = await authClient.getSession();
     clearCacheOnUserChange(context.queryClient, session.data?.user.id ?? null);
-    if (!session.data) {
-      // Explain why before sending them to sign in; the 401 page links to /login.
-      throw redirect({
-        to: "/unauthorized",
-      });
-    }
-    // Guests wait outside until a user manager makes them staff.
-    if (!isMember(session.data.user.role)) {
-      throw redirect({ to: "/" });
-    }
+    const away = staffRedirect(session.data?.user, location.href);
+    if (away) throw redirect(away);
     return { session };
+  },
+  head: ({ matches }) => {
+    const title = PAGE_TITLES[matches.at(-1)?.pathname ?? ""];
+    return { meta: title ? [{ title: `${title} · IT3Kings` }] : [] };
   },
 });
 
@@ -56,7 +61,6 @@ function AuthLayout() {
   const { session } = Route.useRouteContext();
   const pathname = useLocation({ select: (location) => location.pathname });
   const title = PAGE_TITLES[pathname];
-  const column = WIDE_PAGES.has(pathname) ? WIDE_COLUMN : COLUMN;
 
   return (
     <TooltipProvider>
@@ -67,7 +71,7 @@ function AuthLayout() {
           {/* Header and page share one centered column, so the breadcrumb lines up
               with the content whether the sidebar is open or closed. */}
           <header className="flex h-16 shrink-0 items-center px-4">
-            <div className={cn(column, "flex items-center gap-2")}>
+            <div className={cn(COLUMN, "flex items-center gap-2")}>
               <SidebarTrigger className="-ml-1" />
               <Separator
                 orientation="vertical"
@@ -86,7 +90,7 @@ function AuthLayout() {
             </div>
           </header>
           <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-            <div className={cn(column, "flex flex-1 flex-col gap-4")}>
+            <div className={cn(COLUMN, "flex flex-1 flex-col gap-4")}>
               <Outlet />
             </div>
           </div>
