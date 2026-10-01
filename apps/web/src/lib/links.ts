@@ -16,6 +16,8 @@ export type ShortLinkDetail = InferResponseType<One["$get"], 200>;
 export type ShortLinkChange = ShortLinkDetail["changes"][number];
 export type ShortLinkInput = InferRequestType<Client["index"]["$post"]>["json"];
 export type ShortLinkUpdate = InferRequestType<One["$patch"]>["json"];
+export type BulkLinkInput = InferRequestType<Client["bulk"]["$post"]>["json"]["links"][number];
+export type VisitRow = InferResponseType<Client["visits"]["$get"], 200>["rows"][number];
 export type LinkState = ShortLink["state"];
 
 export type LinksQuery = { q?: string; mine?: boolean; tag?: string };
@@ -23,6 +25,7 @@ export type LinksQuery = { q?: string; mine?: boolean; tag?: string };
 /** Why a link was refused, in Thai; the web form checks the same rules first. */
 export const LINK_ERROR_MESSAGES: Record<LinkErrorCode, string> = {
   "slug-taken": "ชื่อลิงก์นี้มีคนใช้แล้ว ลองชื่ออื่น",
+  "slug-duplicate": "ชื่อท้ายลิงก์ซ้ำกับแถวก่อนหน้า",
   "not-url": "ปลายทางต้องเป็น URL เต็ม เช่น https://example.com",
   "not-https": "ปลายทางต้องขึ้นต้นด้วย https:// เพื่อความปลอดภัยของผู้สแกน",
   credentials: "ปลายทางห้ามมีชื่อผู้ใช้หรือรหัสผ่านอยู่ใน URL",
@@ -39,6 +42,22 @@ export function linkError(error: unknown): { field: LinkErrorField; message: str
   const message = LINK_ERROR_MESSAGES[body?.code as LinkErrorCode];
   if (!message || typeof body?.field !== "string") return null;
   return { field: body.field as LinkErrorField, message };
+}
+
+/** Why the API refused rows of a bulk create, by row index, in Thai. */
+export function bulkRowErrors(error: unknown): Map<number, string> | null {
+  if (!(error instanceof ApiError)) return null;
+  const body = error.body as { code?: unknown; rows?: unknown } | null;
+  if (body?.code !== "rows" || !Array.isArray(body.rows)) return null;
+  const errors = new Map<number, string>();
+  for (const row of body.rows as { index: number; code: LinkErrorCode }[]) {
+    const message = LINK_ERROR_MESSAGES[row.code] ?? row.code;
+    errors.set(
+      row.index,
+      errors.has(row.index) ? `${errors.get(row.index)} · ${message}` : message,
+    );
+  }
+  return errors;
 }
 
 export function createLinksApi(baseUrl: string, fetchImpl?: ClientRequestOptions["fetch"]) {
@@ -65,6 +84,24 @@ export function createLinksApi(baseUrl: string, fetchImpl?: ClientRequestOptions
       const res = await client[":id"].$get({
         param: { id },
         query: days ? { days: String(days) } : {},
+      });
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
+
+    async bulk(links: BulkLinkInput[]) {
+      const res = await client.bulk.$post({ json: { links } });
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
+
+    async visits(params: { days?: StatsRange; mine?: boolean; tag?: string } = {}) {
+      const res = await client.visits.$get({
+        query: {
+          ...(params.days ? { days: String(params.days) } : {}),
+          ...(params.mine ? { mine: "1" as const } : {}),
+          ...(params.tag ? { tag: params.tag } : {}),
+        },
       });
       if (!res.ok) throw await toApiError(res);
       return res.json();

@@ -43,6 +43,9 @@ export const shortLink = sqliteTable(
       .$type<string[]>()
       .default(sql`'[]'`)
       .notNull(),
+    // Set when visitors must type a password first: `pbkdf2$<iterations>$<salt>$<hash>`.
+    // Never sent to the web app.
+    passwordHash: text("password_hash"),
     enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
     // Whoever created it; they edit it, as do admins and Tech/Live.
@@ -103,4 +106,22 @@ export const shortLinkChange = sqliteTable(
     createdAt: createdAt(),
   },
   (table) => [index("short_link_change_link_id_idx").on(table.linkId, table.createdAt)],
+);
+
+/**
+ * Wrong passwords per link per minute, to slow guessing. Counted per link,
+ * not per visitor, so no address is stored; a link under attack locks for
+ * everyone until the minute is over.
+ */
+export const shortLinkUnlockAttempt = sqliteTable(
+  "short_link_unlock_attempt",
+  {
+    linkId: text("link_id")
+      .notNull()
+      .references(() => shortLink.id, { onDelete: "cascade" }),
+    // Minutes since the epoch.
+    minute: integer("minute").notNull(),
+    count: integer("count").default(0).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.linkId, table.minute] })],
 );

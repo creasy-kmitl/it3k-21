@@ -117,4 +117,37 @@ describe("answerShortLink", () => {
     expect(res.status).toBe(503);
     expect(await res.text()).toContain("ขัดข้องชั่วคราว");
   });
+
+  test("a locked link's page learns why the last password failed, under the API's status", async () => {
+    const rendered: Request[] = [];
+    const res = await answerShortLink(
+      scanned("POST"),
+      async () =>
+        new Response("limited", {
+          status: 429,
+          headers: { "X-Short-Link-Unavailable": "locked", "X-Short-Link-Unlock": "limited" },
+        }),
+      async (page) => {
+        rendered.push(page);
+        return new Response("<html>ล็อก</html>");
+      },
+    );
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe("60");
+    expect(rendered[0]?.method).toBe("GET");
+    expect(rendered[0]?.headers.get("x-short-link-unavailable")).toBe("locked");
+    expect(rendered[0]?.headers.get("x-short-link-unlock")).toBe("limited");
+  });
+
+  test("a visitor cannot plant an unlock message themselves", async () => {
+    const rendered: Request[] = [];
+    const request = new Request("https://it3k.test/l/register", {
+      headers: { "X-Short-Link-Unlock": "wrong" },
+    });
+    await answerShortLink(request, unavailable("locked", 403), async (page) => {
+      rendered.push(page);
+      return new Response("<html></html>");
+    });
+    expect(rendered[0]?.headers.get("x-short-link-unlock")).toBeNull();
+  });
 });

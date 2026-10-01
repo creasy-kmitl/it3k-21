@@ -20,14 +20,11 @@ import type {
   ShortLinkInput,
   ShortLinkUpdate,
 } from "@/lib/links";
-import {
-  defined,
-  fakeApi,
-  fakeCalendarApi,
-  fakeLinksApi,
-  fakeUsersApi,
-  shortLink,
-} from "@/test/query";
+import { defined, fakeApis, fakeLinksApi, shortLink } from "@/test/query";
+
+import { LinksPage } from "@/components/links/links-page";
+import type { QrBrowser } from "@/lib/qr-export";
+import { strFromU8, unzipSync } from "fflate";
 
 import { Route } from "./links";
 
@@ -95,18 +92,21 @@ async function setup(
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  const Page = defined(Route.options.component, "links page");
+  const downloads: { name: string; blob: Blob }[] = [];
+  const browser: QrBrowser = {
+    rasterize: async (_svg, type) => new Blob(["png"], { type }),
+    download: (blob, name) => void downloads.push({ blob, name }),
+    copyPng: async () => true,
+    copyText: async () => true,
+    loadLogo: async () => "data:image/png;base64,AAAA",
+  };
+  // The route's page, with a browser that records downloads.
+  defined(Route.options.component, "links page");
+  const Page = () => <LinksPage browser={browser} />;
   const root = createRootRoute({
     component: () => (
       <QueryClientProvider client={client}>
-        <ApiProvider
-          value={{
-            links,
-            leadership: fakeApi(),
-            users: fakeUsersApi(),
-            calendar: fakeCalendarApi(),
-          }}
-        >
+        <ApiProvider value={fakeApis({ links })}>
           <Outlet />
         </ApiProvider>
       </QueryClientProvider>
@@ -125,7 +125,7 @@ async function setup(
   });
   await act(() => router.load());
   const view = render(<RouterProvider router={router} />);
-  return { view, router, queries, created, updated, details };
+  return { view, router, queries, created, updated, details, links, downloads };
 }
 
 const drawer = () =>
@@ -374,5 +374,179 @@ describe("a link's panel", () => {
     await within(panel).findByText("ลิงก์สำหรับ QR");
     expect(within(panel).queryByRole("button", { name: "แก้ไข" })).toBeNull();
     expect(within(panel).queryByRole("button", { name: "ปิดลิงก์" })).toBeNull();
+  });
+});
+
+// ignoreBOM keeps the byte-order mark in the text, so a test can see it.
+const text = async (blob: Blob) =>
+  new TextDecoder("utf-8", { ignoreBOM: true }).decode(await blob.arrayBuffer());
+
+describe("passwords", () => {
+  test("creates a locked link, refusing a password that is too short", async () => {
+    const { view, created } = await setup([]);
+    fireEvent.click(await view.findByRole("button", { name: "สร้างลิงก์แรก" }));
+    const form = drawer();
+    fireEvent.change(within(form).getByLabelText("ชื่อลิงก์"), { target: { value: "ลับ" } });
+    fireEvent.change(within(form).getByLabelText("ปลายทาง"), {
+      target: { value: "https://forms.example.com/staff" },
+    });
+    fireEvent.click(within(form).getByRole("checkbox", { name: "ต้องใส่รหัสผ่านก่อนเปิดลิงก์" }));
+    const password = await within(form).findByLabelText("รหัสผ่านของลิงก์");
+    fireEvent.change(password, { target: { value: "abc" } });
+    fireEvent.click(within(form).getByRole("button", { name: "สร้างลิงก์" }));
+    expect(await within(form).findByText("รหัสผ่านยาว 4–64 ตัวอักษร")).toBeTruthy();
+    expect(created).toEqual([]);
+    fireEvent.change(password, { target: { value: "tech2026" } });
+    fireEvent.click(within(form).getByRole("button", { name: "สร้างลิงก์" }));
+    await waitFor(() =>
+      expect(created).toEqual([
+        { title: "ลับ", destination: "https://forms.example.com/staff", password: "tech2026" },
+      ]),
+    );
+  });
+
+  test("a locked link says so, and its password can be removed", async () => {
+    const link = shortLink({ title: "ลับ", hasPassword: true });
+    const { view, updated } = await setup([link]);
+    fireEvent.click(await view.findByRole("button", { name: "ลับ" }));
+    const panel = drawer();
+    expect(await within(panel).findByText("มีรหัสผ่าน")).toBeTruthy();
+    fireEvent.click(within(panel).getByRole("button", { name: "แก้ไข" }));
+    expect(within(panel).getByText("ลิงก์นี้ต้องใส่รหัสผ่านก่อนเปิด")).toBeTruthy();
+    fireEvent.click(within(panel).getByRole("button", { name: "เอารหัสออก" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(updated).toHaveLength(1));
+    expect(updated[0]?.[1]).toMatchObject({ password: null });
+  });
+});
+
+describe("many links at once", () => {
+  const pasted = [
+    "title\tdestination\tslug\ttags",
+    "บูธ ROV\thttps://forms.example.com/rov\tbooth-rov\tbooth|rov",
+    "บูธ Valo\thttp://forms.example.com/valo\t\tbooth",
+  ].join("\n");
+
+  async function openBulk(view: Awaited<ReturnType<typeof setup>>["view"]) {
+    fireEvent.click(await view.findByRole("button", { name: "วิธีสร้างลิงก์อื่น" }));
+    fireEvent.click(await view.findByRole("menuitem", { name: "สร้างหลายลิงก์จากตาราง" }));
+    return drawer();
+  }
+
+  test("checks pasted rows, creates them all, then zips their QR codes", async () => {
+    const bulk: unknown[] = [];
+    const { view, downloads } = await setup([shortLink()], {
+      bulk: async (rows) => {
+        bulk.push(rows);
+        return {
+          items: rows.map((row, i) =>
+            shortLink({ id: `n${i}`, title: row.title, slug: row.slug ?? `rnd${i}` }),
+          ),
+        };
+      },
+    });
+    const panel = await openBulk(view);
+    fireEvent.change(within(panel).getByLabelText("หรือวางจาก Google Sheets หรือ Excel"), {
+      target: { value: pasted },
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "ตรวจรายการ" }));
+    expect((await within(panel).findByRole("alert")).textContent).toContain("มีปัญหา 1 จาก 2 แถว");
+    expect(within(panel).getByRole("button", { name: "สร้าง 2 ลิงก์" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+
+    fireEvent.click(within(panel).getByRole("button", { name: "แก้รายการ" }));
+    fireEvent.change(within(panel).getByLabelText("หรือวางจาก Google Sheets หรือ Excel"), {
+      target: { value: pasted.replace("http://", "https://") },
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "ตรวจรายการ" }));
+    expect((await within(panel).findByRole("status")).textContent).toContain("พร้อมสร้าง 2 ลิงก์");
+    fireEvent.click(within(panel).getByRole("button", { name: "สร้าง 2 ลิงก์" }));
+    expect(await within(panel).findByText("สร้าง 2 ลิงก์แล้ว")).toBeTruthy();
+    expect(bulk).toEqual([
+      [
+        {
+          title: "บูธ ROV",
+          destination: "https://forms.example.com/rov",
+          slug: "booth-rov",
+          tags: ["booth", "rov"],
+        },
+        { title: "บูธ Valo", destination: "https://forms.example.com/valo", tags: ["booth"] },
+      ],
+    ]);
+
+    fireEvent.click(within(panel).getByRole("button", { name: "ดาวน์โหลด QR 2 อัน (.zip)" }));
+    await waitFor(() => expect(downloads).toHaveLength(1));
+    expect(downloads[0]?.name).toBe("it3k-qr-2-links.zip");
+    const files = unzipSync(new Uint8Array(await defined(downloads[0]).blob.arrayBuffer()));
+    expect(Object.keys(files).sort()).toEqual(["booth-rov.png", "links.csv", "rnd1.png"]);
+    expect(strFromU8(defined(files["links.csv"]))).toContain("booth-rov.png");
+  });
+
+  test("shows the API's refusals on their rows", async () => {
+    const { view } = await setup([shortLink()], {
+      bulk: async () => {
+        throw new ApiError(409, "Some rows cannot be created", {
+          code: "rows",
+          rows: [{ index: 0, code: "slug-taken", field: "slug" }],
+        });
+      },
+    });
+    const panel = await openBulk(view);
+    fireEvent.change(within(panel).getByLabelText("หรือวางจาก Google Sheets หรือ Excel"), {
+      target: { value: pasted.replace("http://", "https://") },
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "ตรวจรายการ" }));
+    fireEvent.click(await within(panel).findByRole("button", { name: "สร้าง 2 ลิงก์" }));
+    expect(await within(panel).findByText("ชื่อลิงก์นี้มีคนใช้แล้ว ลองชื่ออื่น")).toBeTruthy();
+    expect(within(panel).getByRole("alert").textContent).toContain("มีปัญหา 1 จาก 2 แถว");
+  });
+});
+
+describe("exports", () => {
+  async function exportMenu(view: Awaited<ReturnType<typeof setup>>["view"], item: RegExp) {
+    fireEvent.click(await view.findByRole("button", { name: "ส่งออก" }));
+    fireEvent.click(await view.findByRole("menuitem", { name: item }));
+  }
+
+  test("the shown links as a spreadsheet Excel reads as Thai", async () => {
+    const { view, downloads } = await setup([shortLink({ title: "บูธ, ROV", tags: ["a", "b"] })]);
+    await exportMenu(view, /รายการลิงก์/);
+    await waitFor(() => expect(downloads).toHaveLength(1));
+    expect(downloads[0]?.name).toBe("it3k-links.csv");
+    const csv = await text(defined(downloads[0]).blob);
+    expect(csv.startsWith("\uFEFF")).toBe(true);
+    expect(csv).toContain('"บูธ, ROV",register,https://it3k.test/l/register');
+    expect(csv).toContain("a|b");
+  });
+
+  test("daily visits for the current tag over 90 days", async () => {
+    const asked: unknown[] = [];
+    const { view, downloads } = await setup(
+      [shortLink({ tags: ["rov"] })],
+      {
+        visits: async (params) => {
+          asked.push(params);
+          return {
+            from: "2026-07-03",
+            to: "2026-09-30",
+            rows: [{ slug: "register", title: "ลงทะเบียน", day: "2026-09-30", qr: 4, link: 1 }],
+          };
+        },
+      },
+      true,
+      ["rov"],
+    );
+    fireEvent.click(
+      within(await view.findByRole("group", { name: "กรองตามแท็ก" })).getByRole("button", {
+        name: "rov",
+      }),
+    );
+    await exportMenu(view, /ยอดเข้าชมรายวัน/);
+    await waitFor(() => expect(downloads).toHaveLength(1));
+    expect(asked).toEqual([{ days: 90, mine: false, tag: "rov" }]);
+    expect(downloads[0]?.name).toBe("it3k-links-rov-visits-2026-07-03-2026-09-30.csv");
+    expect(await text(defined(downloads[0]).blob)).toContain("2026-09-30,register,ลงทะเบียน,4,1");
   });
 });

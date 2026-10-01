@@ -1,5 +1,6 @@
 import {
   LINK_UNAVAILABLE_HEADER,
+  LINK_UNLOCK_HEADER,
   type LinkPageReason,
   isUnavailableReason,
 } from "@it3k/db/short-link-rules";
@@ -32,7 +33,8 @@ export async function answerShortLink(
   if (response && response.status < 500) {
     const reason = response.headers.get(LINK_UNAVAILABLE_HEADER);
     if (!isUnavailableReason(reason)) return response;
-    return (await page(request, reason, response.status, renderPage)) ?? response;
+    const failure = response.headers.get(LINK_UNLOCK_HEADER);
+    return (await page(request, reason, response.status, renderPage, failure)) ?? response;
   }
   if (response) onError(new Error(`Short link API answered ${response.status}`));
   return (
@@ -50,11 +52,15 @@ async function page(
   reason: LinkPageReason,
   status: number,
   renderPage: Fetch,
+  /** Why a typed password did not open a locked link, passed on to the page. */
+  unlockFailure: string | null = null,
 ): Promise<Response | null> {
   // Rendered at the scanned address, so the page the browser hydrates matches
   // the route it finds there (`/l/$slug`), which reads the reason from here.
   const headers = new Headers(request.headers);
   headers.set(LINK_UNAVAILABLE_HEADER, reason);
+  if (unlockFailure) headers.set(LINK_UNLOCK_HEADER, unlockFailure);
+  else headers.delete(LINK_UNLOCK_HEADER);
   let rendered: Response;
   try {
     rendered = await renderPage(new Request(request.url, { headers }));
@@ -66,6 +72,7 @@ async function page(
   pageHeaders.set("Cache-Control", "no-store");
   pageHeaders.set("X-Robots-Tag", "noindex");
   if (status === 503) pageHeaders.set("Retry-After", RETRY_AFTER);
+  if (status === 429) pageHeaders.set("Retry-After", "60");
   return new Response(request.method === "HEAD" ? null : rendered.body, {
     status,
     headers: pageHeaders,

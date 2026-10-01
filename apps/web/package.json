@@ -23,6 +23,7 @@
     "@tanstack/react-table": "^9.2.4",
     "better-auth": "catalog:",
     "evlog": "catalog:",
+    "fflate": "^0.8.3",
     "hono": "^4.13.12",
     "lucide-react": "catalog:",
     "next-themes": "catalog:",

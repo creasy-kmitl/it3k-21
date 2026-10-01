@@ -17,6 +17,8 @@ import {
 import { Spinner } from "@it3k/ui/components/spinner";
 import {
   DESTINATION_MAX,
+  PASSWORD_MAX,
+  PASSWORD_MIN,
   SHORT_LINK_PATH,
   SLUG_MAX,
   SLUG_MIN,
@@ -24,7 +26,7 @@ import {
   TITLE_MAX,
   destinationProblem,
 } from "@it3k/db/short-link-rules";
-import { Check, Plus } from "lucide-react";
+import { Check, LockKeyhole, Plus } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import { DateTimePicker } from "@/components/calendar/date-time-picker";
@@ -46,9 +48,22 @@ export type LinkFormValues = {
   /** Blank means none. */
   fallbackUrl: string;
   tags: string[];
+  /** A new password, null to remove the one set, or undefined to leave it as is. */
+  password?: string | null;
 };
 
+/** What happens to the link's password on save. */
+type PasswordMode = "keep" | "set" | "remove";
+
 type Errors = Partial<Record<keyof LinkFormValues, string>>;
+
+function passwordProblem(mode: PasswordMode, password: string) {
+  if (mode !== "set") return null;
+  if (password.length < PASSWORD_MIN || password.length > PASSWORD_MAX) {
+    return `รหัสผ่านยาว ${PASSWORD_MIN}–${PASSWORD_MAX} ตัวอักษร`;
+  }
+  return null;
+}
 
 /** The same rules the API applies, checked first so mistakes show at once. */
 function validate(values: LinkFormValues, creating: boolean, now: number): Errors {
@@ -97,6 +112,9 @@ export function LinkForm({
   onCancel?: () => void;
 }) {
   const creating = !link;
+  const hadPassword = link?.hasPassword ?? false;
+  const [passwordMode, setPasswordMode] = useState<PasswordMode>("keep");
+  const [password, setPassword] = useState("");
   const [values, setValues] = useState<LinkFormValues>({
     title: link?.title ?? "",
     destination: link?.destination ?? "",
@@ -108,9 +126,11 @@ export function LinkForm({
   // Errors show once someone tries to save, then update as they fix them.
   const [tried, setTried] = useState(false);
   // The API's refusal shows on its field until the form finds a problem itself.
+  const passwordError = tried ? passwordProblem(passwordMode, password) : null;
   const errors: Errors = {
     ...(serverError ? { [serverError.field]: serverError.message } : {}),
     ...(tried ? validate(values, creating, Date.now()) : {}),
+    ...(passwordError ? { password: passwordError } : {}),
   };
   const set = (patch: Partial<LinkFormValues>) =>
     setValues((current) => ({ ...current, ...patch }));
@@ -119,12 +139,14 @@ export function LinkForm({
     event.preventDefault();
     setTried(true);
     if (Object.keys(validate(values, creating, Date.now())).length > 0) return;
+    if (passwordProblem(passwordMode, password)) return;
     onSubmit({
       ...values,
       title: values.title.trim(),
       destination: values.destination.trim(),
       slug: values.slug.trim(),
       fallbackUrl: values.fallbackUrl.trim(),
+      password: passwordMode === "set" ? password : passwordMode === "remove" ? null : undefined,
     });
   }
 
@@ -242,6 +264,62 @@ export function LinkForm({
             onChange={(event) => set({ fallbackUrl: event.target.value })}
           />
           <FieldError>{errors.fallbackUrl}</FieldError>
+        </Field>
+
+        <Field data-invalid={!!errors.password}>
+          {hadPassword && passwordMode !== "set" ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="flex flex-1 items-center gap-1.5 text-sm">
+                <LockKeyhole aria-hidden className="size-4 text-primary" />
+                {passwordMode === "remove" ? "จะเอารหัสผ่านออกเมื่อบันทึก" : "ลิงก์นี้ต้องใส่รหัสผ่านก่อนเปิด"}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPasswordMode("set")}
+              >
+                เปลี่ยนรหัส
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setPasswordMode(passwordMode === "remove" ? "keep" : "remove")}
+              >
+                {passwordMode === "remove" ? "เก็บรหัสไว้" : "เอารหัสออก"}
+              </Button>
+            </div>
+          ) : (
+            <Field orientation="horizontal">
+              <Checkbox
+                id="link-locked"
+                checked={passwordMode === "set"}
+                onCheckedChange={(checked) => setPasswordMode(checked ? "set" : "keep")}
+              />
+              <FieldLabel htmlFor="link-locked" className="font-normal">
+                {hadPassword ? "ตั้งรหัสผ่านใหม่" : "ต้องใส่รหัสผ่านก่อนเปิดลิงก์"}
+              </FieldLabel>
+            </Field>
+          )}
+          {passwordMode === "set" && (
+            <>
+              <Input
+                id="link-password"
+                aria-label="รหัสผ่านของลิงก์"
+                value={password}
+                maxLength={PASSWORD_MAX}
+                autoComplete="off"
+                spellCheck={false}
+                aria-invalid={!!errors.password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+              <FieldDescription>
+                บอกรหัสนี้กับคนที่ควรเข้าได้ ระบบเก็บแบบเข้ารหัส จึงดูย้อนหลังไม่ได้
+              </FieldDescription>
+            </>
+          )}
+          <FieldError>{errors.password}</FieldError>
         </Field>
 
         <Field>

@@ -8,7 +8,7 @@ import { describeNotification } from "@/lib/calendar-labels";
 
 import { isImportantChange } from "./item-sheet";
 import { ApiProvider } from "@/lib/api-context";
-import { fakeApi, fakeCalendarApi, fakeLinksApi, fakeUsersApi } from "@/test/query";
+import { fakeApis, fakeCalendarApi } from "@/test/query";
 import { renderAtRoot } from "@/test/router";
 
 import { NotificationBell, NotificationList } from "./notification-bell";
@@ -131,9 +131,7 @@ describe("<NotificationBell />", () => {
     });
     await renderAtRoot(() => (
       <QueryClientProvider client={new QueryClient()}>
-        <ApiProvider
-          value={{ calendar, leadership: fakeApi(), users: fakeUsersApi(), links: fakeLinksApi() }}
-        >
+        <ApiProvider value={fakeApis({ calendar })}>
           <NotificationBell />
         </ApiProvider>
       </QueryClientProvider>

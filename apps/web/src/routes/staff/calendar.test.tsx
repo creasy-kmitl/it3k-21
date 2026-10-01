@@ -18,10 +18,8 @@ import {
   calendarItem,
   choose,
   defined,
-  fakeApi,
+  fakeApis,
   fakeCalendarApi,
-  fakeLinksApi,
-  fakeUsersApi,
   renderWithQuery,
 } from "@/test/query";
 
@@ -86,9 +84,7 @@ function setup({
     ...api,
   });
   const view = renderWithQuery(
-    <ApiProvider
-      value={{ calendar, leadership: fakeApi(), users: fakeUsersApi(), links: fakeLinksApi() }}
-    >
+    <ApiProvider value={fakeApis({ calendar })}>
       <Harness
         initial={{ view: "agenda", date: "2026-10-10", ...search }}
         myDepartmentId={myDepartmentId}

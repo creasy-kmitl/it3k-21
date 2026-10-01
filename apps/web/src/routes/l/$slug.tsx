@@ -2,15 +2,22 @@ import { buttonVariants } from "@it3k/ui/components/button";
 import { cn } from "@it3k/ui/lib/utils";
 import {
   LINK_UNAVAILABLE_HEADER,
+  LINK_UNLOCK_HEADER,
   type LinkPageReason,
+  PASSWORD_MAX,
+  type UnlockFailure,
   isLinkPageReason,
+  isUnlockFailure,
 } from "@it3k/db/short-link-rules";
 import { SiFacebook } from "@icons-pack/react-simple-icons";
 import { createIsomorphicFn } from "@tanstack/react-start";
 import { getRequestHeader } from "@tanstack/react-start/server";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight, KeyRound, OctagonX } from "lucide-react";
 import type { ComponentProps } from "react";
+
+import { Button } from "@it3k/ui/components/button";
+import { Input } from "@it3k/ui/components/input";
 
 import { DictionaryEntry, Furigana } from "@/components/dictionary-entry";
 
@@ -20,14 +27,68 @@ import { DictionaryEntry, Furigana } from "@/components/dictionary-entry";
 // API's 404 or 410 (or a 503 when the API could not answer), and passes the
 // reason in LINK_UNAVAILABLE_HEADER.
 
+type PageState = { reason: LinkPageReason; unlock: UnlockFailure | null };
+
 /** The reason the worker passed. Read while rendering on the server; the
  * browser gets it with the page, so the client side is only a fallback. */
-const unavailableReason = createIsomorphicFn()
-  .server((): LinkPageReason => {
+const pageState = createIsomorphicFn()
+  .server((): PageState => {
     const reason = getRequestHeader(LINK_UNAVAILABLE_HEADER);
-    return isLinkPageReason(reason) ? reason : "missing";
+    const unlock = getRequestHeader(LINK_UNLOCK_HEADER);
+    return {
+      reason: isLinkPageReason(reason) ? reason : "missing",
+      unlock: isUnlockFailure(unlock) ? unlock : null,
+    };
   })
-  .client((): LinkPageReason => "missing");
+  .client((): PageState => ({ reason: "missing", unlock: null }));
+
+const UNLOCK_MESSAGES: Record<UnlockFailure, string> = {
+  wrong: "รหัสผ่านไม่ถูกต้อง ลองอีกครั้ง",
+  limited: "มีคนลองรหัสผิดหลายครั้งเกินไป รอประมาณหนึ่งนาทีแล้วลองใหม่",
+};
+
+/**
+ * A plain form posting to this same address, query included, so the visit
+ * still counts as a QR scan when it came from one. It works before the page's
+ * script loads.
+ */
+function UnlockForm({ failure }: { failure: UnlockFailure | null }) {
+  return (
+    <form method="post" className="mb-10 flex max-w-sm flex-col gap-2">
+      <label htmlFor="link-password" className="flex items-center gap-2 text-sm font-medium">
+        <KeyRound aria-hidden className="size-4 text-primary" />
+        รหัสผ่าน
+      </label>
+      <div className="flex gap-2">
+        <Input
+          id="link-password"
+          name="password"
+          type="password"
+          required
+          maxLength={PASSWORD_MAX}
+          autoComplete="off"
+          autoFocus
+          aria-invalid={failure !== null}
+          aria-describedby={failure ? "link-password-error" : undefined}
+        />
+        <Button type="submit">
+          ไปต่อ
+          <ArrowRight data-icon="inline-end" />
+        </Button>
+      </div>
+      {failure && (
+        <p
+          id="link-password-error"
+          role="alert"
+          className="flex items-center gap-1.5 text-sm text-destructive"
+        >
+          <OctagonX aria-hidden className="size-4 shrink-0" />
+          {UNLOCK_MESSAGES[failure]}
+        </p>
+      )}
+    </form>
+  );
+}
 
 const ENTRIES: Record<LinkPageReason, ComponentProps<typeof DictionaryEntry>> = {
   missing: {
@@ -98,10 +159,27 @@ const ENTRIES: Record<LinkPageReason, ComponentProps<typeof DictionaryEntry>> = 
       meaning: "รอสักครู่นะ",
     },
   },
+  locked: {
+    word: "ล็อก·ไว้",
+    pronunciation: "ล็อก-ไว้",
+    definitions: [
+      "ลิงก์นี้ต้องใช้รหัสผ่าน ทีมงานตั้งไว้ให้เฉพาะคนที่ได้รับรหัส",
+      "ใส่รหัสที่ได้จากทีมงานด้านล่าง แล้วระบบจะพาไปต่อ",
+    ],
+    aside: {
+      phrase: (
+        <>
+          <Furigana reading="あいことば">合言葉</Furigana>は？
+        </>
+      ),
+      romaji: "aikotoba wa?",
+      meaning: "รหัสลับล่ะ?",
+    },
+  },
 };
 
 export const Route = createFileRoute("/l/$slug")({
-  loader: () => ({ reason: unavailableReason() }),
+  loader: () => pageState(),
   head: () => ({
     meta: [{ title: "ลิงก์นี้ใช้ไม่ได้ · IT3Kings" }, { name: "robots", content: "noindex" }],
   }),
@@ -109,10 +187,11 @@ export const Route = createFileRoute("/l/$slug")({
 });
 
 function LinkUnavailable() {
-  const { reason } = Route.useLoaderData();
+  const { reason, unlock } = Route.useLoaderData();
   return (
     <DictionaryEntry
       {...ENTRIES[reason]}
+      action={reason === "locked" ? <UnlockForm failure={unlock} /> : undefined}
       footer={
         <>
           <Link to="/" className={cn(buttonVariants({ variant: "ghost" }), "cursor-pointer")}>

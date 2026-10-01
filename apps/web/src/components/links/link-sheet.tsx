@@ -14,6 +14,7 @@ import {
   ExternalLink,
   History,
   LifeBuoy,
+  LockKeyhole,
   Link2,
   type LucideIcon,
   Pencil,
@@ -56,11 +57,13 @@ const FIELD_LABELS: Record<string, string> = {
   expiresAt: "หมดอายุ",
   fallbackUrl: "ปลายทางสำรอง",
   tags: "แท็ก",
+  password: "รหัสผ่าน",
 };
 
 function describe(field: string, value: unknown): string {
   if (value === null || value === undefined || value === "") return "ไม่มี";
   if (field === "enabled") return value ? "เปิด" : "ปิด";
+  if (field === "password") return value ? "มี" : "ไม่มี";
   if (field === "expiresAt" && typeof value === "number") return formatBangkok(value, "dateTime");
   if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : "ไม่มี";
   return String(value);
@@ -298,6 +301,12 @@ function LinkBody({
             {link.owner.name}
           </span>
         )}
+        {link.hasPassword && (
+          <Badge variant="secondary">
+            <LockKeyhole aria-hidden data-icon="inline-start" />
+            มีรหัสผ่าน
+          </Badge>
+        )}
         {link.tags.map((tag) => (
           <Badge key={tag} variant="outline" className="text-muted-foreground">
             <Tag aria-hidden data-icon="inline-start" />
@@ -370,6 +379,7 @@ function LinkBody({
                   expiresAt: values.expiresAt,
                   fallbackUrl: values.fallbackUrl || null,
                   tags: values.tags,
+                  ...(values.password !== undefined ? { password: values.password } : {}),
                 })
               }
             />

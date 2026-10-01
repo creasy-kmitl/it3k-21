@@ -9,7 +9,7 @@ export const SHORT_LINK_PATH = "/l/";
  * web worker answers with the web app's own page for it, so the page looks
  * like the rest of the site.
  */
-export const UNAVAILABLE_REASONS = ["missing", "disabled", "expired"] as const;
+export const UNAVAILABLE_REASONS = ["missing", "disabled", "expired", "locked"] as const;
 export type UnavailableReason = (typeof UNAVAILABLE_REASONS)[number];
 export const LINK_UNAVAILABLE_HEADER = "X-Short-Link-Unavailable";
 
@@ -25,6 +25,23 @@ export type LinkPageReason = (typeof LINK_PAGE_REASONS)[number];
 
 export const isLinkPageReason = (value: unknown): value is LinkPageReason =>
   (LINK_PAGE_REASONS as readonly unknown[]).includes(value);
+
+/**
+ * Why the last password typed for a locked link did not open it: it was
+ * wrong, or too many wrong ones were tried this minute. The API names it in
+ * this header, next to LINK_UNAVAILABLE_HEADER's "locked".
+ */
+export const UNLOCK_FAILURES = ["wrong", "limited"] as const;
+export type UnlockFailure = (typeof UNLOCK_FAILURES)[number];
+export const LINK_UNLOCK_HEADER = "X-Short-Link-Unlock";
+
+export const isUnlockFailure = (value: unknown): value is UnlockFailure =>
+  (UNLOCK_FAILURES as readonly unknown[]).includes(value);
+
+export const PASSWORD_MIN = 4;
+export const PASSWORD_MAX = 64;
+/** Wrong passwords a link takes per minute before it stops checking them. */
+export const UNLOCK_ATTEMPTS_PER_MINUTE = 10;
 
 /**
  * Added to the link a QR code encodes, so a visit through the QR is told apart

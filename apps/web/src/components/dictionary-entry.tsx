@@ -9,6 +9,7 @@ export function DictionaryEntry({
   pronunciation,
   definitions,
   aside,
+  action,
   footer,
 }: {
   word: string;
@@ -17,6 +18,8 @@ export function DictionaryEntry({
   definitions: ReactNode[];
   /** A short Japanese phrase, its romaji and its meaning in Thai. */
   aside?: { phrase: ReactNode; romaji: string; meaning: string };
+  /** Something to do on the page, e.g. a form, between the aside and the footer. */
+  action?: ReactNode;
   footer?: ReactNode;
 }) {
   return (
@@ -58,6 +61,8 @@ export function DictionaryEntry({
             </figcaption>
           </figure>
         )}
+
+        {action}
 
         {footer && <footer className="flex flex-wrap items-center font-bold">{footer}</footer>}
       </article>

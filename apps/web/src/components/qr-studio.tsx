@@ -44,6 +44,7 @@ import { toast } from "sonner";
 
 import { SideDrawer } from "@/components/calendar/side-drawer";
 import { PageHeader } from "@/components/page-header";
+import { QrPresetBar } from "@/components/qr-preset-bar";
 import {
   AdvancedFields,
   ColorFields,
@@ -70,6 +71,7 @@ import {
 } from "@/lib/qr";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { LOGO_TYPES, type QrBrowser, qrBrowser } from "@/lib/qr-export";
+import { type QrPreset, fromPresetDesign, toPresetDesign } from "@/lib/qr-presets";
 import {
   DEFAULT_SETTINGS,
   type QrSettings,
@@ -437,6 +439,23 @@ export function QrStudio({
     });
   }
 
+  /** Takes on a preset's design whole, its logo included. */
+  function applyPreset(preset: QrPreset) {
+    const { design: next, exportSize: size } = fromPresetDesign(preset.design);
+    logoRequest.current++;
+    setLogoLoading(false);
+    setLogoError(null);
+    setDesign(next);
+    setExportSize(size);
+    if (next.logo) {
+      setUploaded({ name: `โลโก้จาก ${preset.name}`, dataUrl: next.logo.dataUrl });
+      setLogoSize(next.logo.size);
+      setLogoChoice("custom");
+    } else {
+      setLogoChoice("none");
+    }
+  }
+
   function resizeLogo(size: number) {
     setLogoSize(size);
     if (design.logo) change({ logo: { ...design.logo, size } });
@@ -634,6 +653,9 @@ export function QrStudio({
                 <FieldDescription>ยิ่งข้อความสั้น QR ยิ่งโปร่งและสแกนง่าย</FieldDescription>
               </Field>
             </FormSection>
+
+            <FieldSeparator />
+            <QrPresetBar current={toPresetDesign(design, exportSize)} onApply={applyPreset} />
 
             <FieldSeparator />
             <ShapeFields design={design} onChange={change} />

@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 
+import { ApiProvider } from "@/lib/api-context";
 import type { QrBrowser, RasterType } from "@/lib/qr-export";
-import { choose } from "@/test/query";
+import type { QrPreset, QrPresetsApi } from "@/lib/qr-presets";
+import { choose, fakeApis, fakeQrPresetsApi, renderWithQuery } from "@/test/query";
 
 import { QrStudio } from "./qr-studio";
 
@@ -14,7 +16,11 @@ afterEach(() => {
 
 const PNG_URL = "data:image/png;base64,iVBORw0KGgo=";
 
-function setup(overrides: Partial<QrBrowser> = {}, initialText?: string) {
+function setup(
+  overrides: Partial<QrBrowser> = {},
+  initialText?: string,
+  qrPresets: QrPresetsApi = fakeQrPresetsApi(),
+) {
   const downloads: { name: string; blob: Blob }[] = [];
   const rasterized: { type: RasterType; px: number }[] = [];
   const browser: QrBrowser = {
@@ -28,7 +34,11 @@ function setup(overrides: Partial<QrBrowser> = {}, initialText?: string) {
     loadLogo: async () => PNG_URL,
     ...overrides,
   };
-  render(<QrStudio browser={browser} initialText={initialText} />);
+  renderWithQuery(
+    <ApiProvider value={fakeApis({ qrPresets })}>
+      <QrStudio browser={browser} initialText={initialText} />
+    </ApiProvider>,
+  );
   return { downloads, rasterized };
 }
 
@@ -405,5 +415,96 @@ describe("QrStudio on a phone", () => {
     setup();
     type("ก".repeat(3000));
     expect(within(bar()).getByText(/ยาวเกินกว่าที่ QR จะเก็บได้/)).toBeTruthy();
+  });
+});
+
+describe("QrStudio presets", () => {
+  const blue: QrPreset = {
+    id: "p-blue",
+    name: "โปสเตอร์ PR",
+    design: {
+      dotStyle: "circle",
+      markerBorder: "circle",
+      markerCenter: "circle",
+      dotColor: "#1e3a8a",
+      markerColor: "#1e3a8a",
+      background: "#ffffff",
+      logo: { dataUrl: PNG_URL, size: 0.14 },
+      quietZone: 6,
+      ecc: "H",
+      exportSize: 2048,
+    },
+    owner: { id: "u-me", name: "Me" },
+    updatedAt: 0,
+    canEdit: true,
+  };
+
+  function presetsApi(overrides: Partial<QrPresetsApi> = {}) {
+    const calls: { create: unknown[]; update: unknown[]; remove: string[] } = {
+      create: [],
+      update: [],
+      remove: [],
+    };
+    const api = fakeQrPresetsApi({
+      list: async () => ({ items: [blue], canCreate: true }),
+      create: async (json) => {
+        calls.create.push(json);
+        return { ...blue, id: "p-new", name: json.name, design: json.design };
+      },
+      update: async (id, json) => {
+        calls.update.push([id, json]);
+        return blue;
+      },
+      remove: async (id) => void calls.remove.push(id),
+      ...overrides,
+    });
+    return { api, calls };
+  }
+
+  test("applying a preset takes its colours, shapes, logo and export size", async () => {
+    const { api } = presetsApi();
+    setup({}, "https://example.com", api);
+    await choose(await screen.findByLabelText("ใช้ดีไซน์ที่ทีมบันทึกไว้"), "โปสเตอร์ PR");
+    await waitFor(() => expect(previewSvg()).toContain("#1e3a8a"));
+    expect(previewSvg()).toContain("<image");
+    expect(screen.getByLabelText("โลโก้กลาง QR").textContent).toContain("โลโก้จาก โปสเตอร์ PR");
+    // The select now names the preset the design matches.
+    expect(screen.getByLabelText("ใช้ดีไซน์ที่ทีมบันทึกไว้").textContent).toContain("โปสเตอร์ PR");
+  });
+
+  test("saves the current design as a new preset", async () => {
+    const { api, calls } = presetsApi();
+    setup({}, "https://example.com", api);
+    fireEvent.click(await screen.findByRole("button", { name: "บันทึกเป็น preset" }));
+    fireEvent.change(await screen.findByLabelText("ชื่อ preset"), {
+      target: { value: "บัตรนักกีฬา" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(calls.create).toHaveLength(1));
+    expect(calls.create[0]).toMatchObject({
+      name: "บัตรนักกีฬา",
+      design: { dotStyle: "square", logo: null, exportSize: 1024 },
+    });
+  });
+
+  test("offers to update a preset after tweaking it, and deletes only on a second click", async () => {
+    const { api, calls } = presetsApi();
+    setup({}, "https://example.com", api);
+    await choose(await screen.findByLabelText("ใช้ดีไซน์ที่ทีมบันทึกไว้"), "โปสเตอร์ PR");
+    fireEvent.click(await screen.findByRole("button", { name: "ลบ preset" }));
+    expect(calls.remove).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: /กดอีกครั้งเพื่อลบ/ }));
+    await waitFor(() => expect(calls.remove).toEqual(["p-blue"]));
+  });
+
+  test("a tweaked design reads as custom and can overwrite its preset", async () => {
+    const { api, calls } = presetsApi();
+    setup({}, "https://example.com", api);
+    await choose(await screen.findByLabelText("ใช้ดีไซน์ที่ทีมบันทึกไว้"), "โปสเตอร์ PR");
+    await choose(screen.getByLabelText("รูปแบบจุด"), "สี่เหลี่ยม");
+    expect(screen.getByLabelText("ใช้ดีไซน์ที่ทีมบันทึกไว้").textContent).toContain("ดีไซน์ที่ปรับเอง");
+    fireEvent.click(screen.getByRole("button", { name: "บันทึกทับ “โปสเตอร์ PR”" }));
+    await waitFor(() => expect(calls.update).toHaveLength(1));
+    expect(calls.update[0]).toMatchObject(["p-blue", { design: { dotStyle: "square" } }]);
   });
 });

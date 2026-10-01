@@ -316,6 +316,43 @@ describe("editing", () => {
     });
   });
 
+  test("a password is stored hashed, never returned, and logged only as set or not", async () => {
+    const link = await create({ password: "tech2026" });
+    expect(link).toMatchObject({ hasPassword: true });
+    expect(JSON.stringify(link)).not.toContain("tech2026");
+    expect(JSON.stringify(link)).not.toContain("pbkdf2");
+    const [row] = await t.db.select().from(shortLink).where(eq(shortLink.id, link.id));
+    expect(row?.passwordHash).toStartWith("pbkdf2$");
+
+    const changed = await send<Link>("art", "PATCH", `/${link.id}`, {
+      password: "newpass",
+      version: 1,
+    });
+    expect(changed.body).toMatchObject({ hasPassword: true });
+    const removed = await send<Link>("art", "PATCH", `/${link.id}`, {
+      password: null,
+      version: 2,
+    });
+    expect(removed.body).toMatchObject({ hasPassword: false });
+
+    const log = await send<Detail>("art", "GET", `/${link.id}`);
+    expect(log.body.changes.map((change) => change.changes.password)).toEqual([
+      [true, false],
+      [true, true],
+      [false, true],
+    ]);
+    expect(JSON.stringify(log.body)).not.toContain("newpass");
+    expect(
+      (
+        await send("art", "POST", "/", {
+          title: "x",
+          destination: "https://e.example",
+          password: "abc",
+        })
+      ).res.status,
+    ).toBe(400);
+  });
+
   test("an unsafe destination is refused on edit too", async () => {
     const link = await create();
     const { res, body } = await send("art", "PATCH", `/${link.id}`, {

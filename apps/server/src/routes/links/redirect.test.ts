@@ -127,3 +127,63 @@ describe("links that do not send anyone on", () => {
     expect(res.headers.get("x-short-link-unavailable")).toBe("expired");
   });
 });
+
+describe("a link with a password", () => {
+  async function lock(password = "tech2026") {
+    const { hashLinkPassword } = await import("./password");
+    await t.db
+      .update(shortLink)
+      .set({ passwordHash: await hashLinkPassword(password) })
+      .where(eq(shortLink.id, "link-1"));
+  }
+
+  const unlock = (password: string, query = "") =>
+    app.request(`/register${query}`, {
+      method: "POST",
+      headers: { "user-agent": PHONE, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ password }).toString(),
+    });
+
+  test("asks for the password instead of redirecting, and counts nothing", async () => {
+    await lock();
+    const res = await visit("/register?qr");
+    expect(res.status).toBe(403);
+    expect(res.headers.get("x-short-link-unavailable")).toBe("locked");
+    expect(res.headers.get("location")).toBeNull();
+    expect(await counts()).toEqual({});
+  });
+
+  test("the right password sends the visitor on and counts the visit by source", async () => {
+    await lock();
+    const res = await unlock("tech2026", "?qr");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://forms.example.com/register");
+    expect(await counts()).toEqual({ [`${bangkokDay(Date.now())}/qr`]: 1 });
+  });
+
+  test("a wrong password says so; too many in a minute stops checking", async () => {
+    await lock();
+    const wrong = await unlock("nope");
+    expect(wrong.status).toBe(403);
+    expect(wrong.headers.get("x-short-link-unlock")).toBe("wrong");
+    for (let i = 1; i < 10; i++) await unlock("nope");
+    const limited = await unlock("tech2026");
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("x-short-link-unlock")).toBe("limited");
+    expect(limited.headers.get("retry-after")).toBe("60");
+  });
+
+  test("a switched-off locked link still goes to its fallback, no password needed", async () => {
+    await lock();
+    await t.db
+      .update(shortLink)
+      .set({ enabled: false, fallbackUrl: "https://it3k.example/event" })
+      .where(eq(shortLink.id, "link-1"));
+    expect((await visit("/register")).headers.get("location")).toBe("https://it3k.example/event");
+  });
+
+  test("posting to an open link just redirects", async () => {
+    const res = await unlock("anything");
+    expect(res.status).toBe(302);
+  });
+});

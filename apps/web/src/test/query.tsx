@@ -9,6 +9,7 @@ import { ApiProvider, type Apis } from "@/lib/api-context";
 import type { CalendarApi, CalendarItem } from "@/lib/calendar";
 import type { LeadershipApi, LeadershipPage, LeadershipSummary } from "@/lib/leadership";
 import type { LinksApi, ShortLink } from "@/lib/links";
+import type { QrPresetsApi } from "@/lib/qr-presets";
 import type { UsersApi } from "@/lib/users";
 
 /** Narrows a value a test expects to exist, failing loudly when it does not. */
@@ -47,6 +48,17 @@ export function fakeUsersApi(overrides: Partial<UsersApi> = {}): UsersApi {
   };
 }
 
+/** Every API client as a fake; each fails loudly unless a test provides it. */
+export function fakeApis(apis: Partial<Apis> = {}): Apis {
+  return {
+    leadership: apis.leadership ?? fakeApi(),
+    users: apis.users ?? fakeUsersApi(),
+    calendar: apis.calendar ?? fakeCalendarApi(),
+    links: apis.links ?? fakeLinksApi(),
+    qrPresets: apis.qrPresets ?? fakeQrPresetsApi(),
+  };
+}
+
 /** Renders a file route's page with fake API clients in place of the real ones. */
 export function renderRoute(
   route: { options: { component?: RouteComponent } },
@@ -55,14 +67,7 @@ export function renderRoute(
   const Page = route.options.component;
   if (!Page) throw new Error("Route has no component");
   return renderWithQuery(
-    <ApiProvider
-      value={{
-        leadership: apis.leadership ?? fakeApi(),
-        users: apis.users ?? fakeUsersApi(),
-        calendar: apis.calendar ?? fakeCalendarApi(),
-        links: apis.links ?? fakeLinksApi(),
-      }}
-    >
+    <ApiProvider value={fakeApis(apis)}>
       <Page />
     </ApiProvider>,
   );
@@ -151,6 +156,8 @@ export function fakeLinksApi(overrides: Partial<LinksApi> = {}): LinksApi {
     list: unexpected("links.list"),
     get: unexpected("links.get"),
     create: unexpected("links.create"),
+    bulk: unexpected("links.bulk"),
+    visits: unexpected("links.visits"),
     update: unexpected("links.update"),
     ...overrides,
   };
@@ -165,6 +172,7 @@ export function shortLink(overrides: Partial<ShortLink> = {}): ShortLink {
     destination: "https://forms.example.com/register",
     fallbackUrl: null,
     tags: [],
+    hasPassword: false,
     enabled: true,
     expiresAt: null,
     state: "active",
@@ -176,6 +184,16 @@ export function shortLink(overrides: Partial<ShortLink> = {}): ShortLink {
     createdAt: CALENDAR_NOW,
     updatedAt: CALENDAR_NOW,
     canEdit: true,
+    ...overrides,
+  };
+}
+
+export function fakeQrPresetsApi(overrides: Partial<QrPresetsApi> = {}): QrPresetsApi {
+  return {
+    list: async () => ({ items: [], canCreate: true }),
+    create: unexpected("qrPresets.create"),
+    update: unexpected("qrPresets.update"),
+    remove: unexpected("qrPresets.remove"),
     ...overrides,
   };
 }

@@ -72,6 +72,12 @@ export const relations = defineRelations(schema, (r) => ({
       optional: false,
     }),
   },
+  qrPreset: {
+    owner: r.one.user({
+      from: r.qrPreset.ownerId,
+      to: r.user.id,
+    }),
+  },
   session: {
     user: r.one.user({
       from: r.session.userId,
