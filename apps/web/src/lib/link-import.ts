@@ -91,7 +91,8 @@ export function parseLinkImport(text: string, shortLinkHost: string): ImportResu
     }
     if (tags.length > TAG_MAX_COUNT) errors.push(`แท็กได้ไม่เกิน ${TAG_MAX_COUNT} อัน`);
     const fallbackProblem = fallbackUrl ? destinationProblem(fallbackUrl, shortLinkHost) : null;
-    if (fallbackProblem) errors.push(`ปลายทางสำรอง: ${LINK_ERROR_MESSAGES[fallbackProblem]}`);
+    if (fallbackUrl.length > DESTINATION_MAX) errors.push("ปลายทางสำรองยาวเกินไป");
+    else if (fallbackProblem) errors.push(`ปลายทางสำรอง: ${LINK_ERROR_MESSAGES[fallbackProblem]}`);
 
     return {
       line: i + 2,

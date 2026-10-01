@@ -35,8 +35,8 @@ Visits are counted after the response (`waitUntil`), so a failed count never del
 ## Working with many links
 
 - **Bulk create** (`/staff/links`, the arrow next to "สร้างลิงก์"): paste rows from Google Sheets or Excel, or upload a CSV, with up to 100 rows. Columns are `title` and `destination` (required), plus `slug`, `tags` (separated by `|`) and `fallback_url`. Thai headers work too. Passwords cannot be set in bulk: the API refuses rows that send one. Set them on each link afterwards. Every row is checked before anything is sent. The API checks again, and creates all rows or none.
-- **QR codes as a zip:** after a bulk create, or from "ส่งออก" for the links currently shown. Each file is named after its slug, and `links.csv` maps files to links. The design is a team preset, the design last used in QR Studio on that browser, or plain black on white.
-- **Reports:** "ส่งออก" also downloads the shown links as CSV, and daily visits for the last 90 days as CSV (filtered by tag and "ของฉัน", not by search text). Files start with a byte-order mark so Excel reads Thai correctly. Text that a spreadsheet would run as a formula (starting with `=`, `+`, `-`, `@`, a tab or CR) is written with a leading apostrophe. Bulk import removes the apostrophe again.
+- **QR codes as a zip:** after a bulk create, or from "ส่งออก" for the links currently shown. Each file is named after its slug, and `links.xlsx` maps files to links. The design is a team preset, the design last used in QR Studio on that browser, or plain black on white.
+- **Reports:** "ส่งออก" also downloads the shown links, and daily visits for the last 90 days (filtered by tag and "ของฉัน", not by search text), as Excel files. They are `.xlsx` rather than CSV on purpose. Every piece of text is written as a text cell, and in `.xlsx` a formula exists only inside an `<f>` element, so a title like `=HYPERLINK(…)` stays text even after the file is opened, saved and reopened. A CSV escape such as a leading apostrophe can be lost on that round trip (OWASP, "CSV Injection"). The bulk-import template stays CSV, because that is the import format.
 
 ## When something breaks
 

@@ -42,7 +42,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { SideDrawer } from "@/components/calendar/side-drawer";
-import { BulkCreate, linksCsv } from "@/components/links/bulk-create";
+import { BulkCreate, linksSheet } from "@/components/links/bulk-create";
 import { LinkForm } from "@/components/links/link-form";
 import { CopyButton, LinkStateBadge, displayUrl } from "@/components/links/link-parts";
 import { LinkSheet } from "@/components/links/link-sheet";
@@ -51,7 +51,7 @@ import { PageHeader } from "@/components/page-header";
 import { type Segment, SegmentedControl } from "@/components/segmented-control";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useApis } from "@/lib/api-context";
-import { csvBlob } from "@/lib/csv";
+import { xlsxBlob } from "@/lib/xlsx";
 import { type ShortLink, linkError } from "@/lib/links";
 import { type QrBrowser, qrBrowser } from "@/lib/qr-export";
 
@@ -149,7 +149,7 @@ export function LinksPage({ browser = qrBrowser }: { browser?: QrBrowser }) {
   const filtered = q !== "" || mine || tag !== null;
   const tags = list.data?.tags ?? [];
   const shown = list.data?.items ?? [];
-  // Names files after what is shown, e.g. it3k-links-rov.csv for a tag.
+  // Names files after what is shown, e.g. it3k-links-rov.xlsx for a tag.
   const scope = ["it3k", "links", tag, mine ? "mine" : null].filter(Boolean).join("-");
 
   async function downloadVisits() {
@@ -157,11 +157,11 @@ export function LinksPage({ browser = qrBrowser }: { browser?: QrBrowser }) {
     try {
       const report = await links.visits({ days: REPORT_DAYS, mine, tag: tag ?? undefined });
       browser.download(
-        csvBlob([
+        xlsxBlob("visits", [
           ["day", "slug", "title", "visits_qr", "visits_link"],
           ...report.rows.map((row) => [row.day, row.slug, row.title, row.qr, row.link]),
         ]),
-        `${scope}-visits-${report.from}-${report.to}.csv`,
+        `${scope}-visits-${report.from}-${report.to}.xlsx`,
       );
     } catch (error) {
       toast.error(`ดาวน์โหลดรายงานไม่สำเร็จ: ${error instanceof Error ? error.message : error}`);
@@ -213,13 +213,15 @@ export function LinksPage({ browser = qrBrowser }: { browser?: QrBrowser }) {
                 <FileArchive />
                 QR ของ {shown.length} ลิงก์ที่แสดง (.zip)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => browser.download(linksCsv(shown), `${scope}.csv`)}>
+              <DropdownMenuItem
+                onClick={() => browser.download(linksSheet(shown), `${scope}.xlsx`)}
+              >
                 <FileSpreadsheet />
-                รายการลิงก์ (CSV)
+                รายการลิงก์ (Excel)
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => void downloadVisits()}>
                 <ChartColumn />
-                ยอดเข้าชมรายวัน {REPORT_DAYS} วัน (CSV)
+                ยอดเข้าชมรายวัน {REPORT_DAYS} วัน (Excel)
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

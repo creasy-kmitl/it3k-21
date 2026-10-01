@@ -87,4 +87,18 @@ describe("parseLinkImport", () => {
     );
     expect(result.ok && result.rows[0]?.input.title).toBe("=บูธ");
   });
+
+  test("checks every length the API checks, the fallback's included", () => {
+    const long = `https://a.example/${"x".repeat(2048)}`;
+    const result = parseLinkImport(
+      `title,destination,fallback_url\n${"ก".repeat(121)},${long},${long}`,
+      HOST,
+    );
+    if (!result.ok) throw new Error(result.message);
+    expect(result.rows[0]?.errors).toEqual([
+      "ชื่อยาวเกิน 120 ตัวอักษร",
+      "ปลายทางยาวเกินไป",
+      "ปลายทางสำรองยาวเกินไป",
+    ]);
+  });
 });

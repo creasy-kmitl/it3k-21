@@ -35,9 +35,12 @@ describe("buildQrZip", () => {
       onProgress: (done) => progress.push(done),
     });
     const files = await unzip(zip);
-    expect(Object.keys(files).sort()).toEqual(["links.csv", "rov.svg", "valo.svg"]);
+    expect(Object.keys(files).sort()).toEqual(["links.xlsx", "rov.svg", "valo.svg"]);
     expect(strFromU8(defined(files["rov.svg"]))).toStartWith("<svg");
-    expect(strFromU8(defined(files["links.csv"]))).toContain('valo.svg,"บูธ, Valo"');
+    const index = unzipSync(defined(files["links.xlsx"]));
+    const sheet = strFromU8(defined(index["xl/worksheets/sheet1.xml"]));
+    expect(sheet).toContain(">valo.svg<");
+    expect(sheet).toContain(">บูธ, Valo<");
     expect(progress).toEqual([1, 2]);
   });
 

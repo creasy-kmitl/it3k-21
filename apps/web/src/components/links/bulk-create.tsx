@@ -20,6 +20,7 @@ import { toast } from "sonner";
 
 import { useApis } from "@/lib/api-context";
 import { csvBlob } from "@/lib/csv";
+import { xlsxBlob } from "@/lib/xlsx";
 import { IMPORT_MAX, type ImportRow, TEMPLATE_ROWS, parseLinkImport } from "@/lib/link-import";
 import { type ShortLink, bulkRowErrors } from "@/lib/links";
 import { type QrBrowser, qrBrowser } from "@/lib/qr-export";
@@ -27,9 +28,9 @@ import { type QrBrowser, qrBrowser } from "@/lib/qr-export";
 import { displayUrl } from "./link-parts";
 import { QrZipPanel } from "./qr-zip-panel";
 
-/** The created links as a spreadsheet, short URLs included. */
-export function linksCsv(links: ShortLink[]) {
-  return csvBlob([
+/** The links as an Excel sheet, short URLs included. */
+export function linksSheet(links: ShortLink[]) {
+  return xlsxBlob("links", [
     ["title", "slug", "short_url", "qr_url", "destination", "fallback_url", "state", "tags"],
     ...links.map((link) => [
       link.title,
@@ -167,10 +168,10 @@ export function BulkCreate({
         <div className="flex flex-wrap justify-between gap-2">
           <Button
             variant="outline"
-            onClick={() => browser.download(linksCsv(created), "it3k-links.csv")}
+            onClick={() => browser.download(linksSheet(created), "it3k-links.xlsx")}
           >
             <FileSpreadsheet data-icon="inline-start" />
-            ดาวน์โหลดรายการ (CSV)
+            ดาวน์โหลดรายการ (Excel)
           </Button>
           <Button variant="ghost" onClick={onDone}>
             เสร็จแล้ว

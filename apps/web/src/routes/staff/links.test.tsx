@@ -377,9 +377,16 @@ describe("a link's panel", () => {
   });
 });
 
-// ignoreBOM keeps the byte-order mark in the text, so a test can see it.
-const text = async (blob: Blob) =>
-  new TextDecoder("utf-8", { ignoreBOM: true }).decode(await blob.arrayBuffer());
+/** The cells of an exported .xlsx, row by row, as text. */
+async function sheetRows(blob: Blob) {
+  const files = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+  const sheet = strFromU8(defined(files["xl/worksheets/sheet1.xml"]));
+  return [...sheet.matchAll(/<row [^>]*>(.*?)<\/row>/g)].map(([, cells = ""]) =>
+    [...cells.matchAll(/<c [^>]*>(?:<is><t[^>]*>(.*?)<\/t><\/is>|<v>(.*?)<\/v>)<\/c>/g)].map(
+      ([, text, number]) => text ?? number ?? "",
+    ),
+  );
+}
 
 describe("passwords", () => {
   test("creates a locked link, refusing a password that is too short", async () => {
@@ -485,8 +492,9 @@ describe("many links at once", () => {
     await waitFor(() => expect(downloads).toHaveLength(1));
     expect(downloads[0]?.name).toBe("it3k-qr-2-links.zip");
     const files = unzipSync(new Uint8Array(await defined(downloads[0]).blob.arrayBuffer()));
-    expect(Object.keys(files).sort()).toEqual(["booth-rov.png", "links.csv", "rnd1.png"]);
-    expect(strFromU8(defined(files["links.csv"]))).toContain("booth-rov.png");
+    expect(Object.keys(files).sort()).toEqual(["booth-rov.png", "links.xlsx", "rnd1.png"]);
+    const index = await sheetRows(new Blob([defined(files["links.xlsx"])]));
+    expect(index[1]?.[0]).toBe("booth-rov.png");
   });
 
   test("shows the API's refusals on their rows", async () => {
@@ -515,15 +523,21 @@ describe("exports", () => {
     fireEvent.click(await view.findByRole("menuitem", { name: item }));
   }
 
-  test("the shown links as a spreadsheet Excel reads as Thai", async () => {
-    const { view, downloads } = await setup([shortLink({ title: "บูธ, ROV", tags: ["a", "b"] })]);
+  test("the shown links as an Excel sheet, a formula-like title kept as text", async () => {
+    const { view, downloads } = await setup([
+      shortLink({ title: '=HYPERLINK("https://evil.example")', tags: ["a", "b"] }),
+    ]);
     await exportMenu(view, /รายการลิงก์/);
     await waitFor(() => expect(downloads).toHaveLength(1));
-    expect(downloads[0]?.name).toBe("it3k-links.csv");
-    const csv = await text(defined(downloads[0]).blob);
-    expect(csv.startsWith("\uFEFF")).toBe(true);
-    expect(csv).toContain('"บูธ, ROV",register,https://it3k.test/l/register');
-    expect(csv).toContain("a|b");
+    expect(downloads[0]?.name).toBe("it3k-links.xlsx");
+    const rows = await sheetRows(defined(downloads[0]).blob);
+    expect(rows[0]?.slice(0, 3)).toEqual(["title", "slug", "short_url"]);
+    expect(rows[1]?.slice(0, 3)).toEqual([
+      "=HYPERLINK(&quot;https://evil.example&quot;)",
+      "register",
+      "https://it3k.test/l/register",
+    ]);
+    expect(rows[1]).toContain("a|b");
   });
 
   test("daily visits for the current tag over 90 days", async () => {
@@ -551,7 +565,13 @@ describe("exports", () => {
     await exportMenu(view, /ยอดเข้าชมรายวัน/);
     await waitFor(() => expect(downloads).toHaveLength(1));
     expect(asked).toEqual([{ days: 90, mine: false, tag: "rov" }]);
-    expect(downloads[0]?.name).toBe("it3k-links-rov-visits-2026-07-03-2026-09-30.csv");
-    expect(await text(defined(downloads[0]).blob)).toContain("2026-09-30,register,ลงทะเบียน,4,1");
+    expect(downloads[0]?.name).toBe("it3k-links-rov-visits-2026-07-03-2026-09-30.xlsx");
+    expect((await sheetRows(defined(downloads[0]).blob))[1]).toEqual([
+      "2026-09-30",
+      "register",
+      "ลงทะเบียน",
+      "4",
+      "1",
+    ]);
   });
 });

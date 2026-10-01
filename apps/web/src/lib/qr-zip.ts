@@ -1,8 +1,8 @@
-// Many QR codes at once: one file per short link, plus a CSV that says which
-// file is which, packed into a zip in the browser.
+// Many QR codes at once: one file per short link, plus a spreadsheet that
+// says which file is which, packed into a zip in the browser.
 import { strToU8, zipSync } from "fflate";
 
-import { toCsv } from "./csv";
+import { toXlsx } from "./xlsx";
 import {
   type ExportSize,
   type QrDesign,
@@ -51,12 +51,11 @@ export async function buildQrZip({
         : new Uint8Array(await (await rasterize(svg, "image/png", exportSize)).arrayBuffer());
     onProgress?.(i + 1, links.length);
   }
-  files["links.csv"] = strToU8(
-    toCsv([
-      ["file", "title", "qr_url", "short_url"],
-      ...links.map((link) => [`${link.slug}.${format}`, link.title, link.qrUrl, link.shortUrl]),
-    ]),
-  );
+  // A spreadsheet, so titles stay text in Excel (see xlsx.ts).
+  files["links.xlsx"] = toXlsx("links", [
+    ["file", "title", "qr_url", "short_url"],
+    ...links.map((link) => [`${link.slug}.${format}`, link.title, link.qrUrl, link.shortUrl]),
+  ]);
   // Images are compressed already; storing them keeps the browser quick.
   const zipped = zipSync(files, { level: format === "svg" ? 6 : 0 });
   return new Blob([zipped], { type: "application/zip" });
