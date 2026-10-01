@@ -4,7 +4,7 @@ import { createRouter as createTanStackRouter } from "@tanstack/react-router";
 import Loader from "./components/loader";
 import NotFound from "./components/not-found";
 import RouteError from "./components/route-error";
-import { ApiError } from "./lib/leadership";
+import { isSignedOut } from "./lib/leadership";
 import { routeTree } from "./routeTree.gen";
 
 export const getRouter = () => {
@@ -12,7 +12,7 @@ export const getRouter = () => {
   // A 401 on a staff page means the session ended while the page was open:
   // sign in again and come back, rather than leaving a "failed to load" behind.
   const onError = (error: Error) => {
-    if (!(error instanceof ApiError) || error.status !== 401) return;
+    if (!isSignedOut(error)) return;
     const { pathname, href } = router.state.location;
     if (!pathname.startsWith("/staff")) return;
     void router.navigate({ to: "/login", search: { to: href } });

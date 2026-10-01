@@ -41,6 +41,7 @@ import {
 } from "@/components/department-icon";
 import { PageHeader } from "@/components/page-header";
 import { type Department, type DepartmentInput, departmentsApi } from "@/lib/departments";
+import { isSignedOut } from "@/lib/leadership";
 
 export const Route = createFileRoute("/staff/departments")({
   component: RouteComponent,
@@ -49,7 +50,15 @@ export const Route = createFileRoute("/staff/departments")({
       throw redirect({ to: "/staff/dashboard" });
     }
   },
-  loader: () => departmentsApi.list(),
+  // Not a query, so the router's 401 handling does not see it: sign in and come back.
+  loader: async ({ location }) => {
+    try {
+      return await departmentsApi.list();
+    } catch (error) {
+      if (isSignedOut(error)) throw redirect({ to: "/login", search: { to: location.href } });
+      throw error;
+    }
+  },
 });
 
 function RouteComponent() {
@@ -69,6 +78,10 @@ function RouteComponent() {
       await router.invalidate();
       return true;
     } catch (error) {
+      if (isSignedOut(error)) {
+        void router.navigate({ to: "/login", search: { to: router.state.location.href } });
+        return false;
+      }
       toast.error(error instanceof Error ? error.message : "เกิดข้อผิดพลาด กรุณาลองอีกครั้ง");
       return false;
     }
