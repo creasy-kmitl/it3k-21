@@ -20,17 +20,37 @@ import type { LeadershipApi, LeadershipDepartment, LeadershipSummary } from "@/l
 import LeadershipContactButton from "@/components/leadership-contact";
 import LeadershipDirectory from "@/components/leadership-directory";
 import LeadershipForm, { type FormMode } from "@/components/leadership-form";
+import type { FilterControl } from "@/hooks/use-filters";
 import { useApis } from "@/lib/api-context";
+import { type ListFilters, listSearchSchema, replacesHistory } from "@/lib/list-search";
 
 export const Route = createFileRoute("/staff/head")({
-  component: HeadPage,
+  validateSearch: (search) => listSearchSchema.parse(search),
+  component: RouteComponent,
 });
+
+function RouteComponent() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  return (
+    <HeadPage
+      filters={{
+        value: search,
+        onChange: (patch) =>
+          void navigate({
+            search: (previous) => ({ ...previous, ...patch }),
+            replace: replacesHistory(patch),
+          }),
+      }}
+    />
+  );
+}
 
 /**
  * The directory plus the controls the server allows on each seat. The flags
  * only decide what to show; the API enforces the same rules.
  */
-function HeadPage() {
+export function HeadPage({ filters }: { filters?: FilterControl<ListFilters> }) {
   const { leadership: api } = useApis();
   const [editing, setEditing] = useState<FormMode | null>(null);
 
@@ -58,6 +78,7 @@ function HeadPage() {
   return (
     <LeadershipDirectory
       api={api}
+      filters={filters}
       renderActions={renderActions}
       createAction={
         <Button onClick={() => setEditing({ kind: "create" })}>

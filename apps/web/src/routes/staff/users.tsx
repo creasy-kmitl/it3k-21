@@ -26,7 +26,7 @@ import { ChevronLeft, ChevronRight, Pencil, Search, UserCog } from "lucide-react
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { type FilterControl, useFilters, useSearchText } from "@/hooks/use-filters";
 import type { LeadershipApi, LeadershipDepartment } from "@/lib/leadership";
 import { type Account, type Assignment, type UsersApi, useMe } from "@/lib/users";
 
@@ -34,10 +34,29 @@ import { DepartmentBadge, DepartmentLabel } from "@/components/department-icon";
 import { PageHeader } from "@/components/page-header";
 import { ROLE_BADGES, RoleBadge } from "@/components/role-badge";
 import { useApis } from "@/lib/api-context";
+import { type ListFilters, listSearchSchema, replacesHistory } from "@/lib/list-search";
 
 export const Route = createFileRoute("/staff/users")({
-  component: UsersPage,
+  validateSearch: (search) => listSearchSchema.parse(search),
+  component: RouteComponent,
 });
+
+function RouteComponent() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  return (
+    <UsersPage
+      filters={{
+        value: search,
+        onChange: (patch) =>
+          void navigate({
+            search: (previous) => ({ ...previous, ...patch }),
+            replace: replacesHistory(patch),
+          }),
+      }}
+    />
+  );
+}
 
 type Status = Assignment["kind"];
 const STATUSES: Status[] = ["guest", "athlete", "staff", "vicehead", "head"];
@@ -73,15 +92,17 @@ function alreadyIs(account: Account, status: Status, departmentId: string) {
  * Accounts and what each one is: guest, athlete, staff of a department, or a head or
  * vicehead. The flags only decide what to show; the API enforces the rules.
  */
-function UsersPage() {
+export function UsersPage({ filters: control }: { filters?: FilterControl<ListFilters> }) {
   const { users: api, leadership: seats } = useApis();
-  const [search, setSearch] = useState("");
-  const [departmentId, setDepartmentId] = useState<string>();
-  const q = useDebouncedValue(search.trim(), 300);
-  const filterKey = JSON.stringify([q, departmentId]);
-  const [paging, setPaging] = useState({ filterKey, page: 1 });
-  const page = paging.filterKey === filterKey ? paging.page : 1;
-  const goTo = (next: number) => setPaging({ filterKey, page: next });
+  // Changing a filter starts from page 1 again.
+  const [filters, setFilters] = useFilters(control);
+  const q = filters.q ?? "";
+  const departmentId = filters.department;
+  const page = filters.page ?? 1;
+  const [search, setSearch] = useSearchText(q, (next) => setFilters({ q: next, page: undefined }));
+  const setDepartmentId = (id: string | undefined) =>
+    setFilters({ department: id, page: undefined });
+  const goTo = (next: number) => setFilters({ page: next > 1 ? next : undefined });
   const [editing, setEditing] = useState<Account | null>(null);
 
   const departments = useQuery({

@@ -4,7 +4,7 @@ import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import type { Account, Assignment, UsersApi } from "@/lib/users";
 import { choose, defined, fakeApi, page, renderRoute, summary } from "@/test/query";
 
-import { Route } from "./users";
+import { UsersPage } from "./users";
 
 afterEach(cleanup);
 
@@ -44,7 +44,7 @@ function setup(items: Account[], canGrantAdmin = false) {
     list: async () =>
       page([summary({ role: "head", userId: "u-old", displayName: "Old Head", name: "Old Head" })]),
   });
-  return { assigned, view: renderRoute(Route, { users: api, leadership: seats }) };
+  return { assigned, view: renderRoute({ options: { component: UsersPage } }, { users: api, leadership: seats }) };
 }
 
 describe("/staff/users", () => {
