@@ -121,6 +121,7 @@ Every router follows the same conventions:
 - Each server router exports `type XRoutes`, and the web app imports that type by relative path to build a typed client (`src/lib/*.ts`). When a response shape changes, the web app's types follow.
 - Pages get their API clients from `useApis()` (`src/lib/api-context.tsx`), so tests can supply fakes through `ApiProvider`.
 - `clearCacheOnUserChange` clears the TanStack Query cache when the signed-in account changes, because cached flags such as `canEdit` belong to one user.
+- Short links (`/l/<slug>`) are served on the web host but answered by the API through the `SERVER` service binding. See [Short links](short-links.md) for how a visit is handled and the runbook for outages.
 
 ### Roles and permissions
 

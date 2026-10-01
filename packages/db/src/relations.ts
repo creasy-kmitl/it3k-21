@@ -58,6 +58,26 @@ export const relations = defineRelations(schema, (r) => ({
       optional: false,
     }),
   },
+  shortLink: {
+    owner: r.one.user({
+      from: r.shortLink.ownerId,
+      to: r.user.id,
+    }),
+    visits: r.many.shortLinkVisitDay(),
+  },
+  shortLinkVisitDay: {
+    link: r.one.shortLink({
+      from: r.shortLinkVisitDay.linkId,
+      to: r.shortLink.id,
+      optional: false,
+    }),
+  },
+  qrPreset: {
+    owner: r.one.user({
+      from: r.qrPreset.ownerId,
+      to: r.user.id,
+    }),
+  },
   session: {
     user: r.one.user({
       from: r.session.userId,

@@ -8,24 +8,12 @@ import {
   DrawerTitle,
 } from "@it3k/ui/components/drawer";
 import { XIcon } from "lucide-react";
-import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
-const NARROW = "(max-width: 767px)";
+import { useMediaQuery } from "@/hooks/use-media-query";
 
 /** Phones get a bottom sheet; wider screens a panel from the right. */
-function useNarrowScreen() {
-  const [narrow, setNarrow] = useState(
-    () => typeof window.matchMedia === "function" && window.matchMedia(NARROW).matches,
-  );
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const query = window.matchMedia(NARROW);
-    const update = () => setNarrow(query.matches);
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return narrow;
-}
+const NARROW = "(max-width: 767px)";
 
 /**
  * The calendar's side panel: a drawer from the right that can be swiped
@@ -47,7 +35,7 @@ export function SideDrawer({
   width?: string;
   children: ReactNode;
 }) {
-  const narrow = useNarrowScreen();
+  const narrow = useMediaQuery(NARROW);
   return (
     <Drawer
       open={open}

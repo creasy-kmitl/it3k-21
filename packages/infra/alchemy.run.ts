@@ -206,6 +206,10 @@ export default Alchemy.Stack(
         // so the stage reaches it the same way the API URL does: only
         // `VITE_`-prefixed keys are inlined into `import.meta.env`.
         VITE_DEPLOY_ENV: observabilityBindings.DEPLOY_ENV,
+        // Short links live on the web host (`/l/<slug>`) but are answered by
+        // the API, which holds the database. A service binding hands the
+        // request straight over, with no second trip through the internet.
+        SERVER: serverWorker,
       },
       dev: {
         port: 3001,

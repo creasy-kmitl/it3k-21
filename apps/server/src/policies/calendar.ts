@@ -3,6 +3,7 @@ import { user } from "@it3k/db/schema/auth";
 import { type SQL, sql } from "drizzle-orm";
 
 import type { CurrentUser } from "../middleware/current-user";
+import { notBanned, roleIncludes } from "./actor-sql";
 
 type Actor = Pick<CurrentUser, "role" | "banned" | "departmentId">;
 
@@ -30,12 +31,6 @@ export function canCreateItems(actor: Actor | null): boolean {
 // The guards below read the `user` row that abortUnless updates, i.e. the
 // actor's own, so a batch is rolled back if the actor lost the right after the
 // route checked it.
-
-const roleIncludes = (role: string): SQL =>
-  sql`(',' || replace(${user.role}, ' ', '') || ',' like ${`%,${role},%`})`;
-
-const notBanned = (): SQL =>
-  sql`(coalesce(${user.banned}, 0) = 0 or (${user.banExpires} is not null and ${user.banExpires} <= cast(unixepoch('subsecond') * 1000 as integer)))`;
 
 /** SQL twin of canEditDepartment, for abortUnless on the actor's row. */
 export function stillDepartmentEditor(departmentId: string): SQL {

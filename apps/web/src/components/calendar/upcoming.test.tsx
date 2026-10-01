@@ -3,7 +3,7 @@ import { cleanup, screen, within } from "@testing-library/react";
 
 import { ApiProvider } from "@/lib/api-context";
 import type { CalendarQuery } from "@/lib/calendar";
-import { CALENDAR_NOW, calendarItem, fakeApi, fakeCalendarApi, fakeUsersApi } from "@/test/query";
+import { CALENDAR_NOW, calendarItem, fakeApis, fakeCalendarApi } from "@/test/query";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderAtRoot } from "@/test/router";
 
@@ -55,7 +55,7 @@ describe("<Upcoming />", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     await renderAtRoot(() => (
       <QueryClientProvider client={client}>
-        <ApiProvider value={{ calendar, leadership: fakeApi(), users: fakeUsersApi() }}>
+        <ApiProvider value={fakeApis({ calendar })}>
           <Upcoming now={CALENDAR_NOW} departmentId={departmentId} />
         </ApiProvider>
       </QueryClientProvider>

@@ -17,10 +17,10 @@ import { authClient } from "@/lib/auth-client";
 import { clearCacheOnUserChange } from "@/lib/query-cache";
 
 // Every staff page uses the same reading width, except the calendar, whose
-// grids need the room.
+// grids need the room, and QR Studio, which sets the preview beside its controls.
 const COLUMN = "mx-auto w-full max-w-3xl";
 const WIDE_COLUMN = "mx-auto w-full max-w-7xl";
-const WIDE_PAGES = new Set(["/staff/calendar"]);
+const WIDE_PAGES = new Set(["/staff/calendar", "/staff/qr-code"]);
 
 const PAGE_TITLES: Record<string, string> = {
   "/staff/dashboard": "หน้าหลัก",
@@ -28,6 +28,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/staff/head": "หัวหน้าฝ่าย",
   "/staff/departments": "ฝ่าย",
   "/staff/users": "ผู้ใช้",
+  "/staff/qr-code": "QR Code",
+  "/staff/links": "ลิงก์สั้น",
 };
 
 export const Route = createFileRoute("/staff")({
@@ -60,7 +62,8 @@ function AuthLayout() {
     <TooltipProvider>
       <SidebarProvider>
         <AppSidebar userRole={session.data?.user.role} />
-        <SidebarInset>
+        {/* A plain border like the boxes on each page, instead of the inset's shadow. */}
+        <SidebarInset className="md:peer-data-[variant=inset]:rounded-2xl md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:shadow-none">
           {/* Header and page share one centered column, so the breadcrumb lines up
               with the content whether the sidebar is open or closed. */}
           <header className="flex h-16 shrink-0 items-center px-4">

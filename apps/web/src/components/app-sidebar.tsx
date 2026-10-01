@@ -13,6 +13,8 @@ import {
   Building2Icon,
   CalendarDaysIcon,
   LayoutDashboardIcon,
+  Link2Icon,
+  QrCodeIcon,
   TrophyIcon,
   UserCogIcon,
   UsersIcon,
@@ -46,6 +48,13 @@ export function AppSidebar({
         ...(can(userRole, { department: ["read"] })
           ? [{ title: "ฝ่าย", to: "/staff/departments", icon: <Building2Icon /> } as const]
           : []),
+      ],
+    },
+    {
+      label: "เครื่องมือ",
+      items: [
+        { title: "QR Code", to: "/staff/qr-code", icon: <QrCodeIcon /> },
+        { title: "ลิงก์สั้น", to: "/staff/links", icon: <Link2Icon /> },
       ],
     },
   ];
