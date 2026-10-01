@@ -14,7 +14,7 @@ afterEach(() => {
 
 const PNG_URL = "data:image/png;base64,iVBORw0KGgo=";
 
-function setup(overrides: Partial<QrBrowser> = {}) {
+function setup(overrides: Partial<QrBrowser> = {}, initialText?: string) {
   const downloads: { name: string; blob: Blob }[] = [];
   const rasterized: { type: RasterType; px: number }[] = [];
   const browser: QrBrowser = {
@@ -28,7 +28,7 @@ function setup(overrides: Partial<QrBrowser> = {}) {
     loadLogo: async () => PNG_URL,
     ...overrides,
   };
-  render(<QrStudio browser={browser} />);
+  render(<QrStudio browser={browser} initialText={initialText} />);
   return { downloads, rasterized };
 }
 
@@ -64,6 +64,15 @@ describe("QrStudio", () => {
     for (const name of ["ดาวน์โหลด PNG", "ตัวเลือกดาวน์โหลดและคัดลอก"]) {
       expect(button(name).disabled).toBe(true);
     }
+  });
+
+  test("starts from the text it was opened with, e.g. a short link", () => {
+    setup({}, "https://it3k.test/l/register?qr");
+    expect((screen.getByLabelText("URL หรือข้อความ") as HTMLTextAreaElement).value).toBe(
+      "https://it3k.test/l/register?qr",
+    );
+    expect(screen.getByRole("img", { name: /^QR code ของ/ })).toBeTruthy();
+    expect(button("ดาวน์โหลด PNG").disabled).toBe(false);
   });
 
   test("reports text too long for a QR code", () => {

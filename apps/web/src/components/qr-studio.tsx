@@ -325,10 +325,17 @@ function Panel({
 }
 
 /** QR Studio: design a static QR code and export it, all inside the browser. */
-export function QrStudio({ browser = qrBrowser }: { browser?: QrBrowser }) {
+export function QrStudio({
+  browser = qrBrowser,
+  initialText = "",
+}: {
+  browser?: QrBrowser;
+  /** What to encode at first, e.g. a short link opened from its page. */
+  initialText?: string;
+}) {
   // Read once: settings saved on an earlier visit in this browser.
   const [saved] = useState(loadQrSettings);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText);
   const [design, setDesign] = useState<QrDesign>(() => ({
     ...saved.design,
     logo:

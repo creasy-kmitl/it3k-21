@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { ApiProvider, type Apis } from "@/lib/api-context";
 import type { CalendarApi, CalendarItem } from "@/lib/calendar";
 import type { LeadershipApi, LeadershipPage, LeadershipSummary } from "@/lib/leadership";
+import type { LinksApi, ShortLink } from "@/lib/links";
 import type { UsersApi } from "@/lib/users";
 
 /** Narrows a value a test expects to exist, failing loudly when it does not. */
@@ -59,6 +60,7 @@ export function renderRoute(
         leadership: apis.leadership ?? fakeApi(),
         users: apis.users ?? fakeUsersApi(),
         calendar: apis.calendar ?? fakeCalendarApi(),
+        links: apis.links ?? fakeLinksApi(),
       }}
     >
       <Page />
@@ -138,6 +140,40 @@ export function calendarItem(overrides: Partial<CalendarItem> = {}): CalendarIte
     notes: null,
     owner: { id: "u-art", name: "Art Staff" },
     version: 1,
+    updatedAt: CALENDAR_NOW,
+    canEdit: true,
+    ...overrides,
+  };
+}
+
+export function fakeLinksApi(overrides: Partial<LinksApi> = {}): LinksApi {
+  return {
+    list: unexpected("links.list"),
+    get: unexpected("links.get"),
+    create: unexpected("links.create"),
+    update: unexpected("links.update"),
+    ...overrides,
+  };
+}
+
+export function shortLink(overrides: Partial<ShortLink> = {}): ShortLink {
+  const slug = overrides.slug ?? "register";
+  return {
+    id: crypto.randomUUID(),
+    slug,
+    title: "ลงทะเบียนนักกีฬา",
+    destination: "https://forms.example.com/register",
+    fallbackUrl: null,
+    tags: [],
+    enabled: true,
+    expiresAt: null,
+    state: "active",
+    shortUrl: `https://it3k.test/l/${slug}`,
+    qrUrl: `https://it3k.test/l/${slug}?qr`,
+    owner: { id: "u-art", name: "Art Staff" },
+    visits: { qr: 0, link: 0 },
+    version: 1,
+    createdAt: CALENDAR_NOW,
     updatedAt: CALENDAR_NOW,
     canEdit: true,
     ...overrides,

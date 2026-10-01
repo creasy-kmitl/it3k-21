@@ -13,6 +13,7 @@ import {
   Building2Icon,
   CalendarDaysIcon,
   LayoutDashboardIcon,
+  Link2Icon,
   QrCodeIcon,
   TrophyIcon,
   UserCogIcon,
@@ -51,7 +52,10 @@ export function AppSidebar({
     },
     {
       label: "เครื่องมือ",
-      items: [{ title: "QR Code", to: "/staff/qr-code", icon: <QrCodeIcon /> }],
+      items: [
+        { title: "QR Code", to: "/staff/qr-code", icon: <QrCodeIcon /> },
+        { title: "ลิงก์สั้น", to: "/staff/links", icon: <Link2Icon /> },
+      ],
     },
   ];
 

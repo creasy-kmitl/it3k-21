@@ -9,6 +9,8 @@ import { env } from "./env.server";
 import type { RouteDeps } from "./middleware/current-user";
 import { createCalendarRoutes } from "./routes/calendar";
 import { createDepartmentRoutes } from "./routes/departments";
+import { createLinkRoutes } from "./routes/links";
+import { createShortLinkRedirect } from "./routes/links/redirect";
 import { createUserRoutes } from "./routes/users";
 import { createLeadershipRoutes, recordContactReveal } from "./routes/leadership";
 import { createAuth, getDb } from "./services";
@@ -20,7 +22,8 @@ initLogger({
 });
 
 const identifyUser = createAuthMiddleware((await createAuth()) as BetterAuthInstance, {
-  exclude: ["/api/auth/**"],
+  // Short links are public and carry no session; skip the lookup on every visit.
+  exclude: ["/api/auth/**", "/l/**"],
   maskEmail: true,
 });
 
@@ -64,6 +67,10 @@ app.route(
 );
 
 app.route("/api/calendar", createCalendarRoutes(deps));
+app.route("/api/links", createLinkRoutes({ ...deps, webOrigin: env.CORS_ORIGIN }));
+
+// Public: the web worker forwards its `/l/<slug>` paths here.
+app.route("/l", createShortLinkRedirect(deps));
 
 app.get("/", (c) => {
   return c.text("OK");

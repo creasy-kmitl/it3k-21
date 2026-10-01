@@ -1,0 +1,47 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  Outlet,
+  RouterProvider,
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+} from "@tanstack/react-router";
+
+import { defined } from "@/test/query";
+
+import { Route } from "./$slug";
+
+afterEach(cleanup);
+
+/** The page for one reason; the worker supplies it on the server, the test here. */
+async function open(reason: string) {
+  const root = createRootRoute({ component: Outlet });
+  const page = createRoute({
+    getParentRoute: () => root,
+    path: "/l/$slug",
+    loader: () => ({ reason }),
+    component: defined(Route.options.component, "page"),
+  });
+  const router = createRouter({
+    routeTree: root.addChildren([page]),
+    history: createMemoryHistory({ initialEntries: ["/l/register"] }),
+  });
+  await act(() => router.load());
+  render(<RouterProvider router={router} />);
+}
+
+describe("/l/$slug", () => {
+  test.each([
+    ["missing", "4·0·4", "ไม่มีอยู่จริง"],
+    ["disabled", "ปิด·แล้ว", "ปิดลิงก์นี้ไว้"],
+    ["expired", "หมด·อายุ", "ใช้ได้ถึงวันที่"],
+    ["error", "ขัด·ข้อง", "ขัดข้องชั่วคราว"],
+  ])("%s", async (reason, word, meaning) => {
+    await open(reason);
+    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe(word);
+    expect(screen.getByText(new RegExp(meaning))).toBeTruthy();
+    expect(screen.getByRole("link", { name: "กลับหน้าแรก" }).getAttribute("href")).toBe("/");
+  });
+});
