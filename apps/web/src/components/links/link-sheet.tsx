@@ -1,5 +1,5 @@
 import { Badge } from "@it3k/ui/components/badge";
-import { Button } from "@it3k/ui/components/button";
+import { Button, buttonVariants } from "@it3k/ui/components/button";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { cn } from "@it3k/ui/lib/utils";
 import { DEFAULT_STATS_RANGE, STATS_RANGES, type StatsRange } from "@it3k/db/short-link-rules";
@@ -317,14 +317,15 @@ function LinkBody({
 
       <Section icon={Link2} title="ลิงก์">
         <UrlRow label="ลิงก์สำหรับ QR" url={link.qrUrl}>
-          <Button
-            size="sm"
-            className="mt-1 self-start"
-            render={<Link to="/staff/qr-code" search={{ text: link.qrUrl }} />}
+          {/* Navigation, so a real link styled as a button, not a button rendered as one. */}
+          <Link
+            to="/staff/qr-code"
+            search={{ text: link.qrUrl }}
+            className={cn(buttonVariants({ size: "sm" }), "mt-1 self-start")}
           >
             <QrCode data-icon="inline-start" />
             ออกแบบ QR จากลิงก์นี้
-          </Button>
+          </Link>
         </UrlRow>
         <UrlRow label="ลิงก์สำหรับแชร์เป็นข้อความ" url={link.shortUrl} />
         <div className="flex flex-col gap-1.5 rounded-xl border p-3">
