@@ -26,4 +26,9 @@ describe("CSV", () => {
     expect(csv.startsWith("﻿")).toBe(true);
     expect(parseCsv(csv)).toEqual(rows);
   });
+
+  test("defuses text a spreadsheet would run as a formula, leaving numbers alone", () => {
+    const csv = toCsv([['=HYPERLINK("x")', "+1", "-2", "@SUM(A1)", "\tx", "safe", "a=b", -5, 12]]);
+    expect(csv).toBe(`\uFEFF"'=HYPERLINK(""x"")",'+1,'-2,'@SUM(A1),'\tx,safe,a=b,-5,12\r\n`);
+  });
 });

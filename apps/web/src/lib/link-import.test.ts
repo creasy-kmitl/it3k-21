@@ -76,4 +76,15 @@ describe("parseLinkImport", () => {
     ];
     expect(parseLinkImport(many.join("\n"), HOST)).toMatchObject({ ok: false });
   });
+
+  test("reads back a file this app exported, without the apostrophe it added", () => {
+    const result = parseLinkImport(
+      toCsv([
+        ["title", "destination"],
+        ["=บูธ", "https://a.example"],
+      ]),
+      HOST,
+    );
+    expect(result.ok && result.rows[0]?.input.title).toBe("=บูธ");
+  });
 });

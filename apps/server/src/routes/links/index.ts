@@ -137,7 +137,15 @@ const createInput = z.strictObject({
   password: password.optional(),
 });
 
-const bulkInput = z.strictObject({ links: z.array(createInput).min(1).max(BULK_MAX) });
+// No passwords in bulk: hashing one per row would cost a Worker a hundred
+// slow hashes in one request. A row that sends one is refused, not stripped,
+// so nobody believes a link is locked when it is not.
+const bulkInput = z.strictObject({
+  links: z
+    .array(createInput.omit({ password: true }))
+    .min(1)
+    .max(BULK_MAX),
+});
 
 const visitsQuery = z.strictObject({
   days: detailQuery.shape.days,

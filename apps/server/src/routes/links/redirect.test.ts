@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { shortLink, shortLinkVisitDay } from "@it3k/db/schema/index";
+import { shortLink, shortLinkUnlockAttempt, shortLinkVisitDay } from "@it3k/db/schema/index";
 import { bangkokDay } from "@it3k/db/short-link-rules";
 import { eq } from "drizzle-orm";
 
@@ -171,6 +171,42 @@ describe("a link with a password", () => {
     expect(limited.status).toBe(429);
     expect(limited.headers.get("x-short-link-unlock")).toBe("limited");
     expect(limited.headers.get("retry-after")).toBe("60");
+  });
+
+  const attempts = async () => {
+    const rows = await t.db.select().from(shortLinkUnlockAttempt);
+    return rows.reduce((sum, row) => sum + row.count, 0);
+  };
+
+  test("guesses sent all at once cannot get past the limit", async () => {
+    await lock();
+    const results = await Promise.all(Array.from({ length: 20 }, () => unlock("nope")));
+    const failures = results.map((res) => res.headers.get("x-short-link-unlock"));
+    expect(failures.filter((f) => f === "wrong")).toHaveLength(10);
+    expect(failures.filter((f) => f === "limited")).toHaveLength(10);
+    expect(await attempts()).toBe(10);
+  });
+
+  test("people who know the password never use up the link's attempts", async () => {
+    await lock();
+    for (let i = 0; i < 9; i++) await unlock("nope");
+    for (let i = 0; i < 5; i++) expect((await unlock("tech2026")).status).toBe(302);
+    expect(await attempts()).toBe(9);
+    expect((await unlock("nope")).headers.get("x-short-link-unlock")).toBe("wrong");
+    expect((await unlock("nope")).headers.get("x-short-link-unlock")).toBe("limited");
+  });
+
+  test("refuses an oversized body unread, and never hashes an overlong password", async () => {
+    await lock();
+    const huge = await app.request("/register", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: `password=${"x".repeat(10_000)}`,
+    });
+    expect(huge.status).toBe(413);
+    const long = await unlock("x".repeat(65));
+    expect(long.headers.get("x-short-link-unlock")).toBe("wrong");
+    expect(await attempts()).toBe(0);
   });
 
   test("a switched-off locked link still goes to its fallback, no password needed", async () => {

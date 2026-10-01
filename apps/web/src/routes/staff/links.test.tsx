@@ -392,6 +392,11 @@ describe("passwords", () => {
     });
     fireEvent.click(within(form).getByRole("checkbox", { name: "ต้องใส่รหัสผ่านก่อนเปิดลิงก์" }));
     const password = await within(form).findByLabelText("รหัสผ่านของลิงก์");
+    // Hidden while typed, shown on request.
+    expect(password.getAttribute("type")).toBe("password");
+    expect(password.getAttribute("autocomplete")).toBe("new-password");
+    fireEvent.click(within(form).getByRole("button", { name: "แสดงรหัสผ่าน" }));
+    expect(password.getAttribute("type")).toBe("text");
     fireEvent.change(password, { target: { value: "abc" } });
     fireEvent.click(within(form).getByRole("button", { name: "สร้างลิงก์" }));
     expect(await within(form).findByText("รหัสผ่านยาว 4–64 ตัวอักษร")).toBeTruthy();

@@ -11,6 +11,7 @@ import { Input } from "@it3k/ui/components/input";
 import {
   InputGroup,
   InputGroupAddon,
+  InputGroupButton,
   InputGroupInput,
   InputGroupText,
 } from "@it3k/ui/components/input-group";
@@ -26,7 +27,7 @@ import {
   TITLE_MAX,
   destinationProblem,
 } from "@it3k/db/short-link-rules";
-import { Check, LockKeyhole, Plus } from "lucide-react";
+import { Check, Eye, EyeOff, LockKeyhole, Plus } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import { DateTimePicker } from "@/components/calendar/date-time-picker";
@@ -115,6 +116,7 @@ export function LinkForm({
   const hadPassword = link?.hasPassword ?? false;
   const [passwordMode, setPasswordMode] = useState<PasswordMode>("keep");
   const [password, setPassword] = useState("");
+  const [passwordShown, setPasswordShown] = useState(false);
   const [values, setValues] = useState<LinkFormValues>({
     title: link?.title ?? "",
     destination: link?.destination ?? "",
@@ -304,16 +306,32 @@ export function LinkForm({
           )}
           {passwordMode === "set" && (
             <>
-              <Input
-                id="link-password"
-                aria-label="รหัสผ่านของลิงก์"
-                value={password}
-                maxLength={PASSWORD_MAX}
-                autoComplete="off"
-                spellCheck={false}
-                aria-invalid={!!errors.password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
+              <InputGroup>
+                <InputGroupInput
+                  id="link-password"
+                  aria-label="รหัสผ่านของลิงก์"
+                  // Hidden while typed, like any password; shown on request,
+                  // since staff pass it on to the people who should get in.
+                  type={passwordShown ? "text" : "password"}
+                  value={password}
+                  maxLength={PASSWORD_MAX}
+                  // Not the staff member's own sign-in, so the browser must not fill it.
+                  autoComplete="new-password"
+                  spellCheck={false}
+                  aria-invalid={!!errors.password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    size="icon-xs"
+                    aria-label={passwordShown ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+                    aria-pressed={passwordShown}
+                    onClick={() => setPasswordShown(!passwordShown)}
+                  >
+                    {passwordShown ? <EyeOff /> : <Eye />}
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
               <FieldDescription>
                 บอกรหัสนี้กับคนที่ควรเข้าได้ ระบบเก็บแบบเข้ารหัส จึงดูย้อนหลังไม่ได้
               </FieldDescription>

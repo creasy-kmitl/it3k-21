@@ -101,6 +101,14 @@ describe("bulk create", () => {
     expect(await count(shortLink)).toBe(1);
   });
 
+  test("refuses passwords rather than creating unlocked links", async () => {
+    const { res } = await send("art", "POST", "/bulk", {
+      links: [row(1, { password: "tech2026" })],
+    });
+    expect(res.status).toBe(400);
+    expect(await count(shortLink)).toBe(0);
+  });
+
   test("guests cannot bulk create", async () => {
     expect((await send("guest", "POST", "/bulk", { links: [row(1)] })).res.status).toBe(403);
   });

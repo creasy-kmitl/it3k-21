@@ -50,9 +50,27 @@ export function parseCsv(text: string, delimiter: "," | "\t" = ","): string[][] 
 const quote = (value: string) =>
   /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 
-/** CSV text, with a byte-order mark so Excel reads Thai correctly. */
+/**
+ * Text a spreadsheet would run as a formula (=, +, -, @, or a leading tab or
+ * CR) is written with an apostrophe in front, which spreadsheets show as
+ * plain text. Quoting alone does not stop it. Numbers are left as they are.
+ * See OWASP's "CSV Injection".
+ */
+const FORMULA_START = /^[=+\-@\t\r]/;
+const defuse = (value: string) => (FORMULA_START.test(value) ? `'${value}` : value);
+
+/** Undoes the apostrophe toCsv adds, so a file this app wrote reads back as typed. */
+export const undefuse = (value: string) =>
+  value.startsWith("'") && FORMULA_START.test(value.slice(1)) ? value.slice(1) : value;
+
+/**
+ * CSV text, with a byte-order mark so Excel reads Thai correctly, and with
+ * text that looks like a formula defused.
+ */
 export function toCsv(rows: (string | number | null | undefined)[][]): string {
-  return `${BOM}${rows.map((row) => row.map((value) => quote(String(value ?? ""))).join(",")).join("\r\n")}\r\n`;
+  const cell = (value: string | number | null | undefined) =>
+    typeof value === "number" ? String(value) : quote(defuse(value ?? ""));
+  return `${BOM}${rows.map((row) => row.map(cell).join(",")).join("\r\n")}\r\n`;
 }
 
 export const csvBlob = (rows: Parameters<typeof toCsv>[0]) =>

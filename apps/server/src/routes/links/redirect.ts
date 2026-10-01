@@ -5,6 +5,7 @@ import type { Database } from "@it3k/db";
 import {
   LINK_UNAVAILABLE_HEADER,
   LINK_UNLOCK_HEADER,
+  PASSWORD_MAX,
   QR_MARKER,
   SLUG_MAX,
   SLUG_PATTERN,
@@ -19,6 +20,7 @@ import {
 } from "@it3k/db/schema/short-link";
 import { and, eq, lt, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 
 import type { RouteDeps } from "../../middleware/current-user";
 import { linkState } from ".";
@@ -56,29 +58,25 @@ function unavailable(c: Context, reason: UnavailableReason, failure?: UnlockFail
 
 const minuteOf = (ms: number) => Math.floor(ms / 60_000);
 
-/** Wrong passwords tried on the link so far this minute. */
-async function wrongThisMinute(db: Database, linkId: string, now: number) {
-  const [row] = await db
-    .select({ count: shortLinkUnlockAttempt.count })
-    .from(shortLinkUnlockAttempt)
-    .where(
-      and(
-        eq(shortLinkUnlockAttempt.linkId, linkId),
-        eq(shortLinkUnlockAttempt.minute, minuteOf(now)),
-      ),
-    );
-  return row?.count ?? 0;
-}
+/** Bytes an unlock form may send: one password field, with room to spare. */
+export const UNLOCK_BODY_MAX = 4 * 1024;
 
-function countWrong(db: Database, linkId: string, now: number) {
-  return db.batch([
+/**
+ * Takes one of the link's attempts for this minute, atomically, before the
+ * password is checked, and returns how many are taken now, this one included.
+ * Checking first and counting after would let many guesses sent at once all
+ * be checked before any was counted.
+ */
+async function reserveAttempt(db: Database, linkId: string, now: number) {
+  const [reserved] = await db.batch([
     db
       .insert(shortLinkUnlockAttempt)
       .values({ linkId, minute: minuteOf(now), count: 1 })
       .onConflictDoUpdate({
         target: [shortLinkUnlockAttempt.linkId, shortLinkUnlockAttempt.minute],
         set: { count: sql`${shortLinkUnlockAttempt.count} + 1` },
-      }),
+      })
+      .returning({ count: shortLinkUnlockAttempt.count }),
     // Past minutes no longer matter.
     db
       .delete(shortLinkUnlockAttempt)
@@ -89,6 +87,24 @@ function countWrong(db: Database, linkId: string, now: number) {
         ),
       ),
   ]);
+  return reserved[0]?.count ?? UNLOCK_ATTEMPTS_PER_MINUTE + 1;
+}
+
+/**
+ * Gives a reserved attempt back: after the right password, so people who
+ * know it never use up the link's attempts, and after a refusal, which
+ * checked nothing.
+ */
+function releaseAttempt(db: Database, linkId: string, now: number) {
+  return db
+    .update(shortLinkUnlockAttempt)
+    .set({ count: sql`max(${shortLinkUnlockAttempt.count} - 1, 0)` })
+    .where(
+      and(
+        eq(shortLinkUnlockAttempt.linkId, linkId),
+        eq(shortLinkUnlockAttempt.minute, minuteOf(now)),
+      ),
+    );
 }
 
 function countVisit(db: Database, linkId: string, source: VisitSource, now: number) {
@@ -182,22 +198,35 @@ export const createShortLinkRedirect = (deps: Pick<RouteDeps, "getDb">) => {
         return arrive(c, found.db, found.link, found.now);
       })
 
-      // The password form on a locked link's page.
-      .post("/:slug", async (c) => {
-        const found = await resolve(c);
-        if ("answer" in found) return found.answer;
-        const { db, link, now } = found;
-        if (!link.passwordHash) return arrive(c, db, link, now);
-        if ((await wrongThisMinute(db, link.id, now)) >= UNLOCK_ATTEMPTS_PER_MINUTE) {
-          return unavailable(c, "locked", "limited");
-        }
-        const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
-        const typed = typeof body.password === "string" ? body.password : "";
-        if (typed && (await verifyLinkPassword(typed, link.passwordHash))) {
-          return arrive(c, db, link, now);
-        }
-        await countWrong(db, link.id, now);
-        return unavailable(c, "locked", "wrong");
-      })
+      // The password form on a locked link's page. A form with one short
+      // field is all it takes, so anything larger is refused unread.
+      .post(
+        "/:slug",
+        bodyLimit({
+          maxSize: UNLOCK_BODY_MAX,
+          onError: (c) => c.text("Too large", 413),
+        }),
+        async (c) => {
+          const found = await resolve(c);
+          if ("answer" in found) return found.answer;
+          const { db, link, now } = found;
+          if (!link.passwordHash) return arrive(c, db, link, now);
+          const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
+          const typed = typeof body.password === "string" ? body.password : "";
+          // No password could be this, so nothing is hashed or counted.
+          if (!typed || typed.length > PASSWORD_MAX) return unavailable(c, "locked", "wrong");
+
+          if ((await reserveAttempt(db, link.id, now)) > UNLOCK_ATTEMPTS_PER_MINUTE) {
+            await releaseAttempt(db, link.id, now);
+            return unavailable(c, "locked", "limited");
+          }
+          if (await verifyLinkPassword(typed, link.passwordHash)) {
+            await releaseAttempt(db, link.id, now);
+            return arrive(c, db, link, now);
+          }
+          // A wrong guess keeps its attempt.
+          return unavailable(c, "locked", "wrong");
+        },
+      )
   );
 };

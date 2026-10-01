@@ -11,7 +11,7 @@ import {
   normalizeTag,
 } from "@it3k/db/short-link-rules";
 
-import { parseCsv } from "./csv";
+import { parseCsv, undefuse } from "./csv";
 import { type BulkLinkInput, LINK_ERROR_MESSAGES } from "./links";
 
 /** Most rows one import may hold; the API takes the same. */
@@ -65,8 +65,9 @@ export function parseLinkImport(text: string, shortLinkHost: string): ImportResu
 
   const seen = new Set<string>();
   const rows = body.map((cells, i): ImportRow => {
+    // A file exported from here has an apostrophe before formula-like text; drop it.
     const cell = (column: Column) =>
-      index[column] >= 0 ? (cells[index[column]] ?? "").trim() : "";
+      index[column] >= 0 ? undefuse((cells[index[column]] ?? "").trim()) : "";
     const errors: string[] = [];
     const title = cell("title");
     const destination = cell("destination");
