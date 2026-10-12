@@ -7,7 +7,7 @@ Setup, architecture, testing and deployment notes for IT3K contributors. For a p
 ### Prerequisites
 
 - [Bun](https://bun.sh) 1.4.2
-- An Alchemy profile with Cloudflare and Axiom credentials. `bun run dev` also provisions the Axiom dataset for your stage.
+- An Alchemy profile with Cloudflare credentials. Axiom is optional for local development.
 
   ```bash
   cd packages/infra && bunx alchemy profile edit
@@ -28,7 +28,7 @@ bun install --frozen-lockfile
 Each workspace declares its variables in `.env.schema`. Put local values in an untracked `.env` next to the schema. The schema comments explain every variable.
 
 - `apps/server/.env`: `BETTER_AUTH_SECRET` (at least 32 characters), `GOOGLE_CLIENT_ID` and `GOOGLE_SECRET_ID`. `OAUTH_PROXY_SECRET` (at least 32 characters) is optional for `alchemy dev`; omitting it disables the proxy and uses the registered localhost Google callback directly. Deployments require it. The infra schema imports these values, so you set them only once.
-- `packages/infra/.env`: `ALCHEMY_PASSWORD`, if your setup needs one.
+- `packages/infra/.env`: `ALCHEMY_PASSWORD`, if your setup needs one. Axiom is disabled by default during `alchemy dev`, so no Axiom account or credentials are required and logs stay in the terminal. Set `AXIOM_DEV_ENABLED=true` and configure Axiom credentials in your Alchemy profile to provision a dataset/token and send local logs to Axiom. Deployments always enable Axiom and require its credentials.
 
 `alchemy.run.ts` derives the remaining variables for each stage, so you never set them by hand: `BETTER_AUTH_URL`, `AUTH_PROXY_URL`, `AUTH_PREVIEW_ORIGINS`, `CORS_ORIGIN`, `VITE_SERVER_URL`, the `AXIOM_*` values and the deploy-stage variables. After you change a schema, run `bun run env:generate`.
 
@@ -152,7 +152,7 @@ Production endpoints: [web](https://it3k.creasy.club) and [API](https://it3k-api
 - **Google sign-in on previews.** Google accepts only redirect URIs registered exactly, so `pr-*` stages sign in through staging using Better Auth's `oAuthProxy`. prod, staging and localhost each have their own registered URI, so the proxy does nothing for their own sign-ins. Local development can omit `OAUTH_PROXY_SECRET` to disable the plugin entirely.
 - **State guard.** CI refuses to deploy `staging` or `prod` if that stage has no Alchemy state, because a fresh deploy would create a second D1 database next to the real one. To rebuild a stage on purpose, set the repository variable `ALLOW_FRESH_STAGE` to the stage name for one run, then delete it.
 - **Preview cleanup.** `sweep-previews.yml` runs daily and can also be started by hand. It destroys preview stages whose PR has closed but that were not cleaned up.
-- **Logs.** Each tier (prod or nonprod) has one Axiom dataset. Every event is tagged with its stage (`DEPLOY_ENV`), so you can tell `staging` and `pr-42` apart.
+- **Logs.** Each deployed tier (prod or nonprod) has one Axiom dataset. Every event is tagged with its stage (`DEPLOY_ENV`), so you can tell `staging` and `pr-42` apart. Local development logs stay in the terminal unless `AXIOM_DEV_ENABLED=true`.
 
 ## Contributing
 

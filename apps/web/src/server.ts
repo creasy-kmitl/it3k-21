@@ -30,5 +30,7 @@ export default withEvlog<WebEnv>(
     }
     return handler.fetch(request);
   },
-  { drain: createAxiomDrain() },
+  {
+    drain: process.env.AXIOM_API_KEY && process.env.AXIOM_DATASET ? createAxiomDrain() : undefined,
+  },
 );

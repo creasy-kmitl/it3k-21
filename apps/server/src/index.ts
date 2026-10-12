@@ -30,7 +30,11 @@ const identifyUser = createAuthMiddleware((await createAuth()) as BetterAuthInst
 
 const app = new Hono<EvlogVariables>();
 
-app.use(evlog({ drain: createAxiomDrain() }));
+app.use(
+  evlog({
+    drain: env.AXIOM_API_KEY && env.AXIOM_DATASET ? createAxiomDrain() : undefined,
+  }),
+);
 app.use("*", async (c, next) => {
   await identifyUser(c.get("log"), c.req.raw.headers, c.req.path);
   await next();

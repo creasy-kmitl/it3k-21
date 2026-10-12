@@ -21,7 +21,7 @@ Staff portal for the IT·3·Kings sports event, connecting IT students from KMUT
 
 ## เริ่มพัฒนาในเครื่อง
 
-ต้องมี [Bun 1.4.2](https://bun.sh), บัญชี Cloudflare และ Axiom สำหรับ Alchemy และ Google OAuth client ที่เพิ่ม redirect URI `http://localhost:3000/api/auth/callback/google` แล้ว ดูรายละเอียดการตั้งค่าได้ใน[คู่มือนักพัฒนา](docs/development.md#getting-started).
+ต้องมี [Bun 1.4.2](https://bun.sh), บัญชี Cloudflare สำหรับ Alchemy และ Google OAuth client ที่เพิ่ม redirect URI `http://localhost:3000/api/auth/callback/google` แล้ว Axiom ไม่จำเป็นสำหรับ dev; หากต้องการส่ง log ไป Axiom ให้กำหนด `AXIOM_DEV_ENABLED=true` ใน `packages/infra/.env` และตั้งค่า Axiom credentials ใน Alchemy profile ดูรายละเอียดการตั้งค่าได้ใน[คู่มือนักพัฒนา](docs/development.md#getting-started).
 
 1. ติดตั้ง dependencies จากรากของ repository:
 
