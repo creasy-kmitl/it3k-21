@@ -1,4 +1,4 @@
-import * as React from "react"
+import type * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 
@@ -8,6 +8,7 @@ import { Textarea } from "@it3k/ui/components/textarea"
 
 function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a <fieldset> would add UA border/padding to this styled control wrapper.
     <div
       data-slot="input-group"
       role="group"
@@ -47,6 +48,8 @@ function InputGroupAddon({
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>) {
   return (
+    // biome-ignore lint/a11y/useSemanticElements: see InputGroup; a <fieldset> would restyle the addon.
+    // biome-ignore lint/a11y/useKeyWithClickEvents: clicking the addon only forwards focus for mouse users; keyboard users tab to the input itself.
     <div
       role="group"
       data-slot="input-group-addon"

@@ -8,11 +8,18 @@ export const statement = {
 
 export const ac = createAccessControl(statement);
 
+// New sign-ins wait as guests until a user manager makes them staff.
+export const guest = ac.newRole({});
+
+// Athletes are told apart from guests but, for now, reach no more than they do.
+export const athlete = ac.newRole({});
+
 export const staff = ac.newRole({});
 
-export const head = ac.newRole({
-  user: ["list", "get"],
-});
+// Heads and viceheads are not account roles: holding a seat in the
+// `leadership` table is what makes someone one, and the server's leadership
+// policy derives their rights from that seat. They get no Better Auth grants --
+// `user: ["list"]` would open /api/auth/admin/list-users, emails included.
 
 export const admin = ac.newRole({
   ...adminAc.statements,
@@ -20,11 +27,11 @@ export const admin = ac.newRole({
   department: ["create", "read", "update", "delete", "assign"],
 });
 
-export const roles = { staff, head, admin };
+export const roles = { guest, athlete, staff, admin };
 
 export type Role = keyof typeof roles;
 export const ROLES = Object.keys(roles) as Role[];
-export const DEFAULT_ROLE: Role = "staff";
+export const DEFAULT_ROLE: Role = "guest";
 
 type Permissions = { [K in keyof typeof statement]?: (typeof statement)[K][number][] };
 
@@ -37,6 +44,11 @@ export function parseRoles(role: string | null | undefined): Role[] {
 
 export function hasRole(role: string | null | undefined, target: Role) {
   return parseRoles(role).includes(target);
+}
+
+/** Staff and admins; guests and athletes may not use the signed-in app yet. */
+export function isMember(role: string | null | undefined) {
+  return hasRole(role, "admin") || hasRole(role, "staff");
 }
 
 export function can(role: string | null | undefined, permissions: Permissions) {

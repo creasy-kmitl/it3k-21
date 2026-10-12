@@ -6,8 +6,15 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import { env } from "./env.server";
-import { departments } from "./routes/departments";
-import { createAuth } from "./services";
+import type { RouteDeps } from "./middleware/current-user";
+import { createCalendarRoutes } from "./routes/calendar";
+import { createDepartmentRoutes } from "./routes/departments";
+import { createLinkRoutes } from "./routes/links";
+import { createShortLinkRedirect } from "./routes/links/redirect";
+import { createQrPresetRoutes } from "./routes/qr-presets";
+import { createUserRoutes } from "./routes/users";
+import { createLeadershipRoutes, recordContactReveal } from "./routes/leadership";
+import { createAuth, getDb } from "./services";
 
 initLogger({
   // Stages share a dataset per tier, so the stage name is what separates
@@ -16,7 +23,8 @@ initLogger({
 });
 
 const identifyUser = createAuthMiddleware((await createAuth()) as BetterAuthInstance, {
-  exclude: ["/api/auth/**"],
+  // Short links are public and carry no session; skip the lookup on every visit.
+  exclude: ["/api/auth/**", "/l/**"],
   maskEmail: true,
 });
 
@@ -40,7 +48,31 @@ app.use(
 
 app.on(["POST", "GET"], "/api/auth/*", async (c) => (await createAuth()).handler(c.req.raw));
 
-app.route("/api/departments", departments);
+const deps: RouteDeps = {
+  getSession: async (headers) => {
+    const session = await (await createAuth()).api.getSession({ headers });
+    if (!session) return null;
+    return { userId: session.user.id, impersonatedBy: session.session.impersonatedBy ?? null };
+  },
+  getDb,
+};
+
+app.route("/api/departments", createDepartmentRoutes(deps));
+app.route("/api/users", createUserRoutes(deps));
+app.route(
+  "/api/leadership",
+  createLeadershipRoutes({
+    ...deps,
+    audit: async (c, event) => recordContactReveal(c.var.log, event),
+  }),
+);
+
+app.route("/api/calendar", createCalendarRoutes(deps));
+app.route("/api/links", createLinkRoutes({ ...deps, webOrigin: env.CORS_ORIGIN }));
+app.route("/api/qr-presets", createQrPresetRoutes(deps));
+
+// Public: the web worker forwards its `/l/<slug>` paths here.
+app.route("/l", createShortLinkRedirect(deps));
 
 app.get("/", (c) => {
   return c.text("OK");

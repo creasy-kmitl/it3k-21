@@ -9,12 +9,14 @@ import {
   DropdownMenuTrigger,
 } from "@it3k/ui/components/dropdown-menu";
 import { Skeleton } from "@it3k/ui/components/skeleton";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
 import { authClient } from "@/lib/auth-client";
 
 export default function UserMenu() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: session, isPending } = authClient.useSession();
 
   if (isPending) {
@@ -45,6 +47,8 @@ export default function UserMenu() {
               authClient.signOut({
                 fetchOptions: {
                   onSuccess: () => {
+                    // Nothing fetched for this account should outlive its session.
+                    queryClient.clear();
                     navigate({
                       to: "/",
                     });
