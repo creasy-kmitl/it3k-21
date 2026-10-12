@@ -27,8 +27,9 @@ export type AuthConfig = {
   /**
    * Shared by every stage taking part in the proxy flow so the relay's
    * encrypted profile payload can be opened by the preview that started it.
+   * Optional in local development; omitting it disables the proxy plugin.
    */
-  OAUTH_PROXY_SECRET: string;
+  OAUTH_PROXY_SECRET?: string;
   /** Comma-separated origin patterns; set only on the relay stage. */
   AUTH_PREVIEW_ORIGINS?: string;
 };
@@ -92,19 +93,20 @@ export function createAuth(
         defaultRole: DEFAULT_ROLE,
         adminRoles: ["admin"],
       }),
-      // Unconditional on purpose. The plugin skips proxying when
-      // `productionURL` equals this stage's own `baseURL`, which is the case
-      // for prod, staging and a laptop -- so they all run the same plugin
-      // list and the same code path, and only `pr-*` actually proxies.
-      oAuthProxy({
-        productionURL: env.AUTH_PROXY_URL,
-        // Deliberately not BETTER_AUTH_SECRET. The relay and the preview must
-        // hold the same key here, and sharing the session-signing secret
-        // across stages would let any preview mint cookies prod accepts.
-        secret: env.OAUTH_PROXY_SECRET,
-        // Replay window for the encrypted profile handed back to the preview.
-        maxAge: 60,
-      }),
+      // Local development can use its registered Google callback directly.
+      // Deployed stages require the shared secret in the Alchemy config.
+      ...(env.OAUTH_PROXY_SECRET
+        ? [
+            oAuthProxy({
+              productionURL: env.AUTH_PROXY_URL,
+              // Deliberately not BETTER_AUTH_SECRET. The relay and the preview
+              // must hold the same key without sharing session-signing secrets.
+              secret: env.OAUTH_PROXY_SECRET,
+              // Replay window for the encrypted profile handed back to the preview.
+              maxAge: 60,
+            }),
+          ]
+        : []),
     ],
   });
 }

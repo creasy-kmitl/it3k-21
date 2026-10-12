@@ -29,7 +29,7 @@ Staff portal for the IT·3·Kings sports event, connecting IT students from KMUT
    bun install --frozen-lockfile
    ```
 
-2. ตั้งค่า Alchemy profile และสร้าง `apps/server/.env` โดยกำหนด `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_SECRET_ID` และ `OAUTH_PROXY_SECRET` ตามคำอธิบายใน [`apps/server/.env.schema`](apps/server/.env.schema):
+2. ตั้งค่า Alchemy profile และสร้าง `apps/server/.env` โดยกำหนด `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID` และ `GOOGLE_SECRET_ID` ตามคำอธิบายใน [`apps/server/.env.schema`](apps/server/.env.schema) ส่วน `OAUTH_PROXY_SECRET` ไม่จำเป็นสำหรับ `alchemy dev`; หากไม่กำหนดจะเข้าสู่ระบบ Google ผ่าน localhost โดยตรง:
 
    ```bash
    cd packages/infra && bunx alchemy profile edit
