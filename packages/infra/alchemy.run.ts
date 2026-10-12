@@ -67,6 +67,17 @@ export const db = Cloudflare.D1.Database("database", {
   migrations: "../../packages/db/src/migrations",
 });
 
+// Local logs stay in the terminal unless Axiom is explicitly enabled.
+// Deployments always provision Axiom, regardless of the dev setting.
+export const axiomEnabled = Effect.gen(function* () {
+  if (!(yield* Alchemy.ALCHEMY_DEV)) return true;
+  return yield* Config.Boolean("AXIOM_DEV_ENABLED").pipe(Config.withDefault(false));
+}).pipe(Effect.orDie);
+
+export const axiomProviders = Layer.unwrap(
+  axiomEnabled.pipe(Effect.map((enabled) => (enabled ? Axiom.providers() : Layer.empty))),
+);
+
 /**
  * Axiom's Personal plan caps the whole org at three datasets, so a dataset
  * per stage does not fit: staging tried to create `it3k-staging-logs` while
@@ -82,6 +93,17 @@ export const db = Cloudflare.D1.Database("database", {
  */
 export const observability = Effect.gen(function* () {
   const { stage } = yield* Alchemy.Stack;
+  if (!(yield* axiomEnabled)) {
+    return {
+      runtimeEnv: {
+        // Keep bindings as strings even when the remote drain is disabled.
+        AXIOM_API_KEY: Redacted.make(""),
+        AXIOM_DATASET: "",
+        AXIOM_EDGE_URL: "",
+        DEPLOY_ENV: stage,
+      },
+    };
+  }
   const tier = stage === "prod" ? "prod" : "nonprod";
   const datasetName = `it3k-${tier}-logs`;
 
@@ -194,7 +216,7 @@ export type ServerEnv = Cloudflare.InferEnv<typeof server>;
 export default Alchemy.Stack(
   "it3k",
   {
-    providers: Layer.mergeAll(Cloudflare.providers(), Axiom.providers(), GitHub.providers()),
+    providers: Layer.mergeAll(Cloudflare.providers(), axiomProviders, GitHub.providers()),
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {
@@ -247,7 +269,7 @@ _This comment updates automatically with each push, and the stage is destroyed w
     return {
       web: webWorker.url,
       server: serverWorker.url,
-      axiomDataset: observabilityResources.dataset.name,
+      axiomDataset: observabilityResources.runtimeEnv.AXIOM_DATASET,
     };
   }),
 );
