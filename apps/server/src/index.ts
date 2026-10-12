@@ -75,7 +75,7 @@ app.route("/api/qr-presets", createQrPresetRoutes(deps));
 app.route("/l", createShortLinkRedirect(deps));
 
 app.get("/", (c) => {
-  return c.text("OK");
+  return c.text("OK Server is online");
 });
 
 export default app;
