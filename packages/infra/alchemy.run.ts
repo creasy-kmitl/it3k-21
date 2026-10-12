@@ -6,6 +6,7 @@ import * as Output from "alchemy/Output";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Redacted from "effect/Redacted";
 import "varlock/auto-load";
 import { OWNER, REPOSITORY, ZONE } from "./repo.ts";
 
@@ -51,8 +52,8 @@ const hostnames = (() => {
  *
  * Only `pr-*` proxies. prod, staging and localhost each own a registered
  * redirect URI and point `AUTH_PROXY_URL` at themselves, which makes the
- * plugin a no-op -- the three environments developers actually compare run
- * byte-for-byte the same sign-in path. Three URIs to register, once:
+ * plugin a no-op. Local development can omit the proxy secret and disable
+ * the plugin entirely. Three URIs to register, once:
  *
  *   https://it3k-api.creasy.club/api/auth/callback/google
  *   https://it3k-api-staging.creasy.club/api/auth/callback/google
@@ -158,7 +159,12 @@ export const server = Cloudflare.Worker("server", {
     // Shared across stages by design, so it is kept apart from
     // BETTER_AUTH_SECRET: a leaked relay key must not be able to sign a
     // session cookie that prod will accept.
-    OAUTH_PROXY_SECRET: Config.Redacted("OAUTH_PROXY_SECRET"),
+    OAUTH_PROXY_SECRET: Effect.gen(function* () {
+      const isDev = yield* Alchemy.ALCHEMY_DEV;
+      const secret = Config.Redacted("OAUTH_PROXY_SECRET");
+      // Keep the binding a string; an empty dev value disables the plugin.
+      return yield* isDev ? secret.pipe(Config.withDefault(Redacted.make(""))) : secret;
+    }),
     // Only the relay redirects a browser back to a preview, so only the relay
     // trusts those hostnames. Every other stage keeps the narrow list it has
     // today. Better Auth accepts the wildcard here that Google refuses.
