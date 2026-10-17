@@ -27,7 +27,14 @@ import {
   requireMember,
   requireUser,
 } from "../../middleware/current-user";
-import { allowed, canChangeAccount, canGrantAdmin, isManager } from "../../policies/leadership";
+import {
+  allowed,
+  canChangeAccount,
+  canGrantAdmin,
+  isManager,
+  managerIsAsRead,
+} from "../../policies/leadership";
+import { notBanned, roleIncludes } from "../../policies/actor-sql";
 import { validate } from "../../middleware/validation";
 
 export const PAGE_SIZE = 20;
@@ -349,7 +356,7 @@ function conflictMessage(error: unknown) {
 
 /**
  * Moves a seat's account into the seat's department, so the account keeps
- * belonging to the department it leads, and makes a guest or athlete staff. Reads the
+ * belonging to the department it leads, and makes a non-member staff. Reads the
  * seat inside the statement, so it follows whatever the same batch just wrote.
  */
 export function syncAccountDepartment(db: Database, leadershipId: string) {
@@ -358,7 +365,7 @@ export function syncAccountDepartment(db: Database, leadershipId: string) {
     .update(user)
     .set({
       departmentId: sql`(select ${leadership.departmentId} from ${leadership} where ${seat})`,
-      role: sql`case when ${user.role} in ('guest', 'athlete') then 'staff' else ${user.role} end`,
+      role: sql`case when ${user.role} in ('guest', 'participant', 'athlete') then 'staff' else ${user.role} end`,
     })
     .where(inArray(user.id, db.select({ id: leadership.userId }).from(leadership).where(seat)));
 }
@@ -464,6 +471,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       const id = crypto.randomUUID();
       try {
         await db.batch([
+          abortUnless(db, c.var.user.id, managerIsAsRead(db, c.var.user)),
           db.insert(leadership).values({ id, ...fields }),
           ...(fields.userId ? [attachGuard(db, c.var.user, fields.userId)] : []),
           ...(fields.userId ? [syncAccountDepartment(db, id)] : []),
@@ -531,10 +539,18 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       // Always present, so the batch has a fixed first statement. notAdmin()
       // reads the row the guard updates, hence the holder's.
       const guard = abortUnless(db, holder ?? actor.id, and(...checks) ?? sql`1`);
+      const actorGuard = abortUnless(
+        db,
+        actor.id,
+        isManager(actor)
+          ? managerIsAsRead(db, actor)
+          : sql`(${notBanned()} and (${roleIncludes("staff")} or ${roleIncludes("admin")}) and exists (select 1 from ${leadership} where ${leadership.id} = ${id} and ${leadership.userId} = ${actor.id}))`,
+      );
       let updated: { id: string }[];
       try {
         // One batch: D1 applies the update and the social replacement together or not at all.
         const results = await db.batch([
+          actorGuard,
           guard,
           db
             .update(leadership)
@@ -577,7 +593,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
               ]
             : []),
         ]);
-        updated = results[1] as { id: string }[];
+        updated = results[2] as { id: string }[];
       } catch (error) {
         const conflict = conflictMessage(error);
         if (conflict) return c.json({ message: conflict }, 409);
@@ -648,10 +664,19 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
 
     .delete("/:id", managerOnly, validate("param", idParam), async (c) => {
       const { id } = c.req.valid("param");
-      const deleted = await c.var.db
-        .delete(leadership)
-        .where(eq(leadership.id, id))
-        .returning({ id: leadership.id });
+      const db = c.var.db;
+      let deleted: { id: string }[];
+      try {
+        const results = await db.batch([
+          abortUnless(db, c.var.user.id, managerIsAsRead(db, c.var.user)),
+          db.delete(leadership).where(eq(leadership.id, id)).returning({ id: leadership.id }),
+        ]);
+        deleted = results[1];
+      } catch (error) {
+        const conflict = conflictMessage(error);
+        if (conflict) return c.json({ message: conflict }, 409);
+        throw error;
+      }
       if (deleted.length === 0) {
         return c.json({ message: "Leader not found" }, 404);
       }

@@ -14,8 +14,9 @@ export const getRouter = () => {
   const onError = (error: Error) => {
     if (!isSignedOut(error)) return;
     const { pathname, href } = router.state.location;
-    if (!pathname.startsWith("/staff")) return;
-    void router.navigate({ to: "/login", search: { to: href } });
+    if (!pathname.startsWith("/staff") && pathname !== "/me" && pathname !== "/signup") return;
+    queryClient.clear();
+    void router.navigate({ to: "/login", search: { to: href }, ignoreBlocker: true });
   };
   const queryClient = new QueryClient({
     queryCache: new QueryCache({ onError }),

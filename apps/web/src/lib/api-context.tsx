@@ -5,6 +5,8 @@ import { type LeadershipApi, leadershipApi } from "./leadership";
 import { type LinksApi, linksApi } from "./links";
 import { type QrPresetsApi, qrPresetsApi } from "./qr-presets";
 import { type UsersApi, usersApi } from "./users";
+import { type ProfileApi, profileApi } from "./profile";
+import { type FilesApi, filesApi } from "./files";
 
 /** The API clients route pages call; tests swap in fakes with ApiProvider. */
 export type Apis = {
@@ -13,6 +15,8 @@ export type Apis = {
   calendar: CalendarApi;
   links: LinksApi;
   qrPresets: QrPresetsApi;
+  profile: ProfileApi;
+  files: FilesApi;
 };
 
 const ApiContext = createContext<Apis>({
@@ -21,6 +25,8 @@ const ApiContext = createContext<Apis>({
   calendar: calendarApi,
   links: linksApi,
   qrPresets: qrPresetsApi,
+  profile: profileApi,
+  files: filesApi,
 });
 
 export const ApiProvider = ApiContext.Provider;

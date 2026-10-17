@@ -19,13 +19,20 @@ import {
   requireUser,
 } from "../../middleware/current-user";
 import { PAGE_SIZE, containsAny, seatIsAsRead, userQuery } from "../leadership";
-import { canChangeAccount, canGrantAdmin, isManager } from "../../policies/leadership";
+import {
+  canChangeAccount,
+  canGrantAdmin,
+  isManager,
+  managerIsAsRead,
+} from "../../policies/leadership";
 import { validate } from "../../middleware/validation";
+import { usedBytes } from "../files";
+import { limitJsonBody } from "../../middleware/json-body-limit";
 
 const idParam = z.strictObject({ id: z.string().min(1) });
 
 const assignmentInput = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.enum(["guest", "athlete"]) }),
+  z.strictObject({ kind: z.enum(["guest", "participant", "athlete"]) }),
   z.strictObject({
     kind: z.enum(["staff", ...LEADERSHIP_ROLES]),
     departmentId: z.string().trim().min(1),
@@ -39,6 +46,7 @@ function accountRole(role: string | null): Role {
   if (hasRole(role, "admin")) return "admin";
   if (hasRole(role, "staff")) return "staff";
   if (hasRole(role, "athlete")) return "athlete";
+  if (hasRole(role, "participant")) return "participant";
   return "guest";
 }
 
@@ -49,6 +57,8 @@ function selectAccounts(db: Database) {
       name: user.name,
       image: user.image,
       role: user.role,
+      storageLimit: user.storageLimit,
+      storageUsed: usedBytes(user.id),
       departmentId: department.id,
       departmentName: department.name,
       departmentIcon: department.icon,
@@ -69,6 +79,8 @@ function toAccount(row: AccountRow, actor: CurrentUser) {
     name: row.name,
     image: row.image,
     role,
+    storageLimit: row.storageLimit,
+    storageUsed: row.storageUsed,
     department:
       row.departmentId && row.departmentName
         ? departmentAppearance({
@@ -101,6 +113,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
     .use(requireJsonPosts)
     .use(requireUser(deps))
     .use(requireMember)
+    .use(limitJsonBody)
 
     // The caller's own role, department and seat, read fresh for the nav.
     .get("/me", async (c) => {
@@ -220,6 +233,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
           // anything read above changed. Seats are freed before one is taken so
           // the one-seat-per-account and one-holder-per-seat indexes hold.
           await db.batch([
+            abortUnless(db, actor.id, managerIsAsRead(db, actor)),
             abortUnless(db, id, unchanged ?? sql`1`),
             db
               .update(user)
@@ -228,7 +242,9 @@ export const createUserRoutes = (deps: RouteDeps) =>
                 // Seats are not account roles: a head or vicehead is staff.
                 role: isAdmin
                   ? target.role
-                  : input.kind === "guest" || input.kind === "athlete"
+                  : input.kind === "guest" ||
+                      input.kind === "participant" ||
+                      input.kind === "athlete"
                     ? input.kind
                     : "staff",
               })
@@ -279,6 +295,46 @@ export const createUserRoutes = (deps: RouteDeps) =>
       },
     )
 
+    .put(
+      "/:id/storage",
+      managerOnly,
+      validate("param", idParam),
+      validate(
+        "json",
+        z.strictObject({
+          storageLimit: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+          expectedLimit: z.number().int().nonnegative(),
+        }),
+      ),
+      async (c) => {
+        const db = c.var.db;
+        const actor = c.var.user;
+        const { id } = c.req.valid("param");
+        const { storageLimit, expectedLimit } = c.req.valid("json");
+        const [target] = await db.select({ role: user.role }).from(user).where(eq(user.id, id));
+        if (!target) return c.json({ message: "User not found" }, 404);
+        if (!canChangeAccount(actor, target.role))
+          return c.json({ message: "Only admins can change an admin's account" }, 403);
+        try {
+          await db.batch([
+            abortUnless(db, actor.id, managerIsAsRead(db, actor)),
+            abortUnless(
+              db,
+              id,
+              and(eq(user.role, target.role), eq(user.storageLimit, expectedLimit)) ?? sql`0`,
+            ),
+            db.update(user).set({ storageLimit }).where(eq(user.id, id)),
+          ]);
+        } catch (error) {
+          if (constraintError(error))
+            return c.json({ message: "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่" }, 409);
+          throw error;
+        }
+        const account = await findAccount(db, id, actor);
+        if (!account) return c.json({ message: "User not found" }, 404);
+        return c.json(account, 200);
+      },
+    )
     .put("/:id/admin", validate("param", idParam), validate("json", adminInput), async (c) => {
       const { id } = c.req.valid("param");
       const { admin } = c.req.valid("json");
@@ -291,12 +347,32 @@ export const createUserRoutes = (deps: RouteDeps) =>
         return c.json({ message: "You cannot remove your own admin role" }, 400);
       }
       const [target] = await db
-        .select({ departmentId: user.departmentId })
+        .select({ departmentId: user.departmentId, role: user.role })
         .from(user)
         .where(eq(user.id, id));
       if (!target) return c.json({ message: "User not found" }, 404);
       const role = admin ? "admin" : target.departmentId ? "staff" : "guest";
-      await db.update(user).set({ role }).where(eq(user.id, id));
+      try {
+        await db.batch([
+          // canGrantAdmin established that the snapshot role contains admin;
+          // equality inside this guard prevents a revoked admin restoring it.
+          abortUnless(db, actor.id, managerIsAsRead(db, actor)),
+          abortUnless(
+            db,
+            id,
+            and(
+              eq(user.role, target.role),
+              target.departmentId
+                ? eq(user.departmentId, target.departmentId)
+                : sql`${user.departmentId} is null`,
+            ) ?? sql`0`,
+          ),
+          db.update(user).set({ role }).where(eq(user.id, id)),
+        ]);
+      } catch (error) {
+        if (constraintError(error)) return c.json({ message: "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่" }, 409);
+        throw error;
+      }
       const account = await findAccount(db, id, actor);
       if (!account) return c.json({ message: "User not found" }, 404);
       return c.json(account, 200);
