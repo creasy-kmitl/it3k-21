@@ -13,11 +13,21 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
 import { authClient } from "@/lib/auth-client";
+import { useSignOutGuard } from "@/lib/sign-out-guard";
+import { toast } from "sonner";
 
-export default function UserMenu() {
+export type UserMenuClient = Pick<typeof authClient, "signOut"> & {
+  useSession: () => {
+    isPending: boolean;
+    data: { user: { name: string; email: string } } | null;
+  };
+};
+
+export default function UserMenu({ client = authClient }: { client?: UserMenuClient }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: session, isPending } = authClient.useSession();
+  const signOutGuard = useSignOutGuard();
+  const { data: session, isPending } = client.useSession();
 
   if (isPending) {
     return <Skeleton className="h-9 w-24" />;
@@ -38,26 +48,37 @@ export default function UserMenu() {
       </DropdownMenuTrigger>
       <DropdownMenuContent className="bg-card">
         <DropdownMenuGroup>
-          <DropdownMenuLabel>My Account</DropdownMenuLabel>
+          <DropdownMenuLabel>บัญชีของฉัน</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem>{session.user.email}</DropdownMenuItem>
+          <DropdownMenuItem render={<Link to="/me" />}>โปรไฟล์ของฉัน</DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
-            onClick={() => {
-              authClient.signOut({
-                fetchOptions: {
-                  onSuccess: () => {
-                    // Nothing fetched for this account should outlive its session.
-                    queryClient.clear();
-                    navigate({
-                      to: "/",
-                    });
+            onClick={async () => {
+              try {
+                await signOutGuard?.current?.();
+              } catch {
+                toast.error("บันทึกร่างไม่สำเร็จ ข้อมูลล่าสุดอาจสูญหายเมื่อออกจากระบบ");
+              }
+              try {
+                await client.signOut({
+                  fetchOptions: {
+                    onSuccess: () => {
+                      // Nothing fetched for this account should outlive its session.
+                      queryClient.clear();
+                      navigate({
+                        to: "/",
+                        ignoreBlocker: true,
+                      });
+                    },
                   },
-                },
-              });
+                });
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : "ออกจากระบบไม่สำเร็จ");
+              }
             }}
           >
-            Sign Out
+            ออกจากระบบ
           </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>

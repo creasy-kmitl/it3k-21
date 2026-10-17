@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { SiFacebook, SiInstagram } from "@icons-pack/react-simple-icons";
 import { buttonVariants } from "@it3k/ui/components/button";
 import { cn } from "@it3k/ui/lib/utils";
@@ -36,6 +36,7 @@ function HomeComponent() {
           </li>
         </ol>
 
+        <div className="mb-6 flex flex-wrap gap-2"><Link to="/signup" className={buttonVariants()}>ลงทะเบียนผู้เข้าร่วม</Link><Link to="/me" className={buttonVariants({ variant: "outline" })}>โปรไฟล์ของฉัน</Link><Link to="/staff/dashboard" className={buttonVariants({ variant: "ghost" })}>ระบบทีมงาน</Link></div>
         <footer className="flex items-center font-bold">
           <a
             href="https://www.facebook.com/it3kofficial"

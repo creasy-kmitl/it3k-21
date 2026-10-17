@@ -8,18 +8,22 @@ import {
   leadership,
   user,
 } from "@it3k/db/schema/index";
-import { and, count, eq, ne, notExists } from "drizzle-orm";
+import { and, count, eq, ne, notExists, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
 import {
   type CurrentUserEnv,
+  type CurrentUser,
   type RouteDeps,
+  abortUnless,
   constraintError,
   requireJsonPosts,
   requireUser,
 } from "../../middleware/current-user";
 import { validate } from "../../middleware/validation";
+import { limitJsonBody } from "../../middleware/json-body-limit";
+import { activeAccount } from "../profile";
 
 const departmentInput = z.object({
   name: z.string().trim().min(1).max(100),
@@ -36,10 +40,19 @@ function isUniqueViolation(error: unknown) {
   return constraintError(error) === "unique";
 }
 
+// The role granted the department permission above; require that exact role
+// and an active account again before any mutation, including self-assignment.
+function stillAuthorized(actor: CurrentUser) {
+  return and(activeAccount(), eq(user.role, actor.role ?? "")) ?? sql`0`;
+}
+
+const STALE = "Permissions or data changed; reload and try again";
+
 export const createDepartmentRoutes = (deps: RouteDeps) =>
   new Hono<CurrentUserEnv>()
     .use(requireJsonPosts)
     .use(requireUser(deps))
+    .use(limitJsonBody)
 
     .get("/", async (c) => {
       if (!can(c.var.user.role, { department: ["read"] })) {
@@ -95,10 +108,15 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
       }
       const db = c.var.db;
       try {
-        const [row] = await db.insert(department).values(parsed.data).returning();
+        const [, rows] = await db.batch([
+          abortUnless(db, c.var.user.id, stillAuthorized(c.var.user)),
+          db.insert(department).values(parsed.data).returning(),
+        ]);
+        const [row] = rows;
         if (!row) throw new Error("Department insert returned no row");
         return c.json(departmentAppearance(row), 201);
       } catch (error) {
+        if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
         if (isUniqueViolation(error)) {
           return c.json({ message: "Department name already exists" }, 409);
         }
@@ -117,16 +135,21 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
       }
       const db = c.var.db;
       try {
-        const [row] = await db
-          .update(department)
-          .set({ ...parsed.data, updatedAt: new Date() })
-          .where(eq(department.id, id))
-          .returning();
+        const [, rows] = await db.batch([
+          abortUnless(db, c.var.user.id, stillAuthorized(c.var.user)),
+          db
+            .update(department)
+            .set({ ...parsed.data, updatedAt: new Date() })
+            .where(eq(department.id, id))
+            .returning(),
+        ]);
+        const [row] = rows;
         if (!row) {
           return c.json({ message: "Department not found" }, 404);
         }
         return c.json(departmentAppearance(row));
       } catch (error) {
+        if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
         if (isUniqueViolation(error)) {
           return c.json({ message: "Department name already exists" }, 409);
         }
@@ -150,7 +173,8 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
         return c.json({ message: hasLeaders }, 409);
       }
       try {
-        const [, deleted] = await db.batch([
+        const [, , deleted] = await db.batch([
+          abortUnless(db, c.var.user.id, stillAuthorized(c.var.user)),
           db.update(user).set({ departmentId: null }).where(eq(user.departmentId, id)),
           db.delete(department).where(eq(department.id, id)).returning({ id: department.id }),
         ]);
@@ -158,6 +182,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
           return c.json({ message: "Department not found" }, 404);
         }
       } catch (error) {
+        if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
         // A seat created between the check and the batch; the FK rolls it back.
         if (constraintError(error) === "foreign-key") {
           return c.json({ message: hasLeaders }, 409);
@@ -172,17 +197,23 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
         return c.json({ message: "Forbidden" }, 403);
       }
       const { code } = c.req.valid("json");
+      const db = c.var.db;
       try {
-        const [row] = await c.var.db
-          .update(department)
-          .set({ code, updatedAt: new Date() })
-          .where(eq(department.id, c.req.param("id")))
-          .returning({ id: department.id, code: department.code });
+        const [, rows] = await db.batch([
+          abortUnless(db, c.var.user.id, stillAuthorized(c.var.user)),
+          db
+            .update(department)
+            .set({ code, updatedAt: new Date() })
+            .where(eq(department.id, c.req.param("id")))
+            .returning({ id: department.id, code: department.code }),
+        ]);
+        const [row] = rows;
         if (!row) {
           return c.json({ message: "Department not found" }, 404);
         }
         return c.json(row, 200);
       } catch (error) {
+        if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
         if (isUniqueViolation(error)) {
           return c.json({ message: "Another department already has this code" }, 409);
         }
@@ -206,18 +237,27 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
         .select({ id: leadership.id })
         .from(leadership)
         .where(and(eq(leadership.userId, userId), ne(leadership.departmentId, target.id)));
-      const [row] = await db
-        .update(user)
-        .set({ departmentId: target.id })
-        .where(and(eq(user.id, userId), notExists(seatElsewhere)))
-        .returning({ id: user.id, departmentId: user.departmentId });
-      if (!row) {
-        const [found] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId));
-        return found
-          ? c.json({ message: HOLDS_SEAT }, 409)
-          : c.json({ message: "User not found" }, 404);
+      try {
+        const [, rows] = await db.batch([
+          abortUnless(db, c.var.user.id, stillAuthorized(c.var.user)),
+          db
+            .update(user)
+            .set({ departmentId: target.id })
+            .where(and(eq(user.id, userId), notExists(seatElsewhere)))
+            .returning({ id: user.id, departmentId: user.departmentId }),
+        ]);
+        const [row] = rows;
+        if (!row) {
+          const [found] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId));
+          return found
+            ? c.json({ message: HOLDS_SEAT }, 409)
+            : c.json({ message: "User not found" }, 404);
+        }
+        return c.json(row);
+      } catch (error) {
+        if (constraintError(error)) return c.json({ message: STALE }, 409);
+        throw error;
       }
-      return c.json(row);
     })
 
     .delete("/:id/members/:userId", async (c) => {
@@ -231,16 +271,25 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
         .select({ id: leadership.id })
         .from(leadership)
         .where(eq(leadership.userId, userId));
-      const [row] = await db
-        .update(user)
-        .set({ departmentId: null })
-        .where(and(member, notExists(seat)))
-        .returning({ id: user.id });
-      if (!row) {
-        const [found] = await db.select({ id: user.id }).from(user).where(member);
-        return found
-          ? c.json({ message: HOLDS_SEAT }, 409)
-          : c.json({ message: "Member not found" }, 404);
+      try {
+        const [, rows] = await db.batch([
+          abortUnless(db, c.var.user.id, stillAuthorized(c.var.user)),
+          db
+            .update(user)
+            .set({ departmentId: null })
+            .where(and(member, notExists(seat)))
+            .returning({ id: user.id }),
+        ]);
+        const [row] = rows;
+        if (!row) {
+          const [found] = await db.select({ id: user.id }).from(user).where(member);
+          return found
+            ? c.json({ message: HOLDS_SEAT }, 409)
+            : c.json({ message: "Member not found" }, 404);
+        }
+        return c.body(null, 204);
+      } catch (error) {
+        if (constraintError(error)) return c.json({ message: STALE }, 409);
+        throw error;
       }
-      return c.body(null, 204);
     });

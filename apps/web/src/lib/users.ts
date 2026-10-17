@@ -51,6 +51,11 @@ export function createUsersApi(baseUrl: string, fetchImpl?: ClientRequestOptions
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
+    async setStorage(id: string, storageLimit: number, expectedLimit: number) {
+      const res = await client[":id"].storage.$put({ param: { id }, json: { storageLimit, expectedLimit } });
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
   };
 }
 

@@ -4,6 +4,7 @@ import { createAuthMiddleware, type BetterAuthInstance } from "evlog/better-auth
 import { evlog, type EvlogVariables } from "evlog/hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { waitUntil } from "cloudflare:workers";
 
 import { env } from "./env.server";
 import type { RouteDeps } from "./middleware/current-user";
@@ -15,6 +16,9 @@ import { createQrPresetRoutes } from "./routes/qr-presets";
 import { createUserRoutes } from "./routes/users";
 import { createLeadershipRoutes, recordContactReveal } from "./routes/leadership";
 import { createAuth, getDb } from "./services";
+import { createProfileRoutes } from "./routes/profile";
+import { cleanupFiles, createFileRoutes, createPublicFileRoutes } from "./routes/files";
+import { createFileStore } from "./routes/files/storage";
 
 initLogger({
   // Stages share a dataset per tier, so the stage name is what separates
@@ -24,7 +28,7 @@ initLogger({
 
 const identifyUser = createAuthMiddleware((await createAuth()) as BetterAuthInstance, {
   // Short links are public and carry no session; skip the lookup on every visit.
-  exclude: ["/api/auth/**", "/l/**"],
+  exclude: ["/api/auth/**", "/l/**", "/api/files/public/**"],
   maskEmail: true,
 });
 
@@ -40,14 +44,15 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-app.use(
-  "/*",
-  cors({
-    origin: env.CORS_ORIGIN,
-    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  }),
+const privateCors = cors({
+  origin: env.CORS_ORIGIN,
+  allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+});
+const publicCors = cors({ origin: "*", allowMethods: ["GET", "HEAD", "OPTIONS"] });
+app.use("/*", (c, next) =>
+  (c.req.path.startsWith("/api/files/public/") ? publicCors : privateCors)(c, next),
 );
 
 app.on(["POST", "GET"], "/api/auth/*", async (c) => (await createAuth()).handler(c.req.raw));
@@ -63,6 +68,10 @@ const deps: RouteDeps = {
 
 app.route("/api/departments", createDepartmentRoutes(deps));
 app.route("/api/users", createUserRoutes(deps));
+const fileDeps = { ...deps, getStore: () => createFileStore(env.UPLOADS), waitUntil };
+app.route("/api/files/public", createPublicFileRoutes(fileDeps));
+app.route("/api/files", createFileRoutes(fileDeps));
+app.route("/api/profile", createProfileRoutes(deps));
 app.route(
   "/api/leadership",
   createLeadershipRoutes({
@@ -82,4 +91,9 @@ app.get("/", (c) => {
   return c.text("OK");
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled() {
+    await cleanupFiles(getDb(), createFileStore(env.UPLOADS));
+  },
+};

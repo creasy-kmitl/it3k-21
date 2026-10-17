@@ -15,6 +15,7 @@
     "better-auth": "catalog:",
     "drizzle-orm": "1.0.0-rc.5-ab785fc",
     "evlog": "catalog:",
+    "files-sdk": "3.1.0",
     "hono": "^4.13.12",
     "varlock": "catalog:",
     "zod": "catalog:"

@@ -1,6 +1,12 @@
 import { hasRole, isMember } from "@it3k/auth/permissions";
 import type { DepartmentCode } from "@it3k/db/schema/department";
 import type { LeadershipRole } from "@it3k/db/schema/leadership";
+import type { Database } from "@it3k/db";
+import { user } from "@it3k/db/schema/auth";
+import { DEPARTMENT_CODES, department } from "@it3k/db/schema/department";
+import { and, eq, exists, inArray, sql } from "drizzle-orm";
+import type { CurrentUser } from "../middleware/current-user";
+import { notBanned } from "./actor-sql";
 
 // Loaded fresh from the database on every request -- never from the client.
 export type Actor = {
@@ -26,6 +32,32 @@ export function isManager(actor: Actor | null): boolean {
   if (!actor || actor.banned) return false;
   if (hasRole(actor.role, "admin")) return true;
   return isMember(actor.role) && actor.departmentCode !== null;
+}
+
+/** Recheck the actor before a write can change their own management rights. */
+export function managerIsAsRead(db: Database, actor: CurrentUser) {
+  return (
+    and(
+      notBanned(),
+      eq(user.role, actor.role ?? ""),
+      actor.departmentId
+        ? eq(user.departmentId, actor.departmentId)
+        : sql`${user.departmentId} is null`,
+      hasRole(actor.role, "admin")
+        ? sql`1`
+        : exists(
+            db
+              .select({ id: department.id })
+              .from(department)
+              .where(
+                and(
+                  eq(department.id, user.departmentId),
+                  inArray(department.code, DEPARTMENT_CODES),
+                ),
+              ),
+          ),
+    ) ?? sql`0`
+  );
 }
 
 /** Only admins may change an admin's account: role, department or seat. */

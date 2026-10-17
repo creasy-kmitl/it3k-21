@@ -166,6 +166,36 @@ describe("PUT /:id/assignment", () => {
 });
 
 describe("PUT /:id/assignment under concurrent changes", () => {
+  for (const change of ["role", "department", "code", "ban", "removal"] as const) {
+    test(`manager ${change} revocation rolls back assignment and contact deletion`, async () => {
+      const seat = defined(await seatOf("reg-vice"));
+      await t.db
+        .insert(leadershipSocial)
+        .values({ leadershipId: seat.id, platform: "line", value: "private" });
+      t.hooks.beforeBatch = () => {
+        t.hooks.beforeBatch = undefined;
+        if (change === "role")
+          t.sqlite.run("update user set role = 'guest' where id = 'tech-staff'");
+        if (change === "department")
+          t.sqlite.run("update user set department_id = null where id = 'tech-staff'");
+        if (change === "code")
+          t.sqlite.run(
+            "update department set code = null where id = (select department_id from user where id = 'tech-staff')",
+          );
+        if (change === "ban") t.sqlite.run("update user set banned = 1 where id = 'tech-staff'");
+        if (change === "removal") t.sqlite.run("delete from user where id = 'tech-staff'");
+      };
+      expect((await assign("tech-staff", "reg-vice", { kind: "guest" })).res.status).toBe(409);
+      expect(await seatOf("reg-vice")).toMatchObject({ id: seat.id });
+      expect(await stored("reg-vice")).toMatchObject({ role: "staff" });
+      expect(
+        await t.db
+          .select()
+          .from(leadershipSocial)
+          .where(eq(leadershipSocial.leadershipId, seat.id)),
+      ).toHaveLength(1);
+    });
+  }
   test("a target made admin meanwhile is not demoted by a non-admin", async () => {
     // tech-staff passes the admin check, then an admin promotes the target.
     t.hooks.beforeBatch = () => {
@@ -248,6 +278,35 @@ describe("PUT /:id/assignment when a seat moves meanwhile", () => {
 });
 
 describe("PUT /:id/admin", () => {
+  for (const change of ["role", "ban", "removal"] as const) {
+    test(`admin ${change} revocation prevents granting admin`, async () => {
+      t.hooks.beforeBatch = () => {
+        t.hooks.beforeBatch = undefined;
+        if (change === "role") t.sqlite.run("update user set role = 'guest' where id = 'admin'");
+        if (change === "ban") t.sqlite.run("update user set banned = 1 where id = 'admin'");
+        if (change === "removal") t.sqlite.run("delete from user where id = 'admin'");
+      };
+      expect((await send("admin", "PUT", "/guest/admin", { admin: true })).res.status).toBe(409);
+      expect(await stored("guest")).toMatchObject({ role: "guest" });
+    });
+  }
+  test("an in-flight request cannot restore its caller's revoked admin role", async () => {
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("update user set role = 'guest' where id = 'admin'");
+    };
+    expect((await send("admin", "PUT", "/admin/admin", { admin: true })).res.status).toBe(409);
+    expect(await stored("admin")).toMatchObject({ role: "guest" });
+  });
+  test("a changed target department cannot choose a stale fallback role", async () => {
+    await t.db.update(user).set({ role: "admin" }).where(eq(user.id, "art-staff"));
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("update user set department_id = null where id = 'art-staff'");
+    };
+    expect((await send("admin", "PUT", "/art-staff/admin", { admin: false })).res.status).toBe(409);
+    expect(await stored("art-staff")).toMatchObject({ role: "admin", departmentId: null });
+  });
   test("only admins grant or remove admin", async () => {
     let { res } = await send("tech-staff", "PUT", "/guest/admin", { admin: true });
     expect(res.status).toBe(403);

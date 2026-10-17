@@ -103,7 +103,7 @@ export function requireUser(deps: RouteDeps) {
   });
 }
 
-/** Guests (new sign-ins not yet made staff) get nothing past sign-in. */
+/** Staff resources require membership; profile and files use requireUser alone. */
 export const requireMember = createMiddleware<CurrentUserEnv>(async (c, next) => {
   if (!isMember(c.var.user.role)) {
     return c.json({ message: "Forbidden" }, 403);

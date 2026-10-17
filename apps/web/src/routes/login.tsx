@@ -15,6 +15,8 @@ import { safeRedirect } from "@/lib/safe-redirect";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import z from "zod";
+import { isMember } from "@it3k/auth/permissions";
+import { profileApi } from "@/lib/profile";
 
 // Better Auth redirects back to `errorCallbackURL` with the failure reason in `?error=`.
 // `to` is the page a signed-out visitor asked for; they return to it after signing in.
@@ -44,7 +46,14 @@ export const Route = createFileRoute("/login")({
   beforeLoad: async ({ search }) => {
     const session = await authClient.getSession();
     if (session.data) {
-      throw redirect({ href: safeRedirect(search.to) });
+      const destination = search.to
+        ? safeRedirect(search.to)
+        : isMember(session.data.user.role)
+          ? "/staff/dashboard"
+          : (await profileApi.me()).profile
+            ? "/me"
+            : "/signup";
+      throw redirect({ href: destination });
     }
   },
 });
@@ -69,11 +78,9 @@ function RouteComponent() {
       const { origin } = window.location;
       await authClient.signIn.social({
         provider: "google",
-        callbackURL: `${origin}${safeRedirect(to)}`,
+        callbackURL: `${origin}${to ? safeRedirect(to) : "/login"}`,
         // A failed attempt comes back here still knowing where to return to.
-        errorCallbackURL: to
-          ? `${origin}/login?${new URLSearchParams({ to })}`
-          : `${origin}/login`,
+        errorCallbackURL: to ? `${origin}/login?${new URLSearchParams({ to })}` : `${origin}/login`,
       });
     } catch (err) {
       if (err instanceof Error) {
@@ -91,10 +98,10 @@ function RouteComponent() {
       <Card className="w-sm">
         <CardHeader>
           <CardTitle className="font-bold">
-            <span className="text-primary">IT3Kings</span> Staff
+            <span className="text-primary">IT3Kings</span>
           </CardTitle>
           <CardDescription>
-            {to ? "ต้องเข้าสู่ระบบก่อนจึงจะดูหน้านี้ได้" : "เข้าสู่ระบบด้วยบัญชีทีมงาน IT3Kings"}
+            {to ? "ต้องเข้าสู่ระบบก่อนจึงจะดูหน้านี้ได้" : "เข้าสู่ระบบเพื่อลงทะเบียนผู้เข้าร่วมหรือใช้งานระบบทีมงาน"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -107,7 +114,7 @@ function RouteComponent() {
           </Button>
         </CardContent>
         <CardFooter>
-          <p className="text-muted-foreground">บัญชีใหม่ต้องรอผู้ดูแลกำหนดสิทธิ์ก่อนเข้าใช้งาน</p>
+          <p className="text-muted-foreground">ใช้บัญชี Google ของคุณ · สิทธิ์ทีมงานกำหนดโดยผู้ดูแล</p>
         </CardFooter>
       </Card>
     </div>

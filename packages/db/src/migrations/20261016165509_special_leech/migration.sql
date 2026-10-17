@@ -1,0 +1,1 @@
+ALTER TABLE `uploaded_file` ADD `upload_id` text;
