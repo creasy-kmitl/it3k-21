@@ -321,6 +321,7 @@ export function ParticipantForm({
                     {invalid && <FieldError errors={field.state.meta.errors} />}
                     {photos && (
                       <FileLibrary
+                        userId={data.account.id}
                         onClose={() => setPhotos(false)}
                         onSelect={(file) => {
                           field.handleChange(file.id);

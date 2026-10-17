@@ -28,15 +28,20 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useApis } from "@/lib/api-context";
 import { fileSize, type LibraryFile } from "@/lib/files";
+import { isAccountChanged, isSignedOut } from "@/lib/leadership";
+import { useEndSession } from "./session-boundary";
 
 export function FileLibrary({
+  userId,
   onClose,
   onSelect,
 }: {
+  userId: string;
   onClose: () => void;
   onSelect?: (file: LibraryFile) => void;
 }) {
   const { files } = useApis();
+  const endSession = useEndSession();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("library");
   const [q, setQ] = useState("");
@@ -57,16 +62,22 @@ export function FileLibrary({
     };
   }, []);
   const library = useQuery({
-    queryKey: ["files", { q, page, images: !!onSelect }],
-    queryFn: () => files.list({ q, page, images: !!onSelect }),
+    queryKey: ["files", userId, { q, page, images: !!onSelect }],
+    queryFn: () => files.list({ userId, q, page, images: !!onSelect }),
   });
+  useEffect(() => {
+    if (isAccountChanged(library.error) || isSignedOut(library.error)) endSession?.();
+  }, [library.error, endSession]);
   const remove = useMutation({
-    mutationFn: (id: string) => files.remove(id),
+    mutationFn: (id: string) => files.remove(id, userId),
     onSuccess: async () => {
       setSelected(null);
       await queryClient.invalidateQueries({ queryKey: ["files"] });
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => {
+      if (isAccountChanged(err) || isSignedOut(err)) endSession?.();
+      toast.error(err.message);
+    },
   });
 
   async function upload(input: FileList | File[]) {
@@ -86,6 +97,7 @@ export function FileLibrary({
         setUploadName(file.name);
         setProgress(0);
         await files.upload(file, {
+          userId,
           signal: controller.signal,
           onProgress: (value) => {
             if (mounted.current) setProgress(value);
@@ -99,6 +111,7 @@ export function FileLibrary({
         setQ("");
       }
     } catch (err) {
+      if (isAccountChanged(err) || isSignedOut(err)) endSession?.();
       if (mounted.current && !controller.signal.aborted)
         setError(err instanceof Error ? err.message : "อัปโหลดไม่สำเร็จ");
     } finally {

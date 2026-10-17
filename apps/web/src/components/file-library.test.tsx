@@ -20,7 +20,8 @@ test("a lost reservation can be cancelled from the library without waiting for e
         page: 1,
         hasMore: false,
       }),
-      remove: async (fileId) => {
+      remove: async (fileId, userId) => {
+        expect(userId).toBe("guest");
         expect(fileId).toBe(id);
         cancelled = true;
         return { success: true };
@@ -34,7 +35,7 @@ test("a lost reservation can be cancelled from the library without waiting for e
   render(
     <QueryClientProvider client={client}>
       <ApiProvider value={apis}>
-        <FileLibrary onClose={() => {}} />
+        <FileLibrary userId="guest" onClose={() => {}} />
       </ApiProvider>
     </QueryClientProvider>,
   );

@@ -82,7 +82,7 @@ const png = Uint8Array.from(
 async function reserve(size: number, contentType = "application/octet-stream", owner = "guest") {
   return app.request(
     "/files/uploads",
-    t.as(owner, { method: "POST", json: { name: "file", size, contentType } }),
+    t.as(owner, { method: "POST", json: { userId: owner, name: "file", size, contentType } }),
   );
 }
 async function upload(bytes: Uint8Array = png, contentType = "image/png", owner = "guest") {
@@ -110,6 +110,83 @@ async function valid(photoFileId: string): Promise<ProfileValues> {
 }
 
 describe("file library and quota", () => {
+  test("upload reservations require an explicit expected account", async () => {
+    const res = await app.request(
+      "/files/uploads",
+      t.as("guest", {
+        method: "POST",
+        json: { name: "private.txt", size: 1, contentType: "text/plain" },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(await t.db.select().from(uploadedFile)).toEqual([]);
+  });
+  test("an account change before reservation allocates no file or multipart upload", async () => {
+    const res = await app.request(
+      "/files/uploads",
+      t.as("other", {
+        method: "POST",
+        json: {
+          userId: "guest",
+          requestId: crypto.randomUUID(),
+          name: "private.txt",
+          size: 1,
+          contentType: "text/plain",
+        },
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: "ACCOUNT_CHANGED" });
+    expect(await t.db.select().from(uploadedFile)).toEqual([]);
+    expect(uploads.size).toBe(0);
+  });
+  test("account-bound content and cleanup reject a cookie switch after reservation", async () => {
+    const requestId = crypto.randomUUID();
+    const res = await app.request(
+      "/files/uploads",
+      t.as("guest", {
+        method: "POST",
+        json: {
+          userId: "guest",
+          requestId,
+          name: "private.txt",
+          size: 1,
+          contentType: "text/plain",
+        },
+      }),
+    );
+    expect(res.status).toBe(201);
+    const { id } = (await res.json()) as { id: string };
+    const content = await app.request(`/files/${id}/content?userId=guest`, {
+      ...t.as("other", { method: "PUT" }),
+      body: "x",
+    });
+    expect(content.status).toBe(403);
+    expect(await content.json()).toMatchObject({ code: "ACCOUNT_CHANGED" });
+    expect(
+      (
+        await app.request(
+          `/files/uploads/${requestId}?userId=guest`,
+          t.as("other", { method: "DELETE" }),
+        )
+      ).status,
+    ).toBe(403);
+    expect(defined((await t.db.select().from(uploadedFile))[0])).toMatchObject({
+      id,
+      ownerId: "guest",
+      state: "pending",
+    });
+    expect(objects.size).toBe(0);
+    expect(uploads.size).toBe(0);
+    expect(
+      (
+        await app.request(
+          `/files/uploads/${requestId}?userId=guest`,
+          t.as("guest", { method: "DELETE" }),
+        )
+      ).status,
+    ).toBe(200);
+  });
   test("rejects oversized reservation JSON without allocating a file", async () => {
     const res = await app.request("/files/uploads", {
       ...t.as("guest", { method: "POST" }),
@@ -146,7 +223,13 @@ describe("file library and quota", () => {
       "/files/uploads",
       t.as("guest", {
         method: "POST",
-        json: { requestId, name: "lost.bin", size: 1, contentType: "application/octet-stream" },
+        json: {
+          userId: "guest",
+          requestId,
+          name: "lost.bin",
+          size: 1,
+          contentType: "application/octet-stream",
+        },
       }),
     );
     expect(reservation.status).toBe(201);
@@ -178,7 +261,7 @@ describe("file library and quota", () => {
       "/files/uploads",
       t.as("other", {
         method: "POST",
-        json: { id, name: "replace", size: 2, contentType: "text/plain" },
+        json: { userId: "other", id, name: "replace", size: 2, contentType: "text/plain" },
       }),
     );
     expect(res.status).toBe(400);
@@ -197,7 +280,13 @@ describe("file library and quota", () => {
         "/files/uploads",
         t.as(owner, {
           method: "POST",
-          json: { requestId: id, name: "replacement", size: 1, contentType: "text/plain" },
+          json: {
+            userId: owner,
+            requestId: id,
+            name: "replacement",
+            size: 1,
+            contentType: "text/plain",
+          },
         }),
       );
       expect(res.status).toBe(201);
@@ -219,7 +308,13 @@ describe("file library and quota", () => {
   });
   test("recovery tokens are unique per owner while a reservation exists", async () => {
     const requestId = crypto.randomUUID();
-    const payload = { requestId, name: "file", size: 1, contentType: "text/plain" };
+    const payload = {
+      userId: "guest",
+      requestId,
+      name: "file",
+      size: 1,
+      contentType: "text/plain",
+    };
     expect(
       (await app.request("/files/uploads", t.as("guest", { method: "POST", json: payload })))
         .status,
@@ -229,8 +324,12 @@ describe("file library and quota", () => {
         .status,
     ).toBe(409);
     expect(
-      (await app.request("/files/uploads", t.as("other", { method: "POST", json: payload })))
-        .status,
+      (
+        await app.request(
+          "/files/uploads",
+          t.as("other", { method: "POST", json: { ...payload, userId: "other" } }),
+        )
+      ).status,
     ).toBe(201);
     expect(
       (await app.request(`/files/uploads/${requestId}`, t.as("guest", { method: "DELETE" })))
@@ -240,7 +339,13 @@ describe("file library and quota", () => {
   });
   test("late compensation cannot delete a newer upload using the same recovery token", async () => {
     const requestId = crypto.randomUUID();
-    const payload = { requestId, name: "file", size: 1, contentType: "text/plain" };
+    const payload = {
+      userId: "guest",
+      requestId,
+      name: "file",
+      size: 1,
+      contentType: "text/plain",
+    };
     const entered = Promise.withResolvers<void>();
     const resume = Promise.withResolvers<void>();
     const original = store.upload.bind(store);
@@ -476,7 +581,7 @@ describe("file library and quota", () => {
         "/uploads",
         t.as("guest", {
           method: "POST",
-          json: { name: "file", size: 1, contentType: "text/plain" },
+          json: { userId: "guest", name: "file", size: 1, contentType: "text/plain" },
         }),
       );
       const { id } = (await reservation.json()) as { id: string };

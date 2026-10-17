@@ -36,7 +36,7 @@ export function ParticipantShell({
             </nav>
           </header>
           <main>{children}</main>
-          {files && <FileLibrary onClose={() => setFiles(false)} />}
+          {files && <FileLibrary userId={userId} onClose={() => setFiles(false)} />}
         </div>
       </SignOutGuardProvider>
     </SessionBoundary>

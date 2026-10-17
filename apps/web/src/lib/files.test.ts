@@ -32,7 +32,54 @@ async function setup() {
 }
 const file = () =>
   new File([new Uint8Array([1])], "lost.bin", { type: "application/octet-stream" });
-const options = () => ({ signal: new AbortController().signal, onProgress: () => {} });
+const options = () => ({
+  userId: "guest",
+  signal: new AbortController().signal,
+  onProgress: () => {},
+});
+
+test("an old library cannot reserve an upload under a newly signed-in account", async () => {
+  const { t, app } = await setup();
+  await t.seedUser("other", { role: "guest" });
+  const statuses: number[] = [];
+  const api = createFilesApi(
+    "http://localhost",
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(input, init);
+      req.headers.set("x-test-user", "other");
+      const res = await app.request(req);
+      statuses.push(res.status);
+      return res;
+    },
+  );
+  await expect(api.upload(file(), options())).rejects.toMatchObject({
+    status: 403,
+    body: { code: "ACCOUNT_CHANGED" },
+  });
+  expect(statuses).toEqual([403, 403]);
+  expect(await t.db.select().from(uploadedFile)).toEqual([]);
+});
+
+test("file listings and removals remain bound to the account that opened the library", async () => {
+  const { t, app } = await setup();
+  await t.seedUser("other", { role: "guest" });
+  const api = createFilesApi(
+    "http://localhost",
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(input, init);
+      req.headers.set("x-test-user", "other");
+      return app.request(req);
+    },
+  );
+  await expect(api.list({ userId: "guest" })).rejects.toMatchObject({
+    status: 403,
+    body: { code: "ACCOUNT_CHANGED" },
+  });
+  await expect(api.remove(crypto.randomUUID(), "guest")).rejects.toMatchObject({
+    status: 403,
+    body: { code: "ACCOUNT_CHANGED" },
+  });
+});
 
 test("lost reservation responses are cancelled using the client-known recovery token", async () => {
   const { t, app, request } = await setup();
@@ -52,7 +99,8 @@ test("lost reservation responses are cancelled using the client-known recovery t
         throw new TypeError("Reservation response lost");
       }
       expect(req.method).toBe("DELETE");
-      expect(req.url).toEndWith(`/uploads/${tokens.at(-1) ?? "missing token"}`);
+      expect(new URL(req.url).pathname).toEndWith(`/uploads/${tokens.at(-1) ?? "missing token"}`);
+      expect(new URL(req.url).searchParams.get("userId")).toBe("guest");
       expect(res.status).toBe(200);
       return res;
     },
@@ -81,11 +129,11 @@ test("offline cancellation leaves an owned reservation that can be listed and ca
     },
   );
   await expect(api.upload(file(), options())).rejects.toThrow("Reservation response lost");
-  const page = await api.list();
+  const page = await api.list({ userId: "guest" });
   expect(page.items).toEqual([]);
   expect(page.uploads).toMatchObject([{ name: "lost.bin", state: "pending" }]);
   offline = false;
-  await api.remove(page.uploads[0]?.id ?? "missing ID");
+  await api.remove(page.uploads[0]?.id ?? "missing ID", "guest");
   expect(await t.db.select().from(uploadedFile)).toEqual([]);
 });
 
@@ -107,10 +155,10 @@ test("a reservation that commits after early cancellation remains recoverable", 
   await expect(api.upload(file(), options())).rejects.toThrow("Reservation response lost");
   commit.resolve();
   expect((await reserving)?.status).toBe(201);
-  const page = await api.list();
+  const page = await api.list({ userId: "guest" });
   expect(page.uploads).toHaveLength(1);
-  await api.remove(page.uploads[0]?.id ?? "missing ID");
-  expect((await api.list()).uploads).toEqual([]);
+  await api.remove(page.uploads[0]?.id ?? "missing ID", "guest");
+  expect((await api.list({ userId: "guest" })).uploads).toEqual([]);
 });
 
 test("an already cancelled upload does not allocate a reservation", async () => {
@@ -122,7 +170,7 @@ test("an already cancelled upload does not allocate a reservation", async () => 
   const controller = new AbortController();
   controller.abort();
   await expect(
-    api.upload(file(), { signal: controller.signal, onProgress: () => {} }),
+    api.upload(file(), { userId: "guest", signal: controller.signal, onProgress: () => {} }),
   ).rejects.toHaveProperty("name", "AbortError");
   expect(calls).toBe(0);
 });
@@ -145,6 +193,7 @@ test("successful uploads use the server-issued ID for content and the library", 
     onabort: (() => void) | null = null;
     onloadend: (() => void) | null = null;
     open(method: string, url: string) {
+      expect(new URL(url).searchParams.get("userId")).toBe("guest");
       this.method = method;
       this.url = url;
     }
@@ -180,7 +229,7 @@ test("successful uploads use the server-issued ID for content and the library", 
   try {
     Object.defineProperty(globalThis, "XMLHttpRequest", { configurable: true, value: TestXHR });
     const { id } = await api.upload(file(), options());
-    const page = await api.list();
+    const page = await api.list({ userId: "guest" });
     expect(page.items).toMatchObject([{ id, name: "lost.bin", size: 1 }]);
     expect(page.uploads).toEqual([]);
   } finally {

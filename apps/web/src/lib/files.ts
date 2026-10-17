@@ -20,9 +20,10 @@ export function createFilesApi(baseUrl: string, fetchImpl?: ClientRequestOptions
     init: { credentials: "include" },
   });
   return {
-    async list(params: { q?: string; images?: boolean; page?: number } = {}) {
+    async list(params: { userId: string; q?: string; images?: boolean; page?: number }) {
       const res = await client.index.$get({
         query: {
+          userId: params.userId,
           page: String(params.page ?? 1),
           ...(params.q ? { q: params.q } : {}),
           ...(params.images ? { images: "true" } : {}),
@@ -31,21 +32,23 @@ export function createFilesApi(baseUrl: string, fetchImpl?: ClientRequestOptions
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
-    async remove(id: string) {
-      const res = await client[":id"].$delete({ param: { id } });
+    async remove(id: string, userId: string) {
+      const res = await client[":id"].$delete({ param: { id }, query: { userId } });
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
     async upload(
       file: File,
-      options: { signal: AbortSignal; onProgress: (value: number) => void },
+      options: { userId: string; signal: AbortSignal; onProgress: (value: number) => void },
     ) {
       if (options.signal.aborted) throw new DOMException("Upload cancelled", "AbortError");
+      const { userId } = options;
       // Known before the request: compensation also works if its response is lost.
       const requestId = crypto.randomUUID();
       try {
         const reservation = await client.uploads.$post({
           json: {
+            userId,
             requestId,
             name: file.name,
             size: file.size,
@@ -64,7 +67,7 @@ export function createFilesApi(baseUrl: string, fetchImpl?: ClientRequestOptions
             abort();
             return;
           }
-          xhr.open("PUT", `${baseUrl}/api/files/${id}/content`);
+          xhr.open("PUT", `${baseUrl}/api/files/${id}/content?${new URLSearchParams({ userId })}`);
           xhr.withCredentials = true;
           xhr.setRequestHeader("Content-Type", "application/octet-stream");
           options.signal.addEventListener("abort", abort, { once: true });
@@ -82,7 +85,9 @@ export function createFilesApi(baseUrl: string, fetchImpl?: ClientRequestOptions
       } catch (error) {
         // Cancellation fences running writers too. If this request cannot
         // reach the API, the owner can cancel the reservation in the library.
-        await client.uploads[":requestId"].$delete({ param: { requestId } }).catch(() => undefined);
+        await client.uploads[":requestId"]
+          .$delete({ param: { requestId }, query: { userId } })
+          .catch(() => undefined);
         throw error;
       }
     },

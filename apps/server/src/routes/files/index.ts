@@ -30,7 +30,9 @@ export type FileDeps = RouteDeps & {
 };
 const idInput = z.strictObject({ id: z.uuid() });
 const requestInput = z.strictObject({ requestId: z.uuid() });
+const ownerInput = z.object({ userId: z.string().min(1).optional() });
 const uploadInput = z.strictObject({
+  userId: z.string().min(1),
   requestId: z.uuid().optional(),
   name: z
     .string()
@@ -47,6 +49,7 @@ const uploadInput = z.strictObject({
     .regex(/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i),
 });
 const queryInput = z.object({
+  userId: z.string().min(1).optional(),
   q: z.string().max(100).optional(),
   images: z.enum(["true"]).optional(),
   page: z.coerce.number().int().min(1).max(100000).default(1),
@@ -183,6 +186,12 @@ export const createFileRoutes = (deps: FileDeps) =>
   new Hono<CurrentUserEnv>()
     .use(requireJsonPosts)
     .use(requireUser(deps))
+    .use(async (c, next) => {
+      const expected = c.req.query("userId");
+      if (expected !== undefined && expected !== c.var.user.id)
+        return c.json({ code: "ACCOUNT_CHANGED", message: "บัญชีที่เข้าสู่ระบบเปลี่ยนแปลงแล้ว" }, 403);
+      return next();
+    })
     .get("/", validate("query", queryInput), async (c) => {
       const { q, images, page } = c.req.valid("query");
       const db = c.var.db;
@@ -242,12 +251,14 @@ export const createFileRoutes = (deps: FileDeps) =>
       );
     })
     .post("/uploads", limitJsonBody, validate("json", uploadInput), async (c) => {
-      const { requestId, ...input } = c.req.valid("json");
+      const { requestId, userId, ...input } = c.req.valid("json");
       // Public IDs and R2 keys are always fresh, including when a client reuses
       // a recovery token. Deleted URLs can never be claimed by another owner.
       const id = crypto.randomUUID();
       const db = c.var.db;
       const actor = c.var.user;
+      if (userId !== actor.id)
+        return c.json({ code: "ACCOUNT_CHANGED", message: "บัญชีที่เข้าสู่ระบบเปลี่ยนแปลงแล้ว" }, 403);
       await cleanupFiles(db, deps.getStore(), actor.id);
       try {
         await db.batch([
@@ -288,15 +299,22 @@ export const createFileRoutes = (deps: FileDeps) =>
       }
       return c.json({ id }, 201);
     })
-    .delete("/uploads/:requestId", validate("param", requestInput), async (c) => {
-      const { requestId } = c.req.valid("param");
-      const [file] = await c.var.db
-        .select()
-        .from(uploadedFile)
-        .where(and(eq(uploadedFile.requestId, requestId), eq(uploadedFile.ownerId, c.var.user.id)));
-      return removeOwnedFile(c, deps, file);
-    })
-    .put("/:id/content", validate("param", idInput), async (c) => {
+    .delete(
+      "/uploads/:requestId",
+      validate("param", requestInput),
+      validate("query", ownerInput),
+      async (c) => {
+        const { requestId } = c.req.valid("param");
+        const [file] = await c.var.db
+          .select()
+          .from(uploadedFile)
+          .where(
+            and(eq(uploadedFile.requestId, requestId), eq(uploadedFile.ownerId, c.var.user.id)),
+          );
+        return removeOwnedFile(c, deps, file);
+      },
+    )
+    .put("/:id/content", validate("param", idInput), validate("query", ownerInput), async (c) => {
       const { id } = c.req.valid("param");
       const db = c.var.db;
       const actor = c.var.user;
@@ -389,7 +407,7 @@ export const createFileRoutes = (deps: FileDeps) =>
       deps.waitUntil?.(write);
       return write;
     })
-    .delete("/:id", validate("param", idInput), async (c) => {
+    .delete("/:id", validate("param", idInput), validate("query", ownerInput), async (c) => {
       const { id } = c.req.valid("param");
       const db = c.var.db;
       const actor = c.var.user;
