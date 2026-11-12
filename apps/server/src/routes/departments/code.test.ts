@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { department, leadership, user } from "@it3k/db/schema/index";
+import { RESERVED_DEPARTMENT_CODES, department, leadership, user } from "@it3k/db/schema/index";
 import { eq } from "drizzle-orm";
 
 import { createTestContext, readJson } from "../../testing";
@@ -15,62 +15,70 @@ beforeEach(async () => {
   await t.seedUser("head", { seat: "head", department: "Tech/Live" });
 });
 
-describe("PATCH /:id/code", () => {
-  test("admin sets and clears a code", async () => {
+describe("department codes are locked", () => {
+  test("PATCH /:id/code no longer exists", async () => {
     const art = await t.departmentId("Art");
-    const techLive = await t.departmentId("Tech/Live");
-
-    // Free tech-live first so Art can take it (codes are unique).
-    let res = await app.request(
-      `/${techLive}/code`,
-      t.as("admin", { method: "PATCH", json: { code: null } }),
-    );
-    expect(res.status).toBe(200);
-    expect(await readJson(res)).toEqual({ id: techLive, code: null });
-
-    res = await app.request(
+    const res = await app.request(
       `/${art}/code`,
       t.as("admin", { method: "PATCH", json: { code: "tech-live" } }),
-    );
-    expect(res.status).toBe(200);
-    expect(await readJson(res)).toEqual({ id: art, code: "tech-live" });
-  });
-
-  test("duplicate code is a 409", async () => {
-    const art = await t.departmentId("Art");
-    const res = await app.request(
-      `/${art}/code`,
-      t.as("admin", { method: "PATCH", json: { code: "registration" } }),
-    );
-    expect(res.status).toBe(409);
-    expect(await readJson(res)).toEqual({ message: expect.any(String) });
-  });
-
-  test("unknown department is a 404", async () => {
-    const res = await app.request(
-      "/missing/code",
-      t.as("admin", { method: "PATCH", json: { code: null } }),
     );
     expect(res.status).toBe(404);
   });
 
-  test("rejects codes outside the known set and unknown keys", async () => {
-    const art = await t.departmentId("Art");
-    for (const json of [{ code: "art" }, { code: null, extra: 1 }, {}, null]) {
-      const res = await app.request(`/${art}/code`, t.as("admin", { method: "PATCH", json }));
-      expect(res.status).toBe(400);
-    }
+  test("a department with a code cannot be deleted through the API", async () => {
+    const reg = await t.departmentId("ทะเบียน");
+    await t.seedUser("clerk", { department: "ทะเบียน" });
+    const res = await app.request(`/${reg}`, t.as("admin", { method: "DELETE" }));
+    expect(res.status).toBe(409);
+    expect(await readJson(res)).toEqual({
+      message: "A department with a code cannot be deleted",
+    });
+    const [kept] = await t.db.select().from(department).where(eq(department.id, reg));
+    expect(kept?.code).toBe("registration");
+    const [clerk] = await t.db.select().from(user).where(eq(user.id, "clerk"));
+    expect(clerk?.departmentId).toBe(reg);
   });
 
-  test("non-admins are forbidden, anonymous is unauthorized", async () => {
-    const art = await t.departmentId("Art");
-    let res = await app.request(
-      `/${art}/code`,
-      t.as("head", { method: "PATCH", json: { code: null } }),
+  test("a coded department can still be renamed and restyled", async () => {
+    const tech = await t.departmentId("Tech/Live");
+    const res = await app.request(
+      `/${tech}`,
+      t.as("admin", { method: "PATCH", json: { name: "Tech", icon: "radio", color: "sky" } }),
     );
-    expect(res.status).toBe(403);
-    res = await app.request(`/${art}/code`, t.as(null, { method: "PATCH", json: { code: null } }));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ name: "Tech", code: "tech-live", icon: "radio" });
+  });
+
+  const raw: [string, string][] = [
+    ["clearing a code", "update department set code = null where code = 'tech-live'"],
+    ["moving a code", "update department set code = 'registration' where name = 'Art'"],
+    ["setting a code", "update department set code = 'tech-live' where name = 'Art'"],
+    ["swapping codes", "update department set code = 'other' where code = 'registration'"],
+    ["deleting a coded department", "delete from department where code = 'art'"],
+  ];
+  for (const [what, statement] of raw) {
+    test(`raw SQL ${what} is refused by the database`, () => {
+      expect(() => t.sqlite.run(statement)).toThrow(/department_code_protected/);
+    });
+  }
+
+  test("raw SQL may still rename a coded department or delete one without a code", () => {
+    t.sqlite.run("insert into department (id, name) values ('plain', 'Plain')");
+    t.sqlite.run("update department set name = 'Live' where code = 'tech-live'");
+    t.sqlite.run("delete from department where name = 'Plain'");
+    const names = t.sqlite
+      .query<{ name: string }, []>("select name from department")
+      .all()
+      .map((row) => row.name);
+    expect(names).toContain("Live");
+    expect(names).not.toContain("Plain");
+  });
+
+  test("every reserved code belongs to exactly one department", async () => {
+    const rows = await t.db.select({ code: department.code }).from(department);
+    for (const reserved of RESERVED_DEPARTMENT_CODES) {
+      expect(rows.filter((row) => row.code === reserved)).toHaveLength(1);
+    }
   });
 });
 
@@ -79,15 +87,79 @@ describe("GET /", () => {
     const res = await app.request("/", t.as("admin"));
     const body = (await res.json()) as { name: string; code: string | null }[];
     expect(body.find((d) => d.name === "Tech/Live")?.code).toBe("tech-live");
-    expect(body.find((d) => d.name === "Art")?.code).toBeNull();
+    expect(body.find((d) => d.name === "Art")?.code).toBe("art");
+  });
+});
+
+describe("POST / with a code", () => {
+  const create = (json: unknown) => app.request("/", t.as("admin", { method: "POST", json }));
+
+  test("creates a department with its code", async () => {
+    const res = await create({ name: "Security", code: "security-team" });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ name: "Security", code: "security-team" });
+  });
+
+  test("the code is optional; an empty one is stored as null", async () => {
+    for (const [name, code] of [
+      ["No code", undefined],
+      ["Empty code", ""],
+      ["Null", null],
+    ]) {
+      const res = await create({ name, code });
+      expect(res.status).toBe(201);
+      expect(await res.json()).toMatchObject({ name, code: null });
+    }
+  });
+
+  test("refuses badly formed codes", async () => {
+    for (const code of ["Art", "has space", "-lead", "trail-", "a--b", "x".repeat(33), "ฝ่าย"]) {
+      expect((await create({ name: `Bad ${code}`, code })).status).toBe(400);
+    }
+  });
+
+  test("refuses reserved codes, which only a migration may assign", async () => {
+    for (const code of RESERVED_DEPARTMENT_CODES) {
+      expect((await create({ name: `Fake ${code}`, code })).status).toBe(400);
+    }
+  });
+
+  test("a code already in use is a 409 naming the code", async () => {
+    const res = await create({ name: "Art 2", code: "art" });
+    expect(res.status).toBe(409);
+    expect(await readJson(res)).toEqual({ message: "Another department already has this code" });
+  });
+
+  test("PATCH cannot set or change a code", async () => {
+    const created = (await (await create({ name: "Uncoded" })).json()) as { id: string };
+    const art = await t.departmentId("Art");
+    for (const id of [created.id, art]) {
+      const res = await app.request(
+        `/${id}`,
+        t.as("admin", { method: "PATCH", json: { code: "renamed-code" } }),
+      );
+      expect(res.status).toBe(200);
+    }
+    const rows = await t.db.select({ code: department.code }).from(department);
+    expect(rows.some((row) => row.code === "renamed-code")).toBe(false);
+  });
+
+  test("a department created with a code cannot be deleted", async () => {
+    const created = (await (await create({ name: "Kept", code: "kept" })).json()) as {
+      id: string;
+    };
+    const res = await app.request(`/${created.id}`, t.as("admin", { method: "DELETE" }));
+    expect(res.status).toBe(409);
   });
 });
 
 describe("DELETE /:id", () => {
   test("refuses to delete a department that still has leaders", async () => {
-    const art = await t.departmentId("Art");
+    // Departments with a code are never deletable, so test one created without.
+    await t.db.insert(department).values({ name: "Plain" });
+    const art = await t.departmentId("Plain");
     await t.db.insert(leadership).values({ departmentId: art, role: "head", name: "A" });
-    await t.seedUser("member", { department: "Art" });
+    await t.seedUser("member", { department: "Plain" });
     const res = await app.request(`/${art}`, t.as("admin", { method: "DELETE" }));
     expect(res.status).toBe(409);
     expect(await readJson(res)).toEqual({ message: expect.any(String) });
@@ -99,8 +171,9 @@ describe("DELETE /:id", () => {
     expect(member?.departmentId).toBe(art);
   });
 
-  test("still deletes a department without leaders", async () => {
-    const art = await t.departmentId("Art");
+  test("still deletes a department without leaders or a code", async () => {
+    await t.db.insert(department).values({ name: "Plain" });
+    const art = await t.departmentId("Plain");
     const res = await app.request(`/${art}`, t.as("admin", { method: "DELETE" }));
     expect(res.status).toBe(204);
   });

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
+import { unlockDepartmentCodes } from "@it3k/db/testing";
 import {
   EMPTY_PROFILE,
   GiB,
@@ -931,6 +932,7 @@ describe("staff quota controls", () => {
     test(`revoking ${actor}'s department code during a quota update fails closed`, async () => {
       t.hooks.beforeBatch = () => {
         t.hooks.beforeBatch = undefined;
+        unlockDepartmentCodes(t.sqlite);
         t.sqlite.run(
           "update department set code = null where id = (select department_id from user where id = ?)",
           [actor],

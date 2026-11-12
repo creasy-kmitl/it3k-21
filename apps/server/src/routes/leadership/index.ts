@@ -471,7 +471,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       const id = crypto.randomUUID();
       try {
         await db.batch([
-          abortUnless(db, c.var.user.id, managerIsAsRead(db, c.var.user)),
+          abortUnless(db, c.var.user.id, managerIsAsRead(c.var.user)),
           db.insert(leadership).values({ id, ...fields }),
           ...(fields.userId ? [attachGuard(db, c.var.user, fields.userId)] : []),
           ...(fields.userId ? [syncAccountDepartment(db, id)] : []),
@@ -543,7 +543,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
         db,
         actor.id,
         isManager(actor)
-          ? managerIsAsRead(db, actor)
+          ? managerIsAsRead(actor)
           : sql`(${notBanned()} and (${roleIncludes("staff")} or ${roleIncludes("admin")}) and exists (select 1 from ${leadership} where ${leadership.id} = ${id} and ${leadership.userId} = ${actor.id}))`,
       );
       let updated: { id: string }[];
@@ -668,7 +668,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       let deleted: { id: string }[];
       try {
         const results = await db.batch([
-          abortUnless(db, c.var.user.id, managerIsAsRead(db, c.var.user)),
+          abortUnless(db, c.var.user.id, managerIsAsRead(c.var.user)),
           db.delete(leadership).where(eq(leadership.id, id)).returning({ id: leadership.id }),
         ]);
         deleted = results[1];

@@ -10,7 +10,7 @@ beforeEach(async () => {
   await t.seedUser("admin", { role: "admin", department: "Art" });
   await t.seedUser("member", { department: "Art" });
 });
-for (const operation of ["create", "edit", "delete", "code", "assign", "remove"] as const) {
+for (const operation of ["create", "edit", "delete", "assign", "remove"] as const) {
   for (const revocation of ["role", "ban", "removal"] as const) {
     test(`${operation} rolls back after actor ${revocation} revocation`, async () => {
       const app = createDepartmentRoutes(t.deps);
@@ -30,7 +30,6 @@ for (const operation of ["create", "edit", "delete", "code", "assign", "remove"]
         create: ["/", "POST", { name: "Unauthorized new department" }],
         edit: [`/${art}`, "PATCH", { name: "Unauthorized rename" }],
         delete: [`/${art}`, "DELETE", undefined],
-        code: [`/${art}/code`, "PATCH", { code: null }],
         assign: [`/${tech}/members/admin`, "PUT", undefined],
         remove: [`/${art}/members/member`, "DELETE", undefined],
       }[operation] as [string, string, unknown];

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { leadership, leadershipSocial, user } from "@it3k/db/schema/index";
 import { eq } from "drizzle-orm";
+import { unlockDepartmentCodes } from "@it3k/db/testing";
 
 import { createTestContext, defined, readJson } from "../../testing";
 import { createLeadershipRoutes } from "../leadership";
@@ -178,10 +179,12 @@ describe("PUT /:id/assignment under concurrent changes", () => {
           t.sqlite.run("update user set role = 'guest' where id = 'tech-staff'");
         if (change === "department")
           t.sqlite.run("update user set department_id = null where id = 'tech-staff'");
-        if (change === "code")
+        if (change === "code") {
+          unlockDepartmentCodes(t.sqlite);
           t.sqlite.run(
             "update department set code = null where id = (select department_id from user where id = 'tech-staff')",
           );
+        }
         if (change === "ban") t.sqlite.run("update user set banned = 1 where id = 'tech-staff'");
         if (change === "removal") t.sqlite.run("delete from user where id = 'tech-staff'");
       };

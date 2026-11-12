@@ -1,12 +1,10 @@
 import { hasRole, isMember } from "@it3k/auth/permissions";
-import type { DepartmentCode } from "@it3k/db/schema/department";
 import type { LeadershipRole } from "@it3k/db/schema/leadership";
-import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
-import { DEPARTMENT_CODES, department } from "@it3k/db/schema/department";
-import { and, eq, exists, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { CurrentUser } from "../middleware/current-user";
 import { notBanned } from "./actor-sql";
+import { hasCapability, inDepartmentWith } from "./department-capabilities";
 
 // Loaded fresh from the database on every request -- never from the client.
 export type Actor = {
@@ -14,7 +12,7 @@ export type Actor = {
   role: string | null;
   /** The seat the actor holds. A seat's account always belongs to the seat's department. */
   leadershipRole: LeadershipRole | null;
-  departmentCode: DepartmentCode | null;
+  departmentCode: string | null;
   banned: boolean;
 };
 export type Target = { userId: string | null };
@@ -25,17 +23,18 @@ function isLeader(actor: Actor) {
 }
 
 /**
- * Admins, and every member (staff, head or vicehead) of Tech/Live or ทะเบียน,
- * manage every seat and every account's department.
+ * Admins, and every member (staff, head or vicehead) of a department whose code
+ * grants manageAccounts (Tech/Live, ทะเบียน), manage every seat and every
+ * account's department.
  */
 export function isManager(actor: Actor | null): boolean {
   if (!actor || actor.banned) return false;
   if (hasRole(actor.role, "admin")) return true;
-  return isMember(actor.role) && actor.departmentCode !== null;
+  return isMember(actor.role) && hasCapability(actor.departmentCode, "manageAccounts");
 }
 
 /** Recheck the actor before a write can change their own management rights. */
-export function managerIsAsRead(db: Database, actor: CurrentUser) {
+export function managerIsAsRead(actor: CurrentUser) {
   return (
     and(
       notBanned(),
@@ -43,19 +42,7 @@ export function managerIsAsRead(db: Database, actor: CurrentUser) {
       actor.departmentId
         ? eq(user.departmentId, actor.departmentId)
         : sql`${user.departmentId} is null`,
-      hasRole(actor.role, "admin")
-        ? sql`1`
-        : exists(
-            db
-              .select({ id: department.id })
-              .from(department)
-              .where(
-                and(
-                  eq(department.id, user.departmentId),
-                  inArray(department.code, DEPARTMENT_CODES),
-                ),
-              ),
-          ),
+      hasRole(actor.role, "admin") ? sql`1` : inDepartmentWith("manageAccounts"),
     ) ?? sql`0`
   );
 }
