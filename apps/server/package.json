@@ -13,10 +13,10 @@
     "@it3k/auth": "workspace:*",
     "@it3k/db": "workspace:*",
     "better-auth": "catalog:",
-    "drizzle-orm": "1.0.0-rc.5-ab785fc",
+    "drizzle-orm": "1.0.0-rc.5",
     "evlog": "catalog:",
-    "files-sdk": "3.1.0",
-    "hono": "^4.13.12",
+    "files-sdk": "3.1.3",
+    "hono": "^4.13.18",
     "varlock": "catalog:",
     "zod": "catalog:"
   },
@@ -25,7 +25,7 @@
     "@it3k/config": "workspace:*",
     "@it3k/infra": "workspace:*",
     "@types/node": "catalog:",
-    "tsdown": "^0.23.0",
+    "tsdown": "^0.23.7",
     "typescript": "catalog:"
   }
 }
