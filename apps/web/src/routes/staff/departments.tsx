@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@it3k/ui/components/alert-dialog";
+import { Badge } from "@it3k/ui/components/badge";
 import { Button } from "@it3k/ui/components/button";
 import {
   Card,
@@ -41,6 +42,7 @@ import {
 } from "@/components/department-icon";
 import { PageHeader } from "@/components/page-header";
 import { type Department, type DepartmentInput, departmentsApi } from "@/lib/departments";
+import { DEPARTMENT_CODE_MAX_LENGTH, DEPARTMENT_CODE_PATTERN } from "@it3k/db/department-codes";
 import { isSignedOut } from "@/lib/leadership";
 
 export const Route = createFileRoute("/staff/departments")({
@@ -106,9 +108,7 @@ function RouteComponent() {
             department={d}
             canEdit={canEdit}
             canDelete={canDelete}
-            onUpdate={(input) =>
-              run(() => departmentsApi.update(d.id, input), "บันทึกแล้ว")
-            }
+            onUpdate={(input) => run(() => departmentsApi.update(d.id, input), "บันทึกแล้ว")}
             onDelete={() => run(() => departmentsApi.remove(d.id), "ลบแล้ว")}
           />
         ))}
@@ -117,7 +117,7 @@ function RouteComponent() {
   );
 }
 
-function DepartmentItem({
+export function DepartmentItem({
   department,
   canEdit,
   canDelete,
@@ -131,6 +131,8 @@ function DepartmentItem({
   onDelete: () => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
+  // Codes are permanent ids; the server refuses to delete a coded department.
+  const deletable = canDelete && department.code === null;
 
   if (editing) {
     return (
@@ -156,13 +158,18 @@ function DepartmentItem({
           <CardTitle className="flex items-center gap-2">
             <DepartmentIcon department={department} />
             {department.name}
+            {department.code !== null && (
+              <Badge variant="secondary" title="รหัสฝ่าย: เปลี่ยนไม่ได้ และฝ่ายที่มีรหัสลบไม่ได้">
+                <code className="font-mono">{department.code}</code>
+              </Badge>
+            )}
           </CardTitle>
           <CardDescription className="flex items-center gap-1">
             <Users className="size-3.5" />
             {department.memberCount}
             {department.description && <span className="ml-2">· {department.description}</span>}
           </CardDescription>
-          {(canEdit || canDelete) && (
+          {(canEdit || deletable) && (
             <CardAction className="flex gap-1">
               {canEdit && (
                 <Button
@@ -174,7 +181,7 @@ function DepartmentItem({
                   <Pencil />
                 </Button>
               )}
-              {canDelete && <DeleteDepartmentButton department={department} onDelete={onDelete} />}
+              {deletable && <DeleteDepartmentButton department={department} onDelete={onDelete} />}
             </CardAction>
           )}
         </CardHeader>
@@ -206,9 +213,7 @@ function DeleteDepartmentButton({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>ลบ {department.name}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            สมาชิกของฝ่ายนี้จะไม่มีฝ่าย บัญชีผู้ใช้จะไม่ถูกลบ
-          </AlertDialogDescription>
+          <AlertDialogDescription>สมาชิกของฝ่ายนี้จะไม่มีฝ่าย บัญชีผู้ใช้จะไม่ถูกลบ</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
@@ -242,6 +247,8 @@ function DepartmentForm({
   onCancel?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
+  // Codes are chosen once, on create; an existing code cannot change.
+  const [code, setCode] = useState("");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [icon, setIcon] = useState<DepartmentIconKey>(initial?.icon ?? "folder");
   const [color, setColor] = useState<DepartmentColorKey>(initial?.color ?? "slate");
@@ -255,10 +262,12 @@ function DepartmentForm({
           onSubmit={async (e) => {
             e.preventDefault();
             setPending(true);
-            const ok = await onSubmit({ name, description: description || null, icon, color });
+            const input = { name, description: description || null, icon, color };
+            const ok = await onSubmit(initial ? input : { ...input, code: code.trim() || null });
             setPending(false);
             if (ok && !initial) {
               setName("");
+              setCode("");
               setDescription("");
               setIcon("folder");
               setColor("slate");
@@ -274,6 +283,18 @@ function DepartmentForm({
             required
             maxLength={100}
           />
+          {!initial && (
+            <Input
+              aria-label="รหัสฝ่าย"
+              placeholder="รหัส (เช่น art)"
+              title="ตัวพิมพ์เล็ก a-z, 0-9 และ - ตั้งแล้วเปลี่ยนไม่ได้ และฝ่ายที่มีรหัสลบไม่ได้"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toLowerCase())}
+              pattern={DEPARTMENT_CODE_PATTERN.source}
+              maxLength={DEPARTMENT_CODE_MAX_LENGTH}
+              className="font-mono sm:w-40"
+            />
+          )}
           <Input
             placeholder="คำอธิบาย"
             value={description}

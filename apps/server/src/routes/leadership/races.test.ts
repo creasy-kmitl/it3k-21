@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import { unlockDepartmentCodes } from "@it3k/db/testing";
 import { leadership, leadershipSocial, user } from "@it3k/db/schema/index";
 import { createTestContext, defined } from "../../testing";
 import { createLeadershipRoutes } from ".";
@@ -30,8 +31,10 @@ for (const operation of ["create", "edit", "delete"] as const) {
         if (revocation === "removal") t.sqlite.run("delete from user where id = 'manager'");
         if (revocation === "department")
           t.sqlite.run("update user set department_id = ? where id = 'manager'", [art]);
-        if (revocation === "code")
+        if (revocation === "code") {
+          unlockDepartmentCodes(t.sqlite);
           t.sqlite.run("update department set code = null where id = ?", [tech]);
+        }
       };
       const [path, method, json] = {
         create: [

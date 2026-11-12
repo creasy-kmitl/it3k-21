@@ -7,6 +7,8 @@ export type Department = {
   id: string;
   name: string;
   description: string | null;
+  /** A permanent id, set when the department is created; coded departments cannot be deleted. */
+  code: string | null;
   icon: DepartmentIconKey;
   color: DepartmentColorKey;
   createdAt: string;
@@ -16,6 +18,8 @@ export type Department = {
 
 export type DepartmentInput = {
   name: string;
+  /** Only sent on create; the server never changes an existing code. */
+  code?: string | null;
   description?: string | null;
   icon?: DepartmentIconKey;
   color?: DepartmentColorKey;
@@ -35,7 +39,7 @@ export const departmentsApi = {
   list: () => request<Department[]>(""),
   create: (input: DepartmentInput) =>
     request<Department>("", { method: "POST", body: JSON.stringify(input) }),
-  update: (id: string, input: Partial<DepartmentInput>) =>
+  update: (id: string, input: Partial<Omit<DepartmentInput, "code">>) =>
     request<Department>(`/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   remove: (id: string) => request<void>(`/${id}`, { method: "DELETE" }),
 };

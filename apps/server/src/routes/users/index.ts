@@ -233,7 +233,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
           // anything read above changed. Seats are freed before one is taken so
           // the one-seat-per-account and one-holder-per-seat indexes hold.
           await db.batch([
-            abortUnless(db, actor.id, managerIsAsRead(db, actor)),
+            abortUnless(db, actor.id, managerIsAsRead(actor)),
             abortUnless(db, id, unchanged ?? sql`1`),
             db
               .update(user)
@@ -317,7 +317,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
           return c.json({ message: "Only admins can change an admin's account" }, 403);
         try {
           await db.batch([
-            abortUnless(db, actor.id, managerIsAsRead(db, actor)),
+            abortUnless(db, actor.id, managerIsAsRead(actor)),
             abortUnless(
               db,
               id,
@@ -356,7 +356,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
         await db.batch([
           // canGrantAdmin established that the snapshot role contains admin;
           // equality inside this guard prevents a revoked admin restoring it.
-          abortUnless(db, actor.id, managerIsAsRead(db, actor)),
+          abortUnless(db, actor.id, managerIsAsRead(actor)),
           abortUnless(
             db,
             id,

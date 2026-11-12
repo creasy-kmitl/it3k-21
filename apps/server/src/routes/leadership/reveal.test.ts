@@ -59,7 +59,7 @@ describe("POST /:id/reveal", () => {
     expect(events).toEqual([
       {
         actorUserId: "staff",
-        actorDepartmentCode: null,
+        actorDepartmentCode: "art",
         impersonatedBy: null,
         targetLeadershipId: seatId,
         targetDepartmentId: await t.departmentId("Tech/Live"),
@@ -111,7 +111,7 @@ describe("POST /:id/reveal", () => {
       {
         id: expect.any(String),
         actorUserId: "staff",
-        actorDepartmentCode: null,
+        actorDepartmentCode: "art",
         impersonatedBy: null,
         leadershipId: seatId,
         departmentId: await t.departmentId("Tech/Live"),

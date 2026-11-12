@@ -1,5 +1,5 @@
 import type { Database } from "@it3k/db";
-import { type DepartmentCode, department } from "@it3k/db/schema/department";
+import { department } from "@it3k/db/schema/department";
 import { user } from "@it3k/db/schema/auth";
 import { type LeadershipRole, leadership } from "@it3k/db/schema/leadership";
 import { isMember } from "@it3k/auth/permissions";
@@ -27,7 +27,8 @@ export type CurrentUser = {
   /** The seat the account holds, if any; seats are what make someone a leader. */
   leadershipRole: LeadershipRole | null;
   departmentId: string | null;
-  departmentCode: DepartmentCode | null;
+  /** Any department code; only reserved ones grant rights (policies/department-capabilities.ts). */
+  departmentCode: string | null;
   banned: boolean;
 };
 
@@ -116,14 +117,20 @@ export function constraintMessage(error: unknown): string | null {
   let current: unknown = error;
   for (let depth = 0; current && depth < 5; depth++) {
     const message = current instanceof Error ? current.message : String(current);
-    if (/(UNIQUE|FOREIGN KEY|NOT NULL) constraint failed/.test(message)) return message;
+    if (/(UNIQUE|FOREIGN KEY|NOT NULL) constraint failed|department_code_protected/.test(message)) {
+      return message;
+    }
     current = current instanceof Error ? current.cause : null;
   }
   return null;
 }
 
-export function constraintError(error: unknown): "unique" | "foreign-key" | "stale" | null {
+export function constraintError(
+  error: unknown,
+): "unique" | "foreign-key" | "stale" | "protected" | null {
   const message = constraintMessage(error);
+  // Raised by the lock_department_codes triggers.
+  if (message?.includes("department_code_protected")) return "protected";
   if (message?.includes("UNIQUE constraint failed")) return "unique";
   if (message?.includes("FOREIGN KEY constraint failed")) return "foreign-key";
   if (message?.includes("NOT NULL constraint failed: user.role")) return "stale";
