@@ -1,4 +1,4 @@
-import * as Axiom from "alchemy/Axiom";
+import * as Axiom from "@alchemy.run/axiom";
 import * as Provider from "alchemy/Provider";
 import { retain } from "alchemy/RemovalPolicy";
 import type { ResourceClass, ResourceLike } from "alchemy/Resource";
