@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import * as BunServices from "@effect/platform-bun/BunServices";
 import { AlchemyContext } from "alchemy/AlchemyContext";
-import * as Axiom from "alchemy/Axiom";
+import * as Axiom from "@alchemy.run/axiom";
 import * as Plan from "alchemy/Plan";
 import { findProvider } from "alchemy/Provider";
 import { noopSession } from "alchemy/Report";
