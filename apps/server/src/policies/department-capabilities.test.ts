@@ -17,6 +17,11 @@ describe("department capabilities", () => {
     expect(codesWith("manageShortLinks")).toEqual(["tech-live"]);
   });
 
+  test("tech-live runs sports; registration registers athletes", () => {
+    expect(codesWith("runSports")).toEqual(["tech-live"]);
+    expect(codesWith("registerAthletes")).toEqual(["registration"]);
+  });
+
   test("policies follow the capability map", () => {
     const staff = (departmentCode: string | null) => ({
       id: "me",

@@ -1,6 +1,7 @@
 import type { Database } from "@it3k/db";
 import { department } from "@it3k/db/schema/department";
 import { user } from "@it3k/db/schema/auth";
+import type { Institution } from "@it3k/db/profile";
 import { type LeadershipRole, leadership } from "@it3k/db/schema/leadership";
 import { isMember } from "@it3k/auth/permissions";
 import { type SQL, eq, sql } from "drizzle-orm";
@@ -29,6 +30,8 @@ export type CurrentUser = {
   departmentId: string | null;
   /** Any department code; only reserved ones grant rights (policies/department-capabilities.ts). */
   departmentCode: string | null;
+  /** Scopes registration staff in the sport system (policies/sports.ts). */
+  institution: Institution | null;
   banned: boolean;
 };
 
@@ -76,6 +79,7 @@ export function requireUser(deps: RouteDeps) {
         leadershipRole: leadership.role,
         departmentId: user.departmentId,
         departmentCode: department.code,
+        institution: user.institution,
         banned: user.banned,
         banExpires: user.banExpires,
       })
@@ -98,6 +102,7 @@ export function requireUser(deps: RouteDeps) {
       leadershipRole: row.leadershipRole,
       departmentId: row.departmentId,
       departmentCode: row.departmentCode,
+      institution: row.institution,
       banned: false,
     });
     await next();
