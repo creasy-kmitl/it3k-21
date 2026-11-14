@@ -10,7 +10,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-import { EVENT_TYPES } from "../event-rules";
+import { CHECKIN_METHODS, EVENT_TYPES } from "../event-rules";
 import type { Institution } from "../profile";
 import { user } from "./auth";
 import { sportDivision } from "./sport";
@@ -56,7 +56,7 @@ export const venue = sqliteTable(
 
 /**
  * A sport event (for some institutions and sport divisions) or a general
- * one. Check-ins come with the kiosk.
+ * one.
  */
 export const event = sqliteTable(
   "event",
@@ -113,5 +113,33 @@ export const eventDivision = sqliteTable(
   (table) => [
     primaryKey({ columns: [table.eventId, table.divisionId] }),
     index("event_division_division_id_idx").on(table.divisionId),
+  ],
+);
+
+/** One account checked in at one event, by the kiosk or by hand. */
+export const eventCheckin = sqliteTable(
+  "event_checkin",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => event.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    checkedInBy: text("checked_in_by").references(() => user.id, { onDelete: "set null" }),
+    method: text("method", { enum: CHECKIN_METHODS }).notNull(),
+    // Checked in although not on the event's list, by a catalog manager.
+    forced: integer("forced", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("event_checkin_event_user_uidx").on(table.eventId, table.userId),
+    index("event_checkin_user_id_idx").on(table.userId),
+    check("event_checkin_method_check", sql`${table.method} IN (${inList(CHECKIN_METHODS)})`),
   ],
 );
