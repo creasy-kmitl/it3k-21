@@ -17,3 +17,40 @@ html {
     }
   }
 }
+
+/*
+ * Leaflet's own stylesheet is imported by the map component, not here. These
+ * rules only pull it in line with the app's tokens, so the map and its popups
+ * do not look like they were pasted in from somewhere else.
+ */
+
+.leaflet-container {
+  @apply bg-muted font-sans;
+}
+
+/* Popups are content, so they follow the popover token like any other overlay. */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  @apply bg-popover text-popover-foreground shadow-md;
+}
+
+.leaflet-popup-content {
+  @apply text-foreground;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+  @apply text-popover-foreground;
+}
+
+.leaflet-bar a,
+.leaflet-bar a:hover {
+  @apply bg-popover text-popover-foreground;
+}
+
+.leaflet-control-attribution {
+  @apply bg-popover/80 text-muted-foreground;
+}
+
+.leaflet-control-attribution a {
+  @apply text-foreground;
+}

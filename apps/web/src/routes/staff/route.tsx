@@ -13,6 +13,7 @@ import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { NotificationBell } from "@/components/calendar/notification-bell";
+import { MapButton } from "@/components/map/map-button"; // Map button call by "<MapButton />"
 import { authClient } from "@/lib/auth-client";
 import { clearCacheOnUserChange } from "@/lib/query-cache";
 
@@ -94,6 +95,8 @@ function AuthLayout() {
               <Outlet />
             </div>
           </div>
+          {/* Floating on every staff page rather than living behind a nav item,
+              so the map is one tap away from anywhere in the portal. */}
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>
