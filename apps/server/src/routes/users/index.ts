@@ -1,6 +1,7 @@
 import { type Role, hasRole } from "@it3k/auth/permissions";
 import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
+import { INSTITUTION_IDS } from "@it3k/db/profile";
 import { department, departmentAppearance } from "@it3k/db/schema/department";
 import { LEADERSHIP_ROLES, leadership, leadershipSocial } from "@it3k/db/schema/leadership";
 import { type SQL, and, eq, notExists, sql } from "drizzle-orm";
@@ -26,6 +27,7 @@ import {
   managerIsAsRead,
 } from "../../policies/leadership";
 import { validate } from "../../middleware/validation";
+import { canSport, sportAccessIsAsRead, sportAccessJson } from "../../policies/sports";
 import { usedBytes } from "../files";
 import { limitJsonBody } from "../../middleware/json-body-limit";
 
@@ -40,6 +42,8 @@ const assignmentInput = z.discriminatedUnion("kind", [
 ]);
 
 const adminInput = z.strictObject({ admin: z.boolean() });
+
+const institutionInput = z.strictObject({ institution: z.enum(INSTITUTION_IDS).nullable() });
 
 /** The single account role shown for a stored (possibly comma-separated) role. */
 function accountRole(role: string | null): Role {
@@ -57,6 +61,7 @@ function selectAccounts(db: Database) {
       name: user.name,
       image: user.image,
       role: user.role,
+      institution: user.institution,
       storageLimit: user.storageLimit,
       storageUsed: usedBytes(user.id),
       departmentId: department.id,
@@ -79,6 +84,7 @@ function toAccount(row: AccountRow, actor: CurrentUser) {
     name: row.name,
     image: row.image,
     role,
+    institution: row.institution,
     storageLimit: row.storageLimit,
     storageUsed: row.storageUsed,
     department:
@@ -93,6 +99,7 @@ function toAccount(row: AccountRow, actor: CurrentUser) {
     seatRole: row.seatRole,
     // Only admins may change an admin's account.
     canEdit: isManager(actor) && canChangeAccount(actor, row.role),
+    canSetInstitution: canSport(actor, "users.setInstitution") && canChangeAccount(actor, row.role),
   };
 }
 
@@ -127,6 +134,8 @@ export const createUserRoutes = (deps: RouteDeps) =>
           department: account.department,
           seatRole: account.seatRole,
           canManageUsers: isManager(actor),
+          institution: account.institution,
+          sportAccess: sportAccessJson(actor),
         },
         200,
       );
@@ -328,6 +337,39 @@ export const createUserRoutes = (deps: RouteDeps) =>
         } catch (error) {
           if (constraintError(error))
             return c.json({ message: "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่" }, 409);
+          throw error;
+        }
+        const account = await findAccount(db, id, actor);
+        if (!account) return c.json({ message: "User not found" }, 404);
+        return c.json(account, 200);
+      },
+    )
+    // The institution scopes what registration staff see in the sport system.
+    .put(
+      "/:id/institution",
+      validate("param", idParam),
+      validate("json", institutionInput),
+      async (c) => {
+        const db = c.var.db;
+        const actor = c.var.user;
+        const { id } = c.req.valid("param");
+        const { institution } = c.req.valid("json");
+        if (!canSport(actor, "users.setInstitution")) {
+          return c.json({ message: "Forbidden" }, 403);
+        }
+        const [target] = await db.select({ role: user.role }).from(user).where(eq(user.id, id));
+        if (!target) return c.json({ message: "User not found" }, 404);
+        if (!canChangeAccount(actor, target.role)) {
+          return c.json({ message: "Only admins can change an admin's account" }, 403);
+        }
+        try {
+          await db.batch([
+            abortUnless(db, actor.id, sportAccessIsAsRead(actor)),
+            abortUnless(db, id, eq(user.role, target.role) ?? sql`0`),
+            db.update(user).set({ institution }).where(eq(user.id, id)),
+          ]);
+        } catch (error) {
+          if (constraintError(error)) return c.json({ message: "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่" }, 409);
           throw error;
         }
         const account = await findAccount(db, id, actor);
