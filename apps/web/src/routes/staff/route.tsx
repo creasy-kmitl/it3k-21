@@ -31,6 +31,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/staff/links": "ลิงก์สั้น",
   "/staff/sports": "ประเภทกีฬา",
   "/staff/athletes": "นักกีฬา",
+  "/staff/events": "กิจกรรม",
+  "/staff/venues": "สถานที่",
 };
 
 /**

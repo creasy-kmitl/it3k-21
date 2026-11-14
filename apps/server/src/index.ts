@@ -16,6 +16,8 @@ import { createQrPresetRoutes } from "./routes/qr-presets";
 import { createSportRoutes } from "./routes/sports";
 import { createRegistrationRoutes } from "./routes/registrations";
 import { createAthleteRoutes } from "./routes/athletes";
+import { createEventRoutes } from "./routes/events";
+import { createVenueRoutes } from "./routes/venues";
 import type { DiscordDeps } from "./routes/registrations/shared";
 import { discordEnabled } from "@it3k/auth";
 import { createUserRoutes } from "./routes/users";
@@ -100,6 +102,8 @@ const discordDeps: DiscordDeps = {
 };
 app.route("/api/registrations", createRegistrationRoutes({ ...deps, ...discordDeps }));
 app.route("/api/athletes", createAthleteRoutes(deps));
+app.route("/api/venues", createVenueRoutes(deps));
+app.route("/api/events", createEventRoutes(deps));
 
 // Public: the web worker forwards its `/l/<slug>` paths here.
 app.route("/l", createShortLinkRedirect(deps));
