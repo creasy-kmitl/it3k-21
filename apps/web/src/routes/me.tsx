@@ -37,6 +37,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { ParticipantShell } from "@/components/participant-shell";
 import { RoleBadge } from "@/components/role-badge";
+import { StatusBadge } from "@/components/sport-badges";
 import { UserBarcode } from "@/components/user-barcode";
 import { useApis } from "@/lib/api-context";
 import { publicFileUrl } from "@/lib/files";
@@ -231,28 +232,60 @@ function MePage() {
                   </dl>
                 </CardContent>
               </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 [&_svg]:size-5 [&_svg]:shrink-0">
-                    <Trophy className="text-primary" aria-hidden />
-                    สมัครเป็นนักกีฬา
-                  </CardTitle>
-                  <CardDescription>ระบบลงทะเบียนนักกีฬายังไม่พร้อมใช้งาน</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button disabled aria-describedby="athlete-unavailable">
-                    <Trophy data-icon="inline-start" aria-hidden />
-                    สมัครเป็นนักกีฬา
-                  </Button>
-                  <p id="athlete-unavailable" className="mt-3 text-sm text-muted-foreground">
-                    ระบบลงทะเบียนนักกีฬายังไม่พร้อมใช้งาน
-                  </p>
-                </CardContent>
-              </Card>
+              <AthleteCard />
             </div>
           </div>
         )}
       </div>
     </ParticipantShell>
+  );
+}
+
+/** The athlete's registrations at a glance, with the way to /sports. */
+function AthleteCard() {
+  const { registrations } = useApis();
+  const mine = useQuery({ queryKey: ["registrations", "me"], queryFn: () => registrations.me() });
+  const items = mine.data?.registrations ?? [];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 [&_svg]:size-5 [&_svg]:shrink-0">
+          <Trophy className="text-primary" aria-hidden />
+          การสมัครกีฬา
+        </CardTitle>
+        <CardDescription>
+          {mine.isPending
+            ? "กำลังโหลด"
+            : mine.isError
+              ? "โหลดการสมัครไม่สำเร็จ"
+              : items.length === 0
+                ? "ยังไม่ได้สมัครกีฬา สมัครได้หลายประเภท"
+                : `สมัครไว้ ${items.length} ประเภท`}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {items.length > 0 && (
+          <ul className="flex flex-col divide-y">
+            {items.map((item) => (
+              <li key={item.id} className="flex flex-col gap-1 py-2">
+                <span className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium">
+                    {item.sport.name} · {item.division.name}
+                  </span>
+                  <StatusBadge status={item.status} />
+                </span>
+                {item.status === "rejected" && item.reviewNote && (
+                  <span className="text-sm text-destructive">เหตุผล: {item.reviewNote}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <Button className="self-start" render={<Link to="/sports" />} nativeButton={false}>
+          <Trophy data-icon="inline-start" aria-hidden />
+          {items.length === 0 ? "สมัครเป็นนักกีฬา" : "จัดการการสมัคร"}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

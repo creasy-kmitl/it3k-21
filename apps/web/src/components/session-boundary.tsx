@@ -37,7 +37,7 @@ export function SessionBoundary({
     queryClient.clear();
     const { pathname, href } = router.state.location;
     // A deliberate sign-out may already have left the protected page.
-    if (pathname !== "/signup" && pathname !== "/me" && !pathname.startsWith("/staff")) return;
+    if (!["/signup", "/me", "/sports"].includes(pathname) && !pathname.startsWith("/staff")) return;
     void router.navigate({
       to: "/login",
       search: { to: href },

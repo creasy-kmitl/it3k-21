@@ -14,6 +14,10 @@ import { createLinkRoutes } from "./routes/links";
 import { createShortLinkRedirect } from "./routes/links/redirect";
 import { createQrPresetRoutes } from "./routes/qr-presets";
 import { createSportRoutes } from "./routes/sports";
+import { createRegistrationRoutes } from "./routes/registrations";
+import { createAthleteRoutes } from "./routes/athletes";
+import type { DiscordDeps } from "./routes/registrations/shared";
+import { discordEnabled } from "@it3k/auth";
 import { createUserRoutes } from "./routes/users";
 import { createLeadershipRoutes, recordContactReveal } from "./routes/leadership";
 import { createAuth, getDb } from "./services";
@@ -85,6 +89,17 @@ app.route("/api/calendar", createCalendarRoutes(deps));
 app.route("/api/links", createLinkRoutes({ ...deps, webOrigin: env.CORS_ORIGIN }));
 app.route("/api/qr-presets", createQrPresetRoutes(deps));
 app.route("/api/sports", createSportRoutes(deps));
+const discordDeps: DiscordDeps = {
+  discordEnabled: discordEnabled(env),
+  // Asks Discord with the athlete's stored token; best effort.
+  discordProfile: async (headers, accountId) => {
+    const info = await (await createAuth()).api.accountInfo({ headers, query: { accountId } });
+    const data = info?.data as { username?: unknown } | undefined;
+    return typeof data?.username === "string" ? { username: data.username } : null;
+  },
+};
+app.route("/api/registrations", createRegistrationRoutes({ ...deps, ...discordDeps }));
+app.route("/api/athletes", createAthleteRoutes(deps));
 
 // Public: the web worker forwards its `/l/<slug>` paths here.
 app.route("/l", createShortLinkRedirect(deps));
