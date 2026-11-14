@@ -87,6 +87,26 @@ export const relations = defineRelations(schema, (r) => ({
       to: r.sport.id,
       optional: false,
     }),
+    registrations: r.many.sportRegistration(),
+  },
+  athlete: {
+    user: r.one.user({
+      from: r.athlete.userId,
+      to: r.user.id,
+      optional: false,
+    }),
+  },
+  sportRegistration: {
+    user: r.one.user({
+      from: r.sportRegistration.userId,
+      to: r.user.id,
+      optional: false,
+    }),
+    division: r.one.sportDivision({
+      from: r.sportRegistration.divisionId,
+      to: r.sportDivision.id,
+      optional: false,
+    }),
   },
   session: {
     user: r.one.user({

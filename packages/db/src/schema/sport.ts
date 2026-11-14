@@ -1,7 +1,15 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
-import { DIVISION_FORMATS, DIVISION_GENDERS, SPORT_ICONS } from "../sport-rules";
+import type { Institution } from "../profile";
+import {
+  DIVISION_FORMATS,
+  DIVISION_GENDERS,
+  REGISTRATION_CHANGE_ACTIONS,
+  REGISTRATION_STATUSES,
+  SPORT_ICONS,
+} from "../sport-rules";
+import { user } from "./auth";
 
 export * from "../sport-rules";
 
@@ -85,5 +93,101 @@ export const sportDivision = sqliteTable(
       "sport_division_max_check",
       sql`${table.maxPerInstitution} IS NULL OR ${table.maxPerInstitution} > 0`,
     ),
+  ],
+);
+
+/** Created on an account's first registration, which must give the student id. */
+export const athlete = sqliteTable("athlete", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  studentId: text("student_id").notNull(),
+  ...timestamps(),
+});
+
+const notRejected = sql`status <> 'rejected'`;
+
+/** One account in one division, with the division's extra fields. */
+export const sportRegistration = sqliteTable(
+  "sport_registration",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    // No ON DELETE: a division with registrations cannot be deleted.
+    divisionId: text("division_id")
+      .notNull()
+      .references(() => sportDivision.id),
+    // Copied from user.institution when registering, and kept in step when
+    // staff change it. Scopes what registration staff see, and makes shirt
+    // numbers and badminton ranks unique per team.
+    institution: text("institution").$type<Institution>().notNull(),
+    status: text("status", { enum: REGISTRATION_STATUSES }).notNull().default("review"),
+    shirtNumber: integer("shirt_number"),
+    badmintonRank: integer("badminton_rank"),
+    ign: text("ign").notNull().default(""),
+    ignReading: text("ign_reading").notNull().default(""),
+    facebookUrl: text("facebook_url").notNull().default(""),
+    // Snapshot of the linked Discord account when the athlete last saved.
+    discordUserId: text("discord_user_id"),
+    discordUsername: text("discord_username"),
+    // Shown to the athlete; required when rejecting.
+    reviewNote: text("review_note"),
+    reviewedBy: text("reviewed_by").references(() => user.id, { onDelete: "set null" }),
+    reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+    // Bumped by every write, so an edit based on an old read is refused.
+    version: integer("version").notNull().default(1),
+    ...timestamps(),
+  },
+  (table) => [
+    uniqueIndex("sport_registration_user_division_uidx").on(table.userId, table.divisionId),
+    // One shirt number per team: a team is a division's athletes from one institution.
+    uniqueIndex("sport_registration_shirt_uidx")
+      .on(table.divisionId, table.institution, table.shirtNumber)
+      .where(sql`shirt_number IS NOT NULL AND ${notRejected}`),
+    uniqueIndex("sport_registration_rank_uidx")
+      .on(table.divisionId, table.institution, table.badmintonRank)
+      .where(sql`badminton_rank IS NOT NULL AND ${notRejected}`),
+    index("sport_registration_division_idx").on(table.divisionId, table.institution),
+    index("sport_registration_institution_idx").on(table.institution, table.status),
+    check("sport_registration_status_check", sql`${table.status} IN (${inList(REGISTRATION_STATUSES)})`),
+    check(
+      "sport_registration_rank_check",
+      sql`${table.badmintonRank} IS NULL OR ${table.badmintonRank} IN (1, 2)`,
+    ),
+    check(
+      "sport_registration_shirt_check",
+      sql`${table.shirtNumber} IS NULL OR ${table.shirtNumber} BETWEEN 0 AND 99`,
+    ),
+  ],
+);
+
+// Append-only change log: who changed what, from what, to what. No foreign
+// keys, so the history outlives the accounts and registrations it names.
+export const sportRegistrationChange = sqliteTable(
+  "sport_registration_change",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    registrationId: text("registration_id").notNull(),
+    athleteUserId: text("athlete_user_id").notNull(),
+    actorUserId: text("actor_user_id").notNull(),
+    // The admin behind an impersonated session, if any.
+    impersonatedBy: text("impersonated_by"),
+    action: text("action", { enum: REGISTRATION_CHANGE_ACTIONS }).notNull(),
+    // `{ field: [before, after] }`
+    changes: text("changes", { mode: "json" })
+      .$type<Record<string, [unknown, unknown]>>()
+      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [
+    index("sport_registration_change_registration_idx").on(table.registrationId, table.createdAt),
   ],
 );

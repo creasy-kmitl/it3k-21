@@ -8,6 +8,8 @@ import { type UsersApi, usersApi } from "./users";
 import { type ProfileApi, profileApi } from "./profile";
 import { type FilesApi, filesApi } from "./files";
 import { type SportsApi, sportsApi } from "./sports";
+import { type RegistrationsApi, registrationsApi } from "./registrations";
+import { type AthletesApi, athletesApi } from "./athletes";
 
 /** The API clients route pages call; tests swap in fakes with ApiProvider. */
 export type Apis = {
@@ -19,6 +21,8 @@ export type Apis = {
   profile: ProfileApi;
   files: FilesApi;
   sports: SportsApi;
+  registrations: RegistrationsApi;
+  athletes: AthletesApi;
 };
 
 const ApiContext = createContext<Apis>({
@@ -30,6 +34,8 @@ const ApiContext = createContext<Apis>({
   profile: profileApi,
   files: filesApi,
   sports: sportsApi,
+  registrations: registrationsApi,
+  athletes: athletesApi,
 });
 
 export const ApiProvider = ApiContext.Provider;
