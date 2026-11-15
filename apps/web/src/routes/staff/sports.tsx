@@ -1,8 +1,6 @@
 import {
   DIVISION_FORMATS,
   DIVISION_GENDERS,
-  type DivisionFormat,
-  type DivisionGender,
   type DivisionInput,
   FORMAT_LABELS,
   GENDER_LABELS,
@@ -26,8 +24,6 @@ import {
   ImageIcon,
   Layers,
   Lock,
-  type LucideIcon,
-  Mars,
   Medal,
   Palette,
   Pencil,
@@ -37,11 +33,8 @@ import {
   Trash2,
   Trophy,
   Type,
-  User,
   UserCheck,
   Users,
-  UsersRound,
-  Venus,
   VenusAndMars,
 } from "lucide-react";
 import { useState } from "react";
@@ -57,7 +50,7 @@ import {
   issuesOf,
 } from "@/components/form-dialog";
 import { PageHeader } from "@/components/page-header";
-import { DivisionBadges } from "@/components/sport-badges";
+import { DivisionBadges, FormatTag, GenderTag } from "@/components/sport-badges";
 import { SportArt, SportThumbnail } from "@/components/sport-art";
 import { useApis } from "@/lib/api-context";
 import type { Division, Sport } from "@/lib/sports";
@@ -79,19 +72,6 @@ export const ICON_LABELS: Record<SportIcon, string> = {
   folk: "กีฬาพื้นบ้าน",
   esports: "Esports",
   general: "ทั่วไป",
-};
-
-const GENDER_ICONS: Record<DivisionGender, LucideIcon> = {
-  male: Mars,
-  female: Venus,
-  mixed: VenusAndMars,
-  open: Users,
-};
-
-const FORMAT_ICONS: Record<DivisionFormat, LucideIcon> = {
-  individual: User,
-  pair: UsersRound,
-  team: Users,
 };
 
 /** The illustration as a small swatch, so the list shows what each one looks like. */
@@ -510,7 +490,7 @@ function DivisionForm({
           options={DIVISION_GENDERS.map((value) => ({
             value,
             label: GENDER_LABELS[value],
-            icon: GENDER_ICONS[value],
+            content: <GenderTag gender={value} />,
           }))}
           onChange={(value) => set("gender", value)}
         />
@@ -522,7 +502,7 @@ function DivisionForm({
           options={DIVISION_FORMATS.map((value) => ({
             value,
             label: FORMAT_LABELS[value],
-            icon: FORMAT_ICONS[value],
+            content: <FormatTag format={value} />,
           }))}
           onChange={(value) => set("format", value)}
         />

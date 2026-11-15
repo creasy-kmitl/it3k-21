@@ -43,3 +43,63 @@ test("a lost reservation can be cancelled from the library without waiting for e
   await waitFor(() => expect(screen.queryByRole("button", { name: "ยกเลิก lost.bin" })).toBeNull());
   expect(cancelled).toBe(true);
 });
+
+test("searching waits for typing to pause and keeps the current files on screen meanwhile", async () => {
+  const queries: string[] = [];
+  let release: () => void = () => {};
+  const file = (name: string) => ({
+    id: name,
+    name,
+    size: 1,
+    contentType: "application/pdf",
+    url: `https://files.test/${name}`,
+    createdAt: new Date(0).toISOString(),
+  });
+  const apis = fakeApis({
+    files: {
+      list: async ({ q }) => {
+        queries.push(q ?? "");
+        if (q) await new Promise<void>((resolve) => (release = resolve));
+        return {
+          items: [file(q ? "match.pdf" : "first.pdf")],
+          uploads: [],
+          used: 1,
+          limit: GiB,
+          page: 1,
+          hasMore: false,
+        };
+      },
+      remove: async () => ({ success: true }),
+      upload: async () => {
+        throw new Error("Unexpected upload");
+      },
+    },
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <ApiProvider value={apis}>
+        <FileLibrary userId="guest" onClose={() => {}} />
+      </ApiProvider>
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByRole("button", { name: "first.pdf" })).toBeTruthy();
+  expect(screen.getByText(/ใช้พื้นที่/)).toBeTruthy();
+
+  const box = screen.getByRole("searchbox", { name: "ค้นหาไฟล์" });
+  fireEvent.change(box, { target: { value: "m" } });
+  fireEvent.change(box, { target: { value: "match" } });
+  // While the search is on its way the old files stay, marked busy.
+  expect(screen.getByRole("button", { name: "first.pdf" })).toBeTruthy();
+  expect(
+    screen
+      .getByRole("button", { name: "first.pdf" })
+      .closest("[aria-busy]")
+      ?.getAttribute("aria-busy"),
+  ).toBe("true");
+  await waitFor(() => expect(queries).toContain("match"));
+  release();
+  expect(await screen.findByRole("button", { name: "match.pdf" })).toBeTruthy();
+  // One request for the pause, none for the half-typed "m".
+  expect(queries).toEqual(["", "match"]);
+});
