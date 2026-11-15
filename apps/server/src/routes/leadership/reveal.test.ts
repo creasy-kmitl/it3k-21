@@ -24,6 +24,8 @@ beforeEach(async () => {
   await t.seedUser("staff", { department: "Art" });
   await t.seedUser("tech-head", { department: "Tech/Live" });
   await t.seedUser("banned", { banned: true });
+  // Impersonation is honoured only while the admin behind it is still one.
+  await t.seedUser("admin-1", { role: "admin" });
   const [row] = await t.db
     .insert(leadership)
     .values({

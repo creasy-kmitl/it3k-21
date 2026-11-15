@@ -23,7 +23,7 @@ import {
 } from "@it3k/ui/components/select";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Pencil, Search, UserCog } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, Search, UserCog, UserRoundCogIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -41,6 +41,8 @@ import { GiB, INSTITUTIONS, type Institution } from "@it3k/db/profile";
 import { fileSize } from "@/lib/files";
 import { ErrorState } from "@/components/error-state";
 import { toastError } from "@/lib/errors";
+import { authClient, authError } from "@/lib/auth-client";
+import { reloadAt } from "@/lib/view-as";
 
 export const Route = createFileRoute("/staff/users")({
   validateSearch: (search) => listSearchSchema.parse(search),
@@ -95,11 +97,24 @@ function alreadyIs(account: Account, status: Status, departmentId: string) {
   );
 }
 
+/** Signs the admin in as `userId` (Better Auth admin plugin) and reloads the app as them. */
+async function impersonate(userId: string) {
+  const { error } = await authClient.admin.impersonateUser({ userId });
+  if (error) throw authError(error);
+  reloadAt("/staff/dashboard");
+}
+
 /**
  * Accounts and what each one is: guest, athlete, staff of a department, or a head or
  * vicehead. The flags only decide what to show; the API enforces the rules.
  */
-export function UsersPage({ filters: control }: { filters?: FilterControl<ListFilters> }) {
+export function UsersPage({
+  filters: control,
+  onImpersonate = impersonate,
+}: {
+  filters?: FilterControl<ListFilters>;
+  onImpersonate?: (userId: string) => Promise<void>;
+}) {
   const { users: api, leadership: seats } = useApis();
   // Changing a filter starts from page 1 again.
   const [filters, setFilters] = useFilters(control);
@@ -111,6 +126,7 @@ export function UsersPage({ filters: control }: { filters?: FilterControl<ListFi
     setFilters({ department: id, page: undefined });
   const goTo = (next: number) => setFilters({ page: next > 1 ? next : undefined });
   const [editing, setEditing] = useState<Account | null>(null);
+  const [actingAs, setActingAs] = useState<Account | null>(null);
 
   const departments = useQuery({
     queryKey: ["leadership", "departments"],
@@ -202,6 +218,17 @@ export function UsersPage({ filters: control }: { filters?: FilterControl<ListFi
                   ไฟล์ {fileSize(account.storageUsed)} / {fileSize(account.storageLimit)}
                 </span>
               </div>
+              {account.canImpersonate && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`ดูในฐานะ ${account.name}`}
+                  title="ดูในฐานะผู้ใช้นี้"
+                  onClick={() => setActingAs(account)}
+                >
+                  <UserRoundCogIcon />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -245,7 +272,53 @@ export function UsersPage({ filters: control }: { filters?: FilterControl<ListFi
           onClose={() => setEditing(null)}
         />
       )}
+
+      {actingAs && (
+        <ImpersonateDialog
+          account={actingAs}
+          onConfirm={onImpersonate}
+          onClose={() => setActingAs(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function ImpersonateDialog({
+  account,
+  onConfirm,
+  onClose,
+}: {
+  account: Account;
+  onConfirm: (userId: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const start = useMutation({
+    mutationFn: () => onConfirm(account.id),
+    onError: (error) => toastError(error, "สวมบัญชีไม่สำเร็จ"),
+  });
+  return (
+    <AlertDialog open onOpenChange={(open) => !open && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>ดูในฐานะ {account.name}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            คุณจะใช้ระบบด้วยบัญชีนี้ได้ 1 ชั่วโมง และเห็นข้อมูลส่วนตัวของเจ้าของบัญชี
+            การเปิดดูและการแก้ไขทุกครั้งจะบันทึกว่าคุณเป็นผู้ทำ กลับสู่บัญชีของคุณได้จากแถบด้านล่าง
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+          <LoadingButton
+            icon={UserRoundCogIcon}
+            loading={start.isPending || start.isSuccess}
+            onClick={() => start.mutate()}
+          >
+            ดูในฐานะผู้ใช้นี้
+          </LoadingButton>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
