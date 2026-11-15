@@ -1,6 +1,7 @@
 import { INSTITUTIONS } from "@it3k/db/profile";
 import { Button } from "@it3k/ui/components/button";
 import { Input } from "@it3k/ui/components/input";
+import { Skeleton } from "@it3k/ui/components/skeleton";
 import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, redirect } from "@tanstack/react-router";
@@ -12,6 +13,7 @@ import {
   LogOut,
   ScanBarcode,
   SwitchCamera,
+  UserCheck,
   VideoOff,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -135,12 +137,14 @@ export function KioskPage({
   }, [outcome, failure]);
 
   // A desk with a USB scanner types into the box, so keep it focused there;
-  // on touch screens that would keep the keyboard open over the camera.
-  const keepFocus = () => {
+  // on touch screens that would keep the keyboard open over the camera, and
+  // opening it on load would shrink the page under the camera.
+  const keepFocus = useCallback(() => {
     if (window.matchMedia?.("(pointer: fine)").matches) {
       setTimeout(() => input.current?.focus(), 0);
     }
-  };
+  }, []);
+  useEffect(keepFocus, [keepFocus]);
 
   const items = participants.data?.items ?? [];
   const checkedIn = items.filter((item) => item.checkin).length;
@@ -159,72 +163,111 @@ export function KioskPage({
     );
   }
 
+  // Everything below keeps its size while data loads, so the camera and the
+  // input never jump: placeholders hold the title, time and count lines.
   return (
-    <main className="flex min-h-dvh flex-col gap-4 bg-background p-4 md:p-6">
-      <header className="flex flex-wrap items-start gap-3">
+    <main className="flex min-h-dvh flex-col gap-4 bg-background p-4 md:p-6 wide:h-dvh wide:gap-6 wide:overflow-hidden wide:p-8 2xl:p-10">
+      <header className="flex items-start gap-3 wide:gap-4">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h1 className="flex items-center gap-2 text-xl font-semibold md:text-2xl">
-            <ScanBarcode className="size-6 shrink-0 text-primary" aria-hidden />
-            <span className="truncate">{event.data?.name ?? "Kiosk เช็คอิน"}</span>
-          </h1>
-          {event.data && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="size-4" aria-hidden />
-              {eventTime(event.data)}
-              {event.data.venue && ` · ${event.data.venue.name}`}
-            </p>
-          )}
+          <div className="flex items-center gap-2">
+            <ScanBarcode className="size-6 shrink-0 text-primary 2xl:size-9" aria-hidden />
+            {event.isPending ? (
+              <Skeleton className="h-7 w-48 max-w-full md:h-8 md:w-72 2xl:h-10" />
+            ) : (
+              <h1 className="truncate text-xl font-semibold md:text-2xl 2xl:text-4xl">
+                {event.data?.name ?? "Kiosk เช็คอิน"}
+              </h1>
+            )}
+          </div>
+          <div className="flex min-h-5 items-center gap-2 text-sm text-muted-foreground 2xl:min-h-7 2xl:text-lg">
+            {event.data ? (
+              <>
+                <Clock className="size-4 shrink-0 2xl:size-5" aria-hidden />
+                <p className="min-w-0 truncate">
+                  {eventTime(event.data)}
+                  {event.data.venue && ` · ${event.data.venue.name}`}
+                </p>
+              </>
+            ) : (
+              event.isPending && <Skeleton className="h-4 w-56 max-w-full" />
+            )}
+          </div>
         </div>
-        <p className="rounded-2xl border px-4 py-2 text-center" aria-live="polite">
-          <span className="block text-2xl font-semibold tabular-nums">
-            {checkedIn}
-            <span className="text-base font-normal text-muted-foreground"> / {items.length}</span>
+        <p
+          className="min-w-28 rounded-2xl border px-4 py-2 text-center wide:min-w-36 2xl:px-6 2xl:py-3"
+          aria-live="polite"
+        >
+          <span className="block text-2xl font-semibold tabular-nums 2xl:text-4xl">
+            {participants.data ? checkedIn : "–"}
+            <span className="text-base font-normal text-muted-foreground 2xl:text-2xl">
+              {" "}
+              / {participants.data ? items.length : "–"}
+            </span>
           </span>
-          <span className="text-xs text-muted-foreground">เช็คอินแล้ว</span>
+          <span className="text-xs text-muted-foreground 2xl:text-sm">เช็คอินแล้ว</span>
         </p>
         <Button
           variant="outline"
           render={<Link to="/staff/events/$eventId" params={{ eventId }} />}
           nativeButton={false}
+          className="wide:h-10 wide:px-4"
         >
           <LogOut data-icon="inline-start" aria-hidden /> ออก
         </Button>
       </header>
 
-      {(participants.isError && !participants.data) || (event.isError && !event.data) ? (
-        <ErrorState
-          error={participants.error ?? event.error}
-          onRetry={() => Promise.all([participants.refetch(), event.refetch()])}
-          title="โหลดข้อมูลกิจกรรมไม่สำเร็จ"
-          size="sm"
-          className="mx-auto w-full max-w-xl flex-none"
-        />
-      ) : null}
+      {/* Phones and portrait screens stack; big landscape screens put the camera beside the input. */}
+      <div className="flex flex-col gap-4 wide:grid wide:min-h-0 wide:flex-1 wide:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)] wide:gap-6 2xl:grid-cols-[minmax(0,1fr)_32rem]">
+        <Camera decoderFactory={decoderFactory} onCode={handleCode} />
 
-      <Camera decoderFactory={decoderFactory} onCode={handleCode} />
+        <aside className="mx-auto flex w-full max-w-xl flex-col gap-4 md:max-w-3xl wide:mx-0 wide:max-w-none wide:gap-6">
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleCode(typed);
+              setTyped("");
+            }}
+          >
+            <Input
+              ref={input}
+              autoComplete="off"
+              aria-label="รหัสผู้ใช้"
+              placeholder="สแกนด้วยเครื่องสแกน หรือพิมพ์รหัสผู้ใช้แล้วกด Enter"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              onBlur={keepFocus}
+              className="wide:h-12 wide:px-4 wide:text-base 2xl:h-14 2xl:text-lg"
+            />
+            {/* An icon from the start, so the spinner swaps in without widening the button. */}
+            <LoadingButton
+              type="submit"
+              icon={UserCheck}
+              loading={pending}
+              disabled={!typed.trim()}
+              className="wide:h-12 wide:px-5 wide:text-base 2xl:h-14 2xl:text-lg"
+            >
+              เช็คอิน
+            </LoadingButton>
+          </form>
 
-      <form
-        className="mx-auto flex w-full max-w-xl gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          handleCode(typed);
-          setTyped("");
-        }}
-      >
-        <Input
-          ref={input}
-          autoFocus
-          autoComplete="off"
-          aria-label="รหัสผู้ใช้"
-          placeholder="สแกนด้วยเครื่องสแกน หรือพิมพ์รหัสผู้ใช้แล้วกด Enter"
-          value={typed}
-          onChange={(e) => setTyped(e.target.value)}
-          onBlur={keepFocus}
-        />
-        <LoadingButton type="submit" loading={pending} disabled={!typed.trim()}>
-          เช็คอิน
-        </LoadingButton>
-      </form>
+          <p className="hidden items-start gap-3 rounded-2xl border border-dashed p-4 text-muted-foreground wide:flex 2xl:text-lg">
+            <ScanBarcode className="mt-0.5 size-5 shrink-0" aria-hidden />
+            ให้ผู้เข้าร่วมเปิดบาร์โค้ดในหน้าโปรไฟล์ แล้วหันเข้ากล้องให้อยู่ในกรอบ
+          </p>
+
+          {/* Below the camera, not above it, so an error never pushes the camera down. */}
+          {(participants.isError && !participants.data) || (event.isError && !event.data) ? (
+            <ErrorState
+              error={participants.error ?? event.error}
+              onRetry={() => Promise.all([participants.refetch(), event.refetch()])}
+              title="โหลดข้อมูลกิจกรรมไม่สำเร็จ"
+              size="sm"
+              className="w-full flex-none"
+            />
+          ) : null}
+        </aside>
+      </div>
 
       {(outcome || failure) && (
         <Result
@@ -308,23 +351,28 @@ function Camera({
   }, [deviceId, decoderFactory, onCode]);
 
   return (
-    <section className="relative mx-auto w-full max-w-xl overflow-hidden rounded-3xl border bg-muted">
+    // A fixed 16:9 box (or the whole column on wide screens) whether the
+    // camera is on or not, so starting it moves nothing.
+    <section className="relative mx-auto w-full max-w-xl overflow-hidden rounded-3xl border bg-muted md:max-w-3xl wide:mx-0 wide:h-full wide:max-w-none">
       <video
         ref={video}
         muted
         playsInline
         aria-label="ภาพจากกล้อง"
-        className={cn("aspect-video w-full object-cover", state !== "on" && "hidden")}
+        className={cn(
+          "aspect-video w-full object-cover wide:aspect-auto wide:h-full",
+          state !== "on" && "hidden",
+        )}
       />
       {state === "on" && (
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-[12%] top-1/2 h-1/3 -translate-y-1/2 rounded-2xl border-4 border-white/80 shadow-[0_0_0_9999px_rgb(0_0_0/0.25)]"
+          className="pointer-events-none absolute top-1/2 left-1/2 aspect-[4/1] w-[76%] -translate-1/2 rounded-2xl border-4 border-white/80 shadow-[0_0_0_9999px_rgb(0_0_0/0.25)]"
         />
       )}
       {state !== "on" && (
-        <div className="flex aspect-video flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground">
-          <VideoOff className="size-8" aria-hidden />
+        <div className="flex aspect-video flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground wide:aspect-auto wide:h-full 2xl:text-lg">
+          <VideoOff className="size-8 2xl:size-12" aria-hidden />
           <p>
             {state === "starting"
               ? "กำลังเปิดกล้อง"
@@ -406,22 +454,22 @@ function Result({
         if (e.key === "Escape" || e.key === "Enter") onDismiss();
       }}
     >
-      <Icon className="size-24" aria-hidden />
-      <p className="text-3xl font-semibold md:text-5xl">{title}</p>
+      <Icon className="size-24 wide:size-32 2xl:size-40" aria-hidden />
+      <p className="text-3xl font-semibold md:text-5xl 2xl:text-7xl">{title}</p>
       {person && (
-        <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-col items-center gap-2 2xl:gap-4">
           {person.image && (
             <img
               src={person.image}
               alt=""
-              className="size-24 rounded-full border-4 border-white/70 object-cover"
+              className="size-24 rounded-full border-4 border-white/70 object-cover wide:size-32 2xl:size-44"
             />
           )}
-          <p className="text-2xl md:text-4xl">
+          <p className="text-2xl md:text-4xl 2xl:text-6xl">
             {personName(person)}
             {person.nickname && ` (${person.nickname})`}
           </p>
-          <p className="text-lg opacity-90">
+          <p className="text-lg opacity-90 2xl:text-2xl">
             {[institution?.short, person.studentId, ...person.divisions.map((d) => d.name)]
               .filter(Boolean)
               .join(" · ")}
@@ -446,7 +494,7 @@ function Result({
           </Button>
         </div>
       )}
-      <p className="text-sm opacity-80">แตะเพื่อสแกนคนถัดไป</p>
+      <p className="text-sm opacity-80 2xl:text-lg">แตะเพื่อสแกนคนถัดไป</p>
     </div>
   );
 }
