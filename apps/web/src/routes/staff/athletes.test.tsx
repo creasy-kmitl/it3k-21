@@ -40,7 +40,13 @@ function item(overrides: Partial<AthleteItem> = {}): AthleteItem {
       requiresBadmintonRank: false,
       requiresGameProfile: false,
     },
-    sport: { id: "s-football", code: "football", name: "กีฬาฟุตบอล", icon: "football" },
+    sport: {
+      id: "s-football",
+      code: "football",
+      name: "กีฬาฟุตบอล",
+      icon: "football",
+      thumbnailUrl: null,
+    },
     athlete: {
       userId: "u-1",
       name: "Somchai G",
