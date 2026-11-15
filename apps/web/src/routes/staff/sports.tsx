@@ -10,43 +10,24 @@ import {
   divisionInput,
   sportInput,
 } from "@it3k/db/sport-rules";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@it3k/ui/components/alert-dialog";
 import { Button } from "@it3k/ui/components/button";
 import { Checkbox } from "@it3k/ui/components/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@it3k/ui/components/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@it3k/ui/components/field";
-import { Input } from "@it3k/ui/components/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@it3k/ui/components/select";
+import { Field, FieldDescription, FieldLabel } from "@it3k/ui/components/field";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { Textarea } from "@it3k/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Lock, Medal, Pencil, Plus, Trash2 } from "lucide-react";
-import { type ComponentProps, type ReactNode, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
-import type { z } from "zod";
 
+import {
+  ChoiceField,
+  ConfirmDelete,
+  FormDialog,
+  TextField,
+  issuesOf,
+} from "@/components/form-dialog";
 import { PageHeader } from "@/components/page-header";
 import { DivisionBadges } from "@/components/sport-badges";
 import { SportArt, SportThumbnail } from "@/components/sport-art";
@@ -143,7 +124,12 @@ function SportCard({
 }) {
   return (
     <li className="flex flex-col overflow-hidden rounded-2xl border bg-card">
-      <SportThumbnail src={sport.thumbnailUrl} icon={sport.icon} seed={sport.id} label={sport.name} />
+      <SportThumbnail
+        src={sport.thumbnailUrl}
+        icon={sport.icon}
+        seed={sport.id}
+        label={sport.name}
+      />
       <div className="flex items-start gap-2 p-4 pb-2">
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-semibold">{sport.name}</h2>
@@ -246,9 +232,7 @@ function EditingDialog({ editing, onClose }: { editing: Editing; onClose: () => 
           initial={sport}
           pending={save.isPending}
           onClose={onClose}
-          onSubmit={(input) =>
-            run(() => (sport ? api.update(sport.id, input) : api.create(input)))
-          }
+          onSubmit={(input) => run(() => (sport ? api.update(sport.id, input) : api.create(input)))}
         />
       );
     }
@@ -262,7 +246,9 @@ function EditingDialog({ editing, onClose }: { editing: Editing; onClose: () => 
           onClose={onClose}
           onSubmit={(input) =>
             run(() =>
-              division ? api.updateDivision(division.id, input) : api.createDivision(sport.id, input),
+              division
+                ? api.updateDivision(division.id, input)
+                : api.createDivision(sport.id, input),
             )
           }
         />
@@ -289,155 +275,6 @@ function EditingDialog({ editing, onClose }: { editing: Editing; onClose: () => 
         />
       );
   }
-}
-
-function ConfirmDelete({
-  name,
-  description,
-  pending,
-  onClose,
-  onConfirm,
-}: {
-  name: string;
-  description: string;
-  pending: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <AlertDialog open onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>ลบ {name}?</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-          <Button variant="destructive" disabled={pending} onClick={onConfirm}>
-            ลบ
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
-
-/** The first message per field, keyed by the field's name. */
-function issuesOf(error: z.ZodError) {
-  const issues: Record<string, string> = {};
-  for (const issue of error.issues) {
-    const key = String(issue.path[0] ?? "");
-    issues[key] ??= issue.message;
-  }
-  return issues;
-}
-
-function FormDialog({
-  title,
-  description,
-  pending,
-  onClose,
-  onSubmit,
-  children,
-}: {
-  title: string;
-  description?: string;
-  pending: boolean;
-  onClose: () => void;
-  onSubmit: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
-        <form
-          className="flex flex-col gap-6"
-          noValidate
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSubmit();
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>{title}</DialogTitle>
-            {description && <DialogDescription>{description}</DialogDescription>}
-          </DialogHeader>
-          <FieldGroup>{children}</FieldGroup>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose}>
-              ยกเลิก
-            </Button>
-            <Button type="submit" disabled={pending}>
-              บันทึก
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function TextField({
-  id,
-  label,
-  value,
-  onChange,
-  error,
-  hint,
-  ...props
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  error?: string;
-  hint?: string;
-} & Omit<ComponentProps<"input">, "value" | "onChange" | "id">) {
-  return (
-    <Field data-invalid={!!error}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Input
-        id={id}
-        value={value}
-        aria-invalid={!!error}
-        onChange={(event) => onChange(event.target.value)}
-        {...props}
-      />
-      {(error ?? hint) && <FieldDescription>{error ?? hint}</FieldDescription>}
-    </Field>
-  );
-}
-
-function ChoiceField<T extends string>({
-  id,
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: T;
-  options: { value: T; label: ReactNode }[];
-  onChange: (value: T) => void;
-}) {
-  return (
-    <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Select items={options} value={value} onValueChange={(next: T | null) => next && onChange(next)}>
-        <SelectTrigger id={id} aria-label={label}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </Field>
-  );
 }
 
 function SportForm({
@@ -478,12 +315,7 @@ function SportForm({
         onSubmit(parsed.data);
       }}
     >
-      <SportArt
-        icon={icon}
-        seed={initial?.id ?? code}
-        label="ภาพตัวอย่าง"
-        className="rounded-xl"
-      />
+      <SportArt icon={icon} seed={initial?.id ?? code} label="ภาพตัวอย่าง" className="rounded-xl" />
       <TextField id="sport-name" label="ชื่อ" value={name} onChange={setName} error={issues.name} />
       <TextField
         id="sport-code"

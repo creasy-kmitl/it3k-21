@@ -16,7 +16,6 @@ import {
 } from "@it3k/db/schema/sport";
 import { type SQL, and, asc, desc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { createMiddleware } from "hono/factory";
 import { z } from "zod";
 
 import {
@@ -30,14 +29,9 @@ import {
   requireUser,
 } from "../../middleware/current-user";
 import { limitJsonBody } from "../../middleware/json-body-limit";
+import { allowSport as allow } from "../../middleware/sport-permission";
 import { validate } from "../../middleware/validation";
-import {
-  type SportPermission,
-  canSport,
-  inScope,
-  sportAccess,
-  sportAccessIsAsRead,
-} from "../../policies/sports";
+import { canSport, inScope, sportAccess, sportAccessIsAsRead } from "../../policies/sports";
 import { PAGE_SIZE, containsAny } from "../leadership";
 import {
   type RegistrationRow,
@@ -67,13 +61,6 @@ const editInput = registrationFields.extend({
   institution: z.enum(INSTITUTION_IDS),
   version: z.number().int().positive(),
 });
-
-function allow(permission: SportPermission) {
-  return createMiddleware<CurrentUserEnv>(async (c, next) => {
-    if (!canSport(c.var.user, permission)) return c.json({ message: "Forbidden" }, 403);
-    await next();
-  });
-}
 
 function where(actor: CurrentUser, query: z.infer<typeof filters>): SQL | undefined {
   return and(

@@ -13,6 +13,8 @@ import type { QrPresetsApi } from "@/lib/qr-presets";
 import type { SportsApi } from "@/lib/sports";
 import type { RegistrationsApi } from "@/lib/registrations";
 import type { AthletesApi } from "@/lib/athletes";
+import type { EventsApi } from "@/lib/events";
+import type { VenuesApi } from "@/lib/venues";
 import type { UsersApi } from "@/lib/users";
 
 /** Narrows a value a test expects to exist, failing loudly when it does not. */
@@ -66,6 +68,8 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
     sports: apis.sports ?? fakeSportsApi(),
     registrations: apis.registrations ?? fakeRegistrationsApi(),
     athletes: apis.athletes ?? fakeAthletesApi(),
+    venues: apis.venues ?? fakeVenuesApi(),
+    events: apis.events ?? fakeEventsApi(),
   };
 }
 
@@ -87,6 +91,27 @@ export function fakeAthletesApi(overrides: Partial<AthletesApi> = {}): AthletesA
     exportAll: unexpected("athletes.exportAll"),
     review: unexpected("athletes.review"),
     edit: unexpected("athletes.edit"),
+    ...overrides,
+  };
+}
+
+export function fakeVenuesApi(overrides: Partial<VenuesApi> = {}): VenuesApi {
+  return {
+    list: unexpected("venues.list"),
+    create: unexpected("venues.create"),
+    update: unexpected("venues.update"),
+    remove: unexpected("venues.remove"),
+    ...overrides,
+  };
+}
+
+export function fakeEventsApi(overrides: Partial<EventsApi> = {}): EventsApi {
+  return {
+    list: unexpected("events.list"),
+    get: unexpected("events.get"),
+    create: unexpected("events.create"),
+    update: unexpected("events.update"),
+    remove: unexpected("events.remove"),
     ...overrides,
   };
 }

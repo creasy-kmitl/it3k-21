@@ -18,6 +18,8 @@ export type NavMainItem = {
     | "/staff/users"
     | "/staff/sports"
     | "/staff/athletes"
+    | "/staff/events"
+    | "/staff/venues"
     | "/staff/qr-code"
     | "/staff/links";
   icon: React.ReactNode;

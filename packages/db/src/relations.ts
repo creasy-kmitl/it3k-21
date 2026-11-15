@@ -108,6 +108,36 @@ export const relations = defineRelations(schema, (r) => ({
       optional: false,
     }),
   },
+  venue: {
+    events: r.many.event(),
+  },
+  event: {
+    venue: r.one.venue({
+      from: r.event.venueId,
+      to: r.venue.id,
+    }),
+    institutions: r.many.eventInstitution(),
+    divisions: r.many.eventDivision(),
+  },
+  eventInstitution: {
+    event: r.one.event({
+      from: r.eventInstitution.eventId,
+      to: r.event.id,
+      optional: false,
+    }),
+  },
+  eventDivision: {
+    event: r.one.event({
+      from: r.eventDivision.eventId,
+      to: r.event.id,
+      optional: false,
+    }),
+    division: r.one.sportDivision({
+      from: r.eventDivision.divisionId,
+      to: r.sportDivision.id,
+      optional: false,
+    }),
+  },
   session: {
     user: r.one.user({
       from: r.session.userId,

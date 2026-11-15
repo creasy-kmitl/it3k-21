@@ -11,9 +11,11 @@ import {
 import { Link } from "@tanstack/react-router";
 import {
   Building2Icon,
+  CalendarCheckIcon,
   CalendarDaysIcon,
   LayoutDashboardIcon,
   Link2Icon,
+  MapPinnedIcon,
   MedalIcon,
   QrCodeIcon,
   TrophyIcon,
@@ -56,9 +58,17 @@ export function AppSidebar({
     {
       label: "กีฬา",
       items: [
-        ...(inSports ? [{ title: "ประเภทกีฬา", to: "/staff/sports", icon: <MedalIcon /> } as const] : []),
+        ...(inSports
+          ? ([
+              { title: "กิจกรรม", to: "/staff/events", icon: <CalendarCheckIcon /> },
+              { title: "ประเภทกีฬา", to: "/staff/sports", icon: <MedalIcon /> },
+            ] as const)
+          : []),
         ...(me?.sportAccess.permissions.includes("athletes.read")
           ? [{ title: "นักกีฬา", to: "/staff/athletes", icon: <TrophyIcon /> } as const]
+          : []),
+        ...(inSports
+          ? [{ title: "สถานที่", to: "/staff/venues", icon: <MapPinnedIcon /> } as const]
           : []),
       ],
     },
