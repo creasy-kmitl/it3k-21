@@ -20,6 +20,8 @@
   },
   "menuColor": "default-translucent",
   "menuAccent": "subtle",
-  "registries": {},
+  "registries": {
+    "@mapcn": "https://mapcn.dev/r/{name}.json"
+  },
   "rtl": false
 }
