@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { athlete, sportRegistration, sportRegistrationChange, user } from "@it3k/db/schema/index";
+import {
+  athlete,
+  sportDivision,
+  sportRegistration,
+  sportRegistrationChange,
+  user,
+} from "@it3k/db/schema/index";
 import { eq } from "drizzle-orm";
 
 import { createTestContext, defined, readJson } from "../../testing";
+import { MOVE_FULL, TEAM_FULL } from "../registrations/shared";
 import { createAthleteRoutes } from ".";
 
 let t: ReturnType<typeof createTestContext>;
@@ -261,5 +268,87 @@ describe("editing", () => {
     expect(res.status).toBe(409);
     const [account] = await t.db.select().from(user).where(eq(user.id, "kmitl-1"));
     expect(defined(account).institution).toBe("kmitl");
+  });
+});
+
+describe("the per-institution limit", () => {
+  // Football allows one approved athlete per institution in these tests.
+  beforeEach(async () => {
+    await t.db
+      .update(sportDivision)
+      .set({ maxPerInstitution: 1 })
+      .where(eq(sportDivision.id, await t.divisionId("football")));
+  });
+  const approve = (who: string, id: string, version = 1) =>
+    send<Item & { message?: string }>(who, "PUT", `/${id}/status`, {
+      status: "approved",
+      note: "",
+      version,
+    });
+  const statusOf = async (id: string) =>
+    defined((await t.db.select().from(sportRegistration).where(eq(sportRegistration.id, id)))[0])
+      .status;
+
+  test("counts approvals: the last place goes to whoever is approved first", async () => {
+    expect((await approve("kmutt-head", "r-kmutt-1-football")).res.status).toBe(200);
+    const full = await approve("kmutt-head", "r-kmutt-2-football");
+    expect(full.res.status).toBe(409);
+    expect(full.body.message).toBe(TEAM_FULL);
+    // Another institution's places are its own.
+    expect((await approve("tech", "r-kmitl-1-football")).res.status).toBe(200);
+
+    // Sending the first back to review frees the place.
+    const back = await send("kmutt-head", "PUT", "/r-kmutt-1-football/status", {
+      status: "review",
+      note: "",
+      version: 2,
+    });
+    expect(back.res.status).toBe(200);
+    expect((await approve("kmutt-head", "r-kmutt-2-football")).res.status).toBe(200);
+  });
+
+  test("a place taken between the check and the write refuses the approval", async () => {
+    t.hooks.beforeBatch = () => {
+      t.sqlite.run(
+        "update sport_registration set status = 'approved' where id = 'r-kmutt-1-football'",
+      );
+    };
+    const raced = await approve("kmutt-head", "r-kmutt-2-football");
+    expect(raced.res.status).toBe(409);
+    expect(raced.body.message).toBe(TEAM_FULL);
+    expect(await statusOf("r-kmutt-2-football")).toBe("review");
+  });
+
+  test("moving an approved athlete into an institution with no place left is refused", async () => {
+    await approve("kmutt-head", "r-kmutt-1-football");
+    await approve("tech", "r-kmitl-1-football");
+    const move = {
+      shirtNumber: 10,
+      badmintonRank: null,
+      ign: "",
+      ignReading: "",
+      facebookUrl: "",
+      studentId: "65070999",
+      institution: "kmutt",
+      version: 2,
+    };
+    const { res, body } = await send("tech", "PUT", "/r-kmitl-1-football", move);
+    expect(res.status).toBe(409);
+    expect(body.message).toBe(MOVE_FULL);
+    const [account] = await t.db.select().from(user).where(eq(user.id, "kmitl-1"));
+    expect(defined(account).institution).toBe("kmitl");
+
+    // Edits that stay put are fine, and so is moving someone not yet approved.
+    expect(
+      (await send("tech", "PUT", "/r-kmitl-1-football", { ...move, institution: "kmitl" })).res
+        .status,
+    ).toBe(200);
+    await t.db
+      .update(sportRegistration)
+      .set({ status: "review" })
+      .where(eq(sportRegistration.id, "r-kmitl-1-football"));
+    expect(
+      (await send("tech", "PUT", "/r-kmitl-1-football", { ...move, version: 3 })).res.status,
+    ).toBe(200);
   });
 });

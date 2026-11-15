@@ -1,5 +1,5 @@
 import { INSTITUTIONS } from "@it3k/db/profile";
-import { FORMAT_LABELS, GENDER_LABELS, studentIdInput } from "@it3k/db/sport-rules";
+import { studentIdInput } from "@it3k/db/sport-rules";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -19,13 +19,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@it3k/ui/components/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@it3k/ui/components/field";
+import { Field, FieldDescription, FieldGroup } from "@it3k/ui/components/field";
 import { Input } from "@it3k/ui/components/input";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { cn } from "@it3k/ui/lib/utils";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
+  IdCard,
   Lock,
   Medal,
   MessageCircle,
@@ -44,12 +46,13 @@ import { PageHeader } from "@/components/page-header";
 import { ParticipantShell } from "@/components/participant-shell";
 import {
   type FieldIssues,
+  IconLabel,
   RegistrationFieldsEditor,
   parseDraft,
   toDraft,
 } from "@/components/registration-fields";
 import { SportThumbnail } from "@/components/sport-art";
-import { StatusBadge } from "@/components/sport-badges";
+import { DivisionTags, StatusBadge } from "@/components/sport-badges";
 import { useApis } from "@/lib/api-context";
 import { requireParticipantSession } from "@/lib/participant-auth";
 import type { MyRegistration, MyRegistrations } from "@/lib/registrations";
@@ -99,20 +102,6 @@ type Dialogs =
 
 /** Esports is the sport whose divisions need a game profile, and with it Discord. */
 const isEsports = (sport: Sport) => sport.divisions.some((d) => d.requiresGameProfile);
-
-/** One line instead of a row of badges: "ชาย · ทีม · เบอร์เสื้อ". */
-export function divisionSummary(division: Division) {
-  return [
-    GENDER_LABELS[division.gender],
-    FORMAT_LABELS[division.format],
-    division.requiresShirtNumber && "เบอร์เสื้อ",
-    division.requiresBadmintonRank && "มือ 1/2",
-    division.requiresGameProfile && "IGN · Discord",
-    division.maxPerInstitution != null && `สูงสุด ${division.maxPerInstitution} คน/สถาบัน`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
 
 /**
  * The sports matching `query`, by sport name, description or code, or by
@@ -279,6 +268,7 @@ export function SportsRegistrationPage() {
                         key={division.id}
                         division={division}
                         registration={mine.get(division.id) ?? null}
+                        approved={data.institution ? (data.approvedCounts[division.id] ?? 0) : null}
                         canRegister={data.profileSubmitted}
                         onRegister={() => {
                           // The form takes over from the drawer; the new entry
@@ -318,19 +308,35 @@ export function SportsRegistrationPage() {
 function DivisionRow({
   division,
   registration,
+  approved,
   canRegister,
   onRegister,
 }: {
   division: Division;
   registration: MyRegistration | null;
+  /** Approved at the athlete's institution, or null when it is not known yet. */
+  approved: number | null;
   canRegister: boolean;
   onRegister: () => void;
 }) {
+  const max = division.maxPerInstitution;
+  const full = approved !== null && max !== null && approved >= max;
   return (
     <li className="flex items-center gap-2 px-3 py-2 text-sm">
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="font-medium">{division.name}</span>
-        <span className="text-xs text-muted-foreground">{divisionSummary(division)}</span>
+        <DivisionTags division={division} className="mt-1" />
+        {/* Applying stays open when full: registration staff pick who is approved. */}
+        {approved !== null && max !== null && (
+          <span
+            className={cn(
+              "text-xs tabular-nums",
+              full ? "font-medium text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {full ? `อนุมัติครบ ${max} คนแล้ว` : `อนุมัติแล้ว ${approved}/${max} คน`}
+          </span>
+        )}
       </div>
       {registration ? (
         <StatusBadge status={registration.status} />
@@ -591,7 +597,9 @@ function RegistrationDialog({
           <FieldGroup>
             {askStudentId && !registration && (
               <Field data-invalid={!!issues.studentId}>
-                <FieldLabel htmlFor="registration-student-id">รหัสนักศึกษา</FieldLabel>
+                <IconLabel htmlFor="registration-student-id" icon={IdCard}>
+                  รหัสนักศึกษา
+                </IconLabel>
                 <Input
                   id="registration-student-id"
                   value={studentId}

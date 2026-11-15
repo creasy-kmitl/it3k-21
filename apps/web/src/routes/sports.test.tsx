@@ -8,7 +8,7 @@ import { ApiProvider } from "@/lib/api-context";
 import { fakeApis, fakeRegistrationsApi, fakeSportsApi } from "@/test/query";
 import { renderAtRoot } from "@/test/router";
 
-import { SportsRegistrationPage, divisionSummary, filterSports } from "./sports";
+import { SportsRegistrationPage, filterSports } from "./sports";
 
 afterEach(cleanup);
 
@@ -104,6 +104,7 @@ function mine(overrides: Partial<MyRegistrations> = {}): MyRegistrations {
   return {
     profileSubmitted: true,
     institution: "kmutt",
+    approvedCounts: {},
     studentId: null,
     discord: { enabled: true, linked: null },
     registrations: [],
@@ -111,9 +112,13 @@ function mine(overrides: Partial<MyRegistrations> = {}): MyRegistrations {
   };
 }
 
-function setup(data: MyRegistrations, overrides: Partial<RegistrationsApi> = {}) {
+function setup(
+  data: MyRegistrations,
+  overrides: Partial<RegistrationsApi> = {},
+  items: Sport[] = SPORTS,
+) {
   const api = fakeRegistrationsApi({ me: async () => data, ...overrides });
-  const sports = fakeSportsApi({ list: async () => ({ items: SPORTS, canManage: false }) });
+  const sports = fakeSportsApi({ list: async () => ({ items, canManage: false }) });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // In a router, because the page links to /signup.
   return renderAtRoot(() => (
@@ -271,6 +276,23 @@ describe("/sports", () => {
     await waitFor(() => expect(withdrawn).toEqual([["r-1", 1]]));
   });
 
+  test("divisions with a limit show the institution's approved count; full ones still take applications", async () => {
+    const limited = [
+      sport({
+        divisions: [
+          division({ maxPerInstitution: 5 }),
+          division({ id: "d-f", name: "ฟุตบอลหญิง", gender: "female", maxPerInstitution: 2 }),
+        ],
+      }),
+    ];
+    const view = await setup(mine({ approvedCounts: { "d-football": 3, "d-f": 2 } }), {}, limited);
+    await openCatalog(view);
+    expect(view.getByText("อนุมัติแล้ว 3/5 คน")).toBeTruthy();
+    expect(view.getByText("อนุมัติครบ 2 คนแล้ว")).toBeTruthy();
+    const button = view.getByRole("button", { name: "สมัคร ฟุตบอลหญิง" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+  });
+
   test("in the drawer, registered divisions show their status instead of a button", async () => {
     const view = await setup(mine({ studentId: "65070001", registrations: [registration()] }));
     await openCatalog(view);
@@ -298,10 +320,4 @@ describe("filterSports", () => {
   test("an empty query changes nothing", () => {
     expect(filterSports(two, "  ")).toBe(two);
   });
-});
-
-test("divisionSummary reads as one line", () => {
-  expect(divisionSummary(division({ maxPerInstitution: 12 }))).toBe(
-    "ชาย · ทีม · เบอร์เสื้อ · สูงสุด 12 คน/สถาบัน",
-  );
 });

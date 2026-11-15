@@ -28,6 +28,7 @@ import { limitJsonBody } from "../../middleware/json-body-limit";
 import { validate } from "../../middleware/validation";
 import { activeAccount } from "../profile";
 import {
+  approvedCounts,
   type DiscordDeps,
   STALE,
   diff,
@@ -50,7 +51,7 @@ const withdrawInput = z.strictObject({ version: z.number().int().positive() });
 const NO_PROFILE = "ส่งข้อมูลผู้เข้าร่วมให้ครบก่อนสมัครกีฬา";
 const NO_INSTITUTION = "ระบุสถาบันในข้อมูลผู้เข้าร่วมก่อนสมัครกีฬา";
 const CLOSED = "ประเภทนี้ปิดรับสมัครแล้ว";
-const FULL_OR_CLOSED = "ประเภทนี้ปิดรับสมัครหรือครบจำนวนแล้ว กรุณาโหลดใหม่";
+const CLOSED_SINCE = "ประเภทนี้เพิ่งปิดรับสมัคร กรุณาโหลดใหม่";
 const NEEDS_DISCORD = "เชื่อมบัญชี Discord ก่อนสมัครกีฬา Esports";
 const DISCORD_OFF = "ยังไม่เปิดให้เชื่อม Discord จึงสมัคร Esports ไม่ได้ในตอนนี้";
 
@@ -87,10 +88,13 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps) =>
       const username = discord
         ? await deps.discordProfile(c.req.raw.headers, discord.id).catch(() => null)
         : null;
+      const institution = me.institution ?? (profile?.values?.institution || null);
       return c.json(
         {
           profileSubmitted: !!profile?.submittedAt,
-          institution: me.institution ?? (profile?.values?.institution || null),
+          institution,
+          // Places taken per division at this institution, against maxPerInstitution.
+          approvedCounts: institution ? await approvedCounts(db, institution) : {},
           // .at(): indexing an array leaves undefined out of the type.
           studentId: athleteRows.at(0)?.studentId ?? null,
           discord: {
@@ -151,14 +155,11 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps) =>
           null;
       }
 
-      const max = division.maxPerInstitution;
+      // No limit check here: the limit counts approvals, so it is checked on review.
       const stillOpen = and(
         activeAccount(),
         me.institution ? eq(user.institution, me.institution) : sql`${user.institution} is null`,
         sql`exists (select 1 from ${sportDivision} where ${sportDivision.id} = ${divisionId} and ${sportDivision.registrationOpen} = 1)`,
-        max === null
-          ? sql`1`
-          : sql`(select count(*) from ${sportRegistration} where ${sportRegistration.divisionId} = ${divisionId} and ${sportRegistration.institution} = ${institution} and ${sportRegistration.status} <> 'rejected') < (select coalesce(${sportDivision.maxPerInstitution}, 1000000) from ${sportDivision} where ${sportDivision.id} = ${divisionId})`,
       );
       const id = crypto.randomUUID();
       const values = {
@@ -186,7 +187,7 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps) =>
       } catch (error) {
         const conflict = registrationConflict(error);
         if (conflict) return c.json({ message: conflict }, 409);
-        if (constraintError(error) === "stale") return c.json({ message: FULL_OR_CLOSED }, 409);
+        if (constraintError(error) === "stale") return c.json({ message: CLOSED_SINCE }, 409);
         // A first registration racing another one: both insert the athlete row.
         if (constraintError(error) === "unique") return c.json({ message: STALE }, 409);
         throw error;

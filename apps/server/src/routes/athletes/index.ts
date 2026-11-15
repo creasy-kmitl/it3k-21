@@ -37,8 +37,13 @@ import {
   type RegistrationRow,
   STALE,
   diff,
+  MOVE_FULL,
+  TEAM_FULL,
+  approvedRoom,
+  holds,
   logChange,
   registrationConflict,
+  roomAfterMove,
   selectRegistrations,
 } from "../registrations/shared";
 
@@ -163,6 +168,13 @@ export const createAthleteRoutes = (deps: RouteDeps) =>
         const { status, note, version } = c.req.valid("json");
         const row = await findInScope(db, actor, id);
         if (!row) return c.json({ message: "Registration not found" }, 404);
+        const { divisionId, institution, userId } = row.registration;
+        // Only approvals take a place, so only approving can run into the limit.
+        const room =
+          status === "approved" && row.registration.status !== "approved"
+            ? approvedRoom(divisionId, institution, userId)
+            : null;
+        if (room && !(await holds(db, room))) return c.json({ message: TEAM_FULL }, 409);
         const after = {
           status,
           reviewNote: note || null,
@@ -174,7 +186,11 @@ export const createAthleteRoutes = (deps: RouteDeps) =>
             abortUnless(
               db,
               actor.id,
-              and(sportAccessIsAsRead(actor), registrationAsRead(actor, id, version)) ?? sql`0`,
+              and(
+                sportAccessIsAsRead(actor),
+                registrationAsRead(actor, id, version),
+                room ?? undefined,
+              ) ?? sql`0`,
             ),
             db
               .update(sportRegistration)
@@ -195,7 +211,11 @@ export const createAthleteRoutes = (deps: RouteDeps) =>
           // Reopening a rejected registration whose shirt number or rank was taken since.
           const conflict = registrationConflict(error);
           if (conflict) return c.json({ message: conflict }, 409);
-          if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
+          if (constraintError(error) === "stale") {
+            // Someone else filled the last place between the check and the batch.
+            const full = room && !(await holds(db, room));
+            return c.json({ message: full ? TEAM_FULL : STALE }, 409);
+          }
           throw error;
         }
         const updated = await findInScope(db, actor, id);
@@ -222,6 +242,9 @@ export const createAthleteRoutes = (deps: RouteDeps) =>
         }
         const fields = applicableFields(row.division, input);
         const userId = row.registration.userId;
+        const moving = institution !== row.registration.institution;
+        const room = moving ? roomAfterMove(userId, institution) : null;
+        if (room && !(await holds(db, room))) return c.json({ message: MOVE_FULL }, 409);
         const changes = diff(
           { ...row.registration, studentId: row.athlete.studentId },
           { ...fields, studentId, institution },
@@ -231,7 +254,11 @@ export const createAthleteRoutes = (deps: RouteDeps) =>
             abortUnless(
               db,
               actor.id,
-              and(sportAccessIsAsRead(actor), registrationAsRead(actor, id, version)) ?? sql`0`,
+              and(
+                sportAccessIsAsRead(actor),
+                registrationAsRead(actor, id, version),
+                room ?? undefined,
+              ) ?? sql`0`,
             ),
             db
               .update(sportRegistration)
@@ -242,7 +269,7 @@ export const createAthleteRoutes = (deps: RouteDeps) =>
               .values({ userId, studentId })
               .onConflictDoUpdate({ target: athlete.userId, set: { studentId } }),
             // An institution belongs to the account, so it moves every registration with it.
-            ...(institution === row.registration.institution
+            ...(!moving
               ? []
               : [
                   db.update(user).set({ institution }).where(eq(user.id, userId)),
@@ -256,7 +283,10 @@ export const createAthleteRoutes = (deps: RouteDeps) =>
         } catch (error) {
           const conflict = registrationConflict(error);
           if (conflict) return c.json({ message: conflict }, 409);
-          if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
+          if (constraintError(error) === "stale") {
+            const full = room && !(await holds(db, room));
+            return c.json({ message: full ? MOVE_FULL : STALE }, 409);
+          }
           throw error;
         }
         const updated = await findInScope(db, actor, id);
