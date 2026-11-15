@@ -40,6 +40,7 @@ import {
   type DepartmentColorKey,
   type DepartmentIconKey,
 } from "@/components/department-icon";
+import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
 import { type Department, type DepartmentInput, departmentsApi } from "@/lib/departments";
 import { DEPARTMENT_CODE_MAX_LENGTH, DEPARTMENT_CODE_PATTERN } from "@it3k/db/department-codes";
@@ -217,9 +218,9 @@ function DeleteDepartmentButton({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-          <Button
+          <LoadingButton
             variant="destructive"
-            disabled={pending}
+            loading={pending}
             onClick={async () => {
               setPending(true);
               const ok = await onDelete();
@@ -228,7 +229,7 @@ function DeleteDepartmentButton({
             }}
           >
             ลบ
-          </Button>
+          </LoadingButton>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -302,10 +303,14 @@ function DepartmentForm({
             maxLength={500}
           />
           <div className="flex gap-2">
-            <Button type="submit" disabled={pending || !name.trim()}>
-              {!initial && <Plus />}
+            <LoadingButton
+              type="submit"
+              icon={initial ? undefined : Plus}
+              loading={pending}
+              disabled={!name.trim()}
+            >
               {submitLabel}
-            </Button>
+            </LoadingButton>
             {onCancel && (
               <Button type="button" variant="ghost" onClick={onCancel}>
                 ยกเลิก

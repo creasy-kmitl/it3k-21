@@ -97,6 +97,30 @@ describe("/staff/athletes", () => {
     );
   });
 
+  test("only the clicked row spins while its review runs", async () => {
+    let finish = () => {};
+    const other = item({
+      id: "r-2",
+      userId: "u-2",
+      athlete: { ...item().athlete, userId: "u-2", name: "Somsri K" },
+    });
+    const view = setup(listPage({ items: [item(), other] }), {
+      review: () =>
+        new Promise((resolve) => {
+          finish = () => resolve(item({ status: "approved" }));
+        }),
+    });
+    const mine = await view.findByRole("button", { name: "อนุมัติ Somchai G ฟุตบอลชาย" });
+    fireEvent.click(mine);
+    await waitFor(() => expect(mine.getAttribute("aria-busy")).toBe("true"));
+    // The other row waits too, but without a spinner.
+    const theirs = view.getByRole("button", { name: "อนุมัติ Somsri K ฟุตบอลชาย" });
+    expect(theirs.hasAttribute("disabled")).toBe(true);
+    expect(theirs.getAttribute("aria-busy")).toBeNull();
+    finish();
+    await waitFor(() => expect(mine.getAttribute("aria-busy")).toBeNull());
+  });
+
   test("rejecting asks for a reason", async () => {
     const reviewed: unknown[] = [];
     const view = setup(listPage(), {

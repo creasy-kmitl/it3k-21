@@ -27,6 +27,7 @@ import {
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
+import { LoadingButton } from "@/components/loading-button";
 import { SideDrawer } from "@/components/calendar/side-drawer";
 import { SegmentedControl } from "@/components/segmented-control";
 import { useApis } from "@/lib/api-context";
@@ -399,15 +400,15 @@ function LinkBody({
               <Button variant="outline" size="sm" onClick={() => setConfirmingOff(false)}>
                 ยกเลิก
               </Button>
-              <Button
+              <LoadingButton
                 variant="destructive"
                 size="sm"
-                disabled={update.isPending}
+                icon={CirclePause}
+                loading={update.isPending}
                 onClick={() => update.mutate({ enabled: false })}
               >
-                <CirclePause data-icon="inline-start" />
                 ปิดลิงก์
-              </Button>
+              </LoadingButton>
             </div>
           </div>
         ) : (
@@ -422,14 +423,14 @@ function LinkBody({
                 ปิดลิงก์
               </Button>
             ) : (
-              <Button
+              <LoadingButton
                 variant="outline"
-                disabled={update.isPending}
+                icon={CirclePlay}
+                loading={update.isPending}
                 onClick={() => update.mutate({ enabled: true })}
               >
-                <CirclePlay data-icon="inline-start" />
                 เปิดลิงก์
-              </Button>
+              </LoadingButton>
             )}
           </div>
         ))}

@@ -29,6 +29,8 @@ import {
 import type { ComponentProps, ReactNode } from "react";
 import type { z } from "zod";
 
+import { LoadingButton } from "./loading-button";
+
 export function ConfirmDelete({
   name,
   description,
@@ -51,9 +53,9 @@ export function ConfirmDelete({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-          <Button variant="destructive" disabled={pending} onClick={onConfirm}>
+          <LoadingButton variant="destructive" loading={pending} onClick={onConfirm}>
             ลบ
-          </Button>
+          </LoadingButton>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -105,9 +107,9 @@ export function FormDialog({
             <Button type="button" variant="ghost" onClick={onClose}>
               ยกเลิก
             </Button>
-            <Button type="submit" disabled={pending}>
+            <LoadingButton type="submit" loading={pending}>
               บันทึก
-            </Button>
+            </LoadingButton>
           </DialogFooter>
         </form>
       </DialogContent>

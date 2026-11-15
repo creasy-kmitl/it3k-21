@@ -53,6 +53,7 @@ import {
   parseDraft,
   toDraft,
 } from "@/components/registration-fields";
+import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/sport-badges";
 import { type FilterControl, useFilters, useSearchText } from "@/hooks/use-filters";
@@ -189,6 +190,9 @@ export function AthletesPage({ filters: control }: { filters?: FilterControl<Ath
     onError: (error) => toast.error(error.message),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["athletes"] }),
   });
+  // Every row's buttons wait on the one review, but only the clicked button spins.
+  const reviewing = (item: AthleteItem, status: RegistrationStatus) =>
+    review.isPending && review.variables.item.id === item.id && review.variables.status === status;
   const exporting = useMutation({
     mutationFn: async () => {
       const { items } = await api.exportAll(query);
@@ -229,14 +233,14 @@ export function AthletesPage({ filters: control }: { filters?: FilterControl<Ath
           }
         />
         {list.data?.canExport && (
-          <Button
+          <LoadingButton
             variant="outline"
-            disabled={exporting.isPending}
+            icon={Download}
+            loading={exporting.isPending}
             onClick={() => exporting.mutate()}
           >
-            <Download data-icon="inline-start" aria-hidden />
             ส่งออก CSV
-          </Button>
+          </LoadingButton>
         )}
       </div>
 
@@ -331,15 +335,16 @@ export function AthletesPage({ filters: control }: { filters?: FilterControl<Ath
               </div>
               <div className="flex shrink-0 items-center">
                 {list.data.canReview && item.status !== "approved" && (
-                  <Button
+                  <LoadingButton
                     variant="ghost"
                     size="icon-sm"
                     aria-label={`อนุมัติ ${item.athlete.name} ${item.division.name}`}
+                    icon={Check}
+                    iconClassName="text-primary"
+                    loading={reviewing(item, "approved")}
                     disabled={review.isPending}
                     onClick={() => review.mutate({ item, status: "approved" })}
-                  >
-                    <Check className="text-primary" />
-                  </Button>
+                  />
                 )}
                 {list.data.canReview && item.status !== "rejected" && (
                   <Button
@@ -352,15 +357,15 @@ export function AthletesPage({ filters: control }: { filters?: FilterControl<Ath
                   </Button>
                 )}
                 {list.data.canReview && item.status !== "review" && (
-                  <Button
+                  <LoadingButton
                     variant="ghost"
                     size="icon-sm"
                     aria-label={`กลับไปรอตรวจสอบ ${item.athlete.name} ${item.division.name}`}
+                    icon={RotateCcw}
+                    loading={reviewing(item, "review")}
                     disabled={review.isPending}
                     onClick={() => review.mutate({ item, status: "review" })}
-                  >
-                    <RotateCcw />
-                  </Button>
+                  />
                 )}
                 {list.data.canEdit && (
                   <Button
@@ -496,9 +501,9 @@ function RejectDialog({ item, onClose }: { item: AthleteItem; onClose: () => voi
             <Button type="button" variant="ghost" onClick={onClose}>
               ยกเลิก
             </Button>
-            <Button type="submit" variant="destructive" disabled={reject.isPending}>
+            <LoadingButton type="submit" variant="destructive" loading={reject.isPending}>
               ไม่อนุมัติ
-            </Button>
+            </LoadingButton>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -609,9 +614,9 @@ function EditDialog({ item, onClose }: { item: AthleteItem; onClose: () => void 
             <Button type="button" variant="ghost" onClick={onClose}>
               ยกเลิก
             </Button>
-            <Button type="submit" disabled={save.isPending}>
+            <LoadingButton type="submit" loading={save.isPending}>
               บันทึก
-            </Button>
+            </LoadingButton>
           </DialogFooter>
         </form>
       </DialogContent>

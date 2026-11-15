@@ -27,6 +27,7 @@ import { ChevronLeft, ChevronRight, Pencil, Search, UserCog } from "lucide-react
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { LoadingButton } from "@/components/loading-button";
 import { type FilterControl, useFilters, useSearchText } from "@/hooks/use-filters";
 import type { LeadershipApi, LeadershipDepartment } from "@/lib/leadership";
 import { type Account, type Assignment, type UsersApi, useMe } from "@/lib/users";
@@ -496,12 +497,13 @@ function EditAccountDialog({
         </FieldGroup>
         <AlertDialogFooter>
           <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-          <Button
-            disabled={save.isPending || !validStorage || (needsDepartment && departmentId === "")}
+          <LoadingButton
+            loading={save.isPending}
+            disabled={!validStorage || (needsDepartment && departmentId === "")}
             onClick={() => save.mutate()}
           >
             บันทึก
-          </Button>
+          </LoadingButton>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

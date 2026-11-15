@@ -15,6 +15,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
+import { LoadingButton } from "@/components/loading-button";
 import type { LeadershipApi, LeadershipDepartment, LeadershipSummary } from "@/lib/leadership";
 
 import LeadershipContactButton from "@/components/leadership-contact";
@@ -144,9 +145,13 @@ function DeleteSeatButton({ seat, api }: { seat: LeadershipSummary; api: Leaders
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-          <Button variant="destructive" disabled={remove.isPending} onClick={() => remove.mutate()}>
+          <LoadingButton
+            variant="destructive"
+            loading={remove.isPending}
+            onClick={() => remove.mutate()}
+          >
             ลบ
-          </Button>
+          </LoadingButton>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

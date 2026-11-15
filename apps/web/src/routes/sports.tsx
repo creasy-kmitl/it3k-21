@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { SideDrawer } from "@/components/calendar/side-drawer";
+import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
 import { ParticipantShell } from "@/components/participant-shell";
 import {
@@ -486,19 +487,19 @@ function DiscordBar({ discord }: { discord: MyRegistrations["discord"] }) {
       </span>
       {discord.enabled &&
         (linked ? (
-          <Button
+          <LoadingButton
             variant="ghost"
             size="sm"
             title="จะเปลี่ยนบัญชี ให้ยกเลิกแล้วเชื่อมใหม่"
-            disabled={unlink.isPending}
+            loading={unlink.isPending}
             onClick={() => unlink.mutate(linked.accountId)}
           >
             ยกเลิกการเชื่อม
-          </Button>
+          </LoadingButton>
         ) : (
-          <Button size="sm" disabled={link.isPending} onClick={() => link.mutate()}>
+          <LoadingButton size="sm" loading={link.isPending} onClick={() => link.mutate()}>
             เชื่อม Discord
-          </Button>
+          </LoadingButton>
         ))}
     </div>
   );
@@ -583,14 +584,14 @@ function RegistrationDialog({
                   : "ยังไม่เปิดให้เชื่อม Discord จึงยังสมัครประเภทนี้ไม่ได้"}
               </span>
               {discord.enabled && (
-                <Button
+                <LoadingButton
                   type="button"
                   size="sm"
-                  disabled={link.isPending}
+                  loading={link.isPending}
                   onClick={() => link.mutate()}
                 >
                   เชื่อม Discord
-                </Button>
+                </LoadingButton>
               )}
             </div>
           )}
@@ -622,9 +623,9 @@ function RegistrationDialog({
             <Button type="button" variant="ghost" onClick={onClose}>
               ยกเลิก
             </Button>
-            <Button type="submit" disabled={save.isPending || needsDiscord}>
+            <LoadingButton type="submit" loading={save.isPending} disabled={needsDiscord}>
               {registration ? "บันทึก" : "สมัคร"}
-            </Button>
+            </LoadingButton>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -659,13 +660,13 @@ function WithdrawDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-          <Button
+          <LoadingButton
             variant="destructive"
-            disabled={withdraw.isPending}
+            loading={withdraw.isPending}
             onClick={() => withdraw.mutate()}
           >
             ถอน
-          </Button>
+          </LoadingButton>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

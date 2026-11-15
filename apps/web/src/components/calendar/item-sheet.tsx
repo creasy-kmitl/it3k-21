@@ -28,6 +28,7 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { LoadingButton } from "@/components/loading-button";
 import { DepartmentBadge, DepartmentIcon } from "@/components/department-icon";
 import { useApis } from "@/lib/api-context";
 import { formatBangkok, formatRange } from "@/lib/bangkok-time";
@@ -343,15 +344,16 @@ function Actions({
           <Button type="button" variant="ghost" size="sm" onClick={() => setAsking(undefined)}>
             ไม่ยกเลิก
           </Button>
-          <Button
+          <LoadingButton
             type="submit"
             variant="destructive"
             size="sm"
+            icon={CalendarX}
+            loading={update.isPending}
             disabled={(cancelNeedsReason && !reason.trim()) || pending}
           >
-            <CalendarX data-icon="inline-start" />
             ยืนยันยกเลิกรายการ
-          </Button>
+          </LoadingButton>
         </div>
       </form>
     );
@@ -367,16 +369,17 @@ function Actions({
           <Button type="button" variant="ghost" size="sm" onClick={() => setAsking(undefined)}>
             ไม่ลบ
           </Button>
-          <Button
+          <LoadingButton
             type="button"
             variant="destructive"
             size="sm"
+            icon={Trash2}
+            loading={remove.isPending}
             disabled={pending}
             onClick={() => remove.mutate()}
           >
-            <Trash2 data-icon="inline-start" />
             ยืนยันลบรายการ
-          </Button>
+          </LoadingButton>
         </div>
       </div>
     );
@@ -389,15 +392,16 @@ function Actions({
         แก้ไข
       </Button>
       {item.status === "draft" && (
-        <Button
+        <LoadingButton
           size="sm"
           variant="outline"
+          icon={CircleCheck}
+          loading={update.isPending}
           disabled={pending}
           onClick={() => update.mutate({ status: "confirmed" })}
         >
-          <CircleCheck data-icon="inline-start" />
           ยืนยันรายการ
-        </Button>
+        </LoadingButton>
       )}
       {item.status !== "cancelled" && (
         <Button size="sm" variant="outline" disabled={pending} onClick={() => setAsking("cancel")}>

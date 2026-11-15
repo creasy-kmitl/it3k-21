@@ -9,6 +9,7 @@ import { BookmarkPlus, Palette, PencilLine, Save, Sparkles, Trash2 } from "lucid
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
+import { LoadingButton } from "@/components/loading-button";
 import { FormSection, type Option, OptionSelect } from "@/components/qr-design-form";
 import { useApis } from "@/lib/api-context";
 import { type QrPreset, samePresetDesign } from "@/lib/qr-presets";
@@ -162,18 +163,18 @@ export function QrPresetBar({
             </Button>
           )}
           {matching?.canEdit && (
-            <Button
+            <LoadingButton
               variant={confirmingDelete ? "destructive" : "ghost"}
               size="sm"
-              disabled={remove.isPending}
+              icon={Trash2}
+              loading={remove.isPending}
               onClick={() =>
                 confirmingDelete ? remove.mutate(matching) : setConfirmingDelete(true)
               }
               onBlur={() => setConfirmingDelete(false)}
             >
-              <Trash2 data-icon="inline-start" />
               {confirmingDelete ? `กดอีกครั้งเพื่อลบ “${matching.name}”` : "ลบ preset"}
-            </Button>
+            </LoadingButton>
           )}
         </div>
       )}

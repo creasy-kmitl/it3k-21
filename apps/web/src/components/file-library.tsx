@@ -26,6 +26,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, FileIcon, ImagePlus, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { LoadingButton } from "@/components/loading-button";
 import { useApis } from "@/lib/api-context";
 import { fileSize, type LibraryFile } from "@/lib/files";
 import { isAccountChanged, isSignedOut } from "@/lib/leadership";
@@ -195,13 +196,14 @@ export function FileLibrary({
                       <span className="min-w-0 truncate">
                         {file.name} · {fileSize(file.size)}
                       </span>
-                      <Button
+                      <LoadingButton
                         variant="outline"
+                        loading={remove.isPending && remove.variables === file.id}
                         disabled={remove.isPending}
                         onClick={() => remove.mutate(file.id)}
                       >
                         ยกเลิก {file.name}
-                      </Button>
+                      </LoadingButton>
                     </div>
                   ))}
                 </section>
@@ -324,17 +326,17 @@ export function FileLibrary({
                       >
                         เปิดไฟล์
                       </a>
-                      <Button
+                      <LoadingButton
                         variant="destructive"
-                        disabled={remove.isPending}
+                        icon={Trash2}
+                        loading={remove.isPending}
                         onClick={() => {
                           if (window.confirm(`ลบ ${selected.name} ถาวร?`))
                             remove.mutate(selected.id);
                         }}
                       >
-                        <Trash2 data-icon="inline-start" />
                         ลบไฟล์
-                      </Button>
+                      </LoadingButton>
                     </>
                   ) : (
                     <p className="text-muted-foreground">เลือกไฟล์เพื่อดูรายละเอียด</p>
