@@ -18,6 +18,8 @@ import type { RouteDeps } from "./middleware/current-user";
 
 const TEST_USER_HEADER = "x-test-user";
 const TEST_IMPERSONATOR_HEADER = "x-test-impersonated-by";
+const TEST_SESSION_CREATED_HEADER = "x-test-session-created-at";
+export const TEST_VIEW_AS_SECRET = "test-view-as-secret";
 
 export function createTestContext() {
   const { db, sqlite, hooks } = createTestDb();
@@ -26,9 +28,15 @@ export function createTestContext() {
     getSession: async (headers) => {
       const userId = headers.get(TEST_USER_HEADER);
       if (!userId) return null;
-      return { userId, impersonatedBy: headers.get(TEST_IMPERSONATOR_HEADER) };
+      const createdAt = headers.get(TEST_SESSION_CREATED_HEADER);
+      return {
+        userId,
+        impersonatedBy: headers.get(TEST_IMPERSONATOR_HEADER),
+        createdAt: createdAt ? new Date(Number(createdAt)) : new Date(),
+      };
     },
     getDb: () => db,
+    viewAsSecret: TEST_VIEW_AS_SECRET,
   };
 
   async function departmentId(name: string) {
@@ -97,10 +105,27 @@ export function createTestContext() {
     return row.id;
   }
 
-  /** Request init for a signed-in user, with an optional JSON body. */
-  function as(userId: string | null, init: { method?: string; json?: unknown } = {}): RequestInit {
+  /**
+   * Request init for a signed-in user, with an optional JSON body. `impersonatedBy`
+   * makes it an admin's impersonation session, begun `sessionCreatedAt`.
+   */
+  function as(
+    userId: string | null,
+    init: {
+      method?: string;
+      json?: unknown;
+      cookie?: string;
+      impersonatedBy?: string;
+      sessionCreatedAt?: Date;
+    } = {},
+  ): RequestInit {
     const headers = new Headers();
     if (userId) headers.set(TEST_USER_HEADER, userId);
+    if (init.cookie) headers.set("cookie", init.cookie);
+    if (init.impersonatedBy) headers.set(TEST_IMPERSONATOR_HEADER, init.impersonatedBy);
+    if (init.sessionCreatedAt) {
+      headers.set(TEST_SESSION_CREATED_HEADER, String(init.sessionCreatedAt.getTime()));
+    }
     if (init.json !== undefined) headers.set("content-type", "application/json");
     return {
       method: init.method ?? "GET",

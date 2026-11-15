@@ -100,7 +100,34 @@ function toAccount(row: AccountRow, actor: CurrentUser) {
     // Only admins may change an admin's account.
     canEdit: isManager(actor) && canChangeAccount(actor, row.role),
     canSetInstitution: canSport(actor, "users.setInstitution") && canChangeAccount(actor, row.role),
+    // An admin acting as themselves may act as any other non-admin account.
+    canImpersonate: canImpersonate(actor, row),
   };
+}
+
+function canImpersonate(actor: CurrentUser, row: Pick<AccountRow, "id" | "role">) {
+  return (
+    hasRole(actor.role, "admin") &&
+    !actor.impersonatedBy &&
+    !actor.simulated &&
+    row.id !== actor.id &&
+    !hasRole(row.role, "admin")
+  );
+}
+
+/** The department a "view as" names, shaped like an account's. */
+async function viewedDepartment(db: Database, id: string | null) {
+  if (!id) return null;
+  const [row] = await db
+    .select({
+      id: department.id,
+      name: department.name,
+      icon: department.icon,
+      color: department.color,
+    })
+    .from(department)
+    .where(eq(department.id, id));
+  return row ? departmentAppearance(row) : null;
 }
 
 async function findAccount(db: Database, id: string, actor: CurrentUser) {
@@ -127,15 +154,25 @@ export const createUserRoutes = (deps: RouteDeps) =>
       const actor = c.var.user;
       const account = await findAccount(c.var.db, actor.id, actor);
       if (!account) return c.json({ message: "กรุณาเข้าสู่ระบบ" }, 401);
+      // While viewing as someone, the nav shows who the admin is viewing as.
+      const view = actor.simulated
+        ? {
+            role: accountRole(actor.role),
+            department: await viewedDepartment(c.var.db, actor.departmentId),
+            seatRole: actor.leadershipRole,
+            institution: actor.institution,
+          }
+        : null;
       return c.json(
         {
           id: account.id,
-          role: account.role,
-          department: account.department,
-          seatRole: account.seatRole,
+          role: view?.role ?? account.role,
+          department: view ? view.department : account.department,
+          seatRole: view ? view.seatRole : account.seatRole,
           canManageUsers: isManager(actor),
-          institution: account.institution,
+          institution: view ? view.institution : account.institution,
           sportAccess: sportAccessJson(actor),
+          viewingAs: actor.simulated,
         },
         200,
       );

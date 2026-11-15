@@ -24,6 +24,8 @@ import { createUserRoutes } from "./routes/users";
 import { createLeadershipRoutes, recordContactReveal } from "./routes/leadership";
 import { createAuth, getDb } from "./services";
 import { createProfileRoutes } from "./routes/profile";
+import { createViewAsRoutes } from "./routes/view-as";
+import { cleanupImpersonationSessions, handleAuthRequest } from "./routes/auth-audit";
 import { cleanupFiles, createFileRoutes, createPublicFileRoutes } from "./routes/files";
 import { createFileStore } from "./routes/files/storage";
 
@@ -62,19 +64,28 @@ app.use("/*", (c, next) =>
   (c.req.path.startsWith("/api/files/public/") ? publicCors : privateCors)(c, next),
 );
 
-app.on(["POST", "GET"], "/api/auth/*", async (c) => (await createAuth()).handler(c.req.raw));
+app.on(["POST", "GET"], "/api/auth/*", async (c) =>
+  handleAuthRequest(c.req.raw, await createAuth(), c.get("log")),
+);
 
 const deps: RouteDeps = {
   getSession: async (headers) => {
     const session = await (await createAuth()).api.getSession({ headers });
     if (!session) return null;
-    return { userId: session.user.id, impersonatedBy: session.session.impersonatedBy ?? null };
+    return {
+      userId: session.user.id,
+      impersonatedBy: session.session.impersonatedBy ?? null,
+      createdAt: new Date(session.session.createdAt),
+    };
   },
   getDb,
+  // A key of its own, so a view-as cookie can never pass for an auth cookie.
+  viewAsSecret: `${env.BETTER_AUTH_SECRET}:view-as`,
 };
 
 app.route("/api/departments", createDepartmentRoutes(deps));
 app.route("/api/users", createUserRoutes(deps));
+app.route("/api/view-as", createViewAsRoutes(deps));
 const fileDeps = { ...deps, getStore: () => createFileStore(env.UPLOADS), waitUntil };
 app.route("/api/files/public", createPublicFileRoutes(fileDeps));
 app.route("/api/files", createFileRoutes(fileDeps));
@@ -116,5 +127,6 @@ export default {
   fetch: app.fetch,
   async scheduled() {
     await cleanupFiles(getDb(), createFileStore(env.UPLOADS));
+    await cleanupImpersonationSessions(getDb());
   },
 };

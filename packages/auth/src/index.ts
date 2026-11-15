@@ -1,7 +1,7 @@
 import type { Database } from "@it3k/db";
 import * as schema from "@it3k/db/schema/auth";
 import { betterAuth } from "better-auth";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin } from "better-auth/plugins/admin";
 import { oAuthProxy } from "better-auth/plugins/oauth-proxy";
@@ -40,6 +40,38 @@ export type AuthConfig = {
   DISCORD_CLIENT_ID?: string;
   DISCORD_CLIENT_SECRET?: string;
 };
+
+/**
+ * How long an admin may act as another account. Better Auth sets this as the
+ * impersonation session's expiry; the session hook below keeps its routine
+ * refresh from pushing that out to the normal seven days, and the server's
+ * requireUser checks it again against the session's creation time.
+ */
+export const IMPERSONATION_MAX_AGE = 60 * 60;
+
+/**
+ * Account and session endpoints an impersonated session may not call. Writes
+ * through the app's own API stay open while impersonating; these would let the
+ * admin reshape the target's identity instead -- linking the admin's Discord
+ * to the target, changing their email, or signing them out everywhere.
+ */
+export const IMPERSONATION_BLOCKED_PATHS: ReadonlySet<string> = new Set([
+  "/link-social",
+  "/unlink-account",
+  "/update-user",
+  "/change-email",
+  "/change-password",
+  "/set-password",
+  "/delete-user",
+  "/revoke-session",
+  "/revoke-sessions",
+  "/revoke-other-sessions",
+  // OAuth tokens (a Discord refresh token) would outlive the impersonation.
+  "/get-access-token",
+  "/refresh-token",
+]);
+
+export const IMPERSONATION_FORBIDDEN = "IMPERSONATION_FORBIDDEN";
 
 /** Discord is only ever linked to an account that signed in with Google. */
 export const DISCORD = "discord";
@@ -92,7 +124,37 @@ export function createAuth(
         allowDifferentEmails: true,
       },
     },
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (!IMPERSONATION_BLOCKED_PATHS.has(ctx.path)) return;
+        const session = await getSessionFromCtx(ctx);
+        if (session?.session.impersonatedBy) {
+          throw new APIError("FORBIDDEN", {
+            code: IMPERSONATION_FORBIDDEN,
+            message: "ทำรายการนี้ระหว่างสวมบัญชีไม่ได้ กลับสู่บัญชีของคุณก่อน",
+          });
+        }
+      }),
+    },
     databaseHooks: {
+      session: {
+        update: {
+          // A session is refreshed to a fresh seven-day expiry once it is a day
+          // past its last refresh -- which an hour-long impersonation session
+          // already is when it is created. Keep its original expiry instead.
+          before: async (data, ctx) => {
+            if (!ctx || !("expiresAt" in data)) return;
+            const token = await ctx.getSignedCookie(
+              ctx.context.authCookies.sessionToken.name,
+              ctx.context.secret,
+            );
+            if (!token) return;
+            const current = await ctx.context.internalAdapter.findSession(token);
+            if (!current?.session.impersonatedBy) return;
+            return { data: { ...data, expiresAt: current.session.expiresAt } };
+          },
+        },
+      },
       account: {
         create: {
           // One Discord account per user: relinking means unlinking first.
@@ -152,6 +214,10 @@ export function createAuth(
         roles,
         defaultRole: DEFAULT_ROLE,
         adminRoles: ["admin"],
+        // Admins may not act as other admins: the admin role is not granted
+        // `impersonate-admins` (see permissions.ts) and this stays false.
+        allowImpersonatingAdmins: false,
+        impersonationSessionDuration: IMPERSONATION_MAX_AGE,
       }),
       // Local development can use its registered Google callback directly.
       // Deployed stages require the shared secret in the Alchemy config.

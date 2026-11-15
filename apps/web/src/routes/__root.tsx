@@ -7,6 +7,7 @@ import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { ConnectionStatus } from "../components/connection-status";
 import { NavigationProgress } from "../components/navigation-progress";
 import NotFound from "../components/not-found";
+import { ViewModeBanner } from "../components/view-mode-banner";
 import { getOrigin } from "../functions/get-origin";
 
 import appCss from "../index.css?url";
@@ -102,6 +103,7 @@ function RootDocument() {
         </div>
         <Toaster richColors />
         <ConnectionStatus />
+        <ViewModeBanner />
         <TanStackRouterDevtools position="bottom-left" />
         <Scripts />
       </body>

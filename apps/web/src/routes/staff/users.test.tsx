@@ -22,13 +22,19 @@ function account(overrides: Partial<Account> = {}): Account {
     canEdit: true,
     institution: null,
     canSetInstitution: false,
+    canImpersonate: false,
     ...overrides,
   };
 }
 
 const unexpected = (name: string) => () => Promise.reject(new Error(`Unexpected call to ${name}`));
 
-function setup(items: Account[], canGrantAdmin = false, overrides: Partial<UsersApi> = {}) {
+function setup(
+  items: Account[],
+  canGrantAdmin = false,
+  overrides: Partial<UsersApi> = {},
+  onImpersonate?: (userId: string) => Promise<void>,
+) {
   const assigned: [string, Assignment][] = [];
   const api: UsersApi = {
     setStorage: async () => {
@@ -43,6 +49,7 @@ function setup(items: Account[], canGrantAdmin = false, overrides: Partial<Users
       canManageUsers: true,
       institution: null,
       sportAccess: { permissions: [], scope: { kind: "none" } },
+      viewingAs: false,
     }),
     list: async () => ({ items, page: 1, hasMore: false, canGrantAdmin }),
     assign: async (id, json) => {
@@ -58,7 +65,10 @@ function setup(items: Account[], canGrantAdmin = false, overrides: Partial<Users
   });
   return {
     assigned,
-    view: renderRoute({ options: { component: UsersPage } }, { users: api, leadership: seats }),
+    view: renderRoute(
+      { options: { component: () => <UsersPage onImpersonate={onImpersonate} /> } },
+      { users: api, leadership: seats },
+    ),
   };
 }
 
@@ -160,5 +170,28 @@ describe("/staff/users", () => {
     expect(expectedLimits).toEqual([guest.storageLimit]);
     expect(persisted.role).toBe("athlete");
     expect(persisted.storageLimit).toBe(2 * 1024 ** 3);
+  });
+
+  test("offers to act as an account only where the API allows it, after confirming", async () => {
+    const acted: string[] = [];
+    const { view } = setup(
+      [
+        account({ id: "u-staff", name: "Plain Staff", canImpersonate: true }),
+        account({ id: "u-admin", name: "Other Admin", role: "admin" }),
+      ],
+      true,
+      {},
+      async (id) => {
+        acted.push(id);
+      },
+    );
+    await view.findByText("Plain Staff");
+    expect(view.queryByRole("button", { name: "ดูในฐานะ Other Admin" })).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "ดูในฐานะ Plain Staff" }));
+    const dialog = await view.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("1 ชั่วโมง");
+    expect(acted).toEqual([]);
+    fireEvent.click(view.getByRole("button", { name: "ดูในฐานะผู้ใช้นี้" }));
+    await waitFor(() => expect(acted).toEqual(["u-staff"]));
   });
 });
