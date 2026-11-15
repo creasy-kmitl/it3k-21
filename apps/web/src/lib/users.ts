@@ -3,6 +3,7 @@ import { hc } from "hono/client";
 import type { ClientRequestOptions, InferRequestType, InferResponseType } from "hono/client";
 
 import type { UserRoutes } from "../../../server/src/routes/users";
+import type { Institution } from "@it3k/db/profile";
 import { ENV } from "../env.public";
 
 import { toApiError } from "./leadership";
@@ -13,6 +14,8 @@ export type Me = InferResponseType<Client["me"]["$get"], 200>;
 export type AccountPage = InferResponseType<Client["index"]["$get"], 200>;
 export type Account = AccountPage["items"][number];
 export type Assignment = InferRequestType<Client[":id"]["assignment"]["$put"]>["json"];
+export type SportAccess = Me["sportAccess"];
+export type SportPermission = SportAccess["permissions"][number];
 export type AccountQuery = { q?: string; departmentId?: string; page: number };
 
 export function createUsersApi(baseUrl: string, fetchImpl?: ClientRequestOptions["fetch"]) {
@@ -48,6 +51,11 @@ export function createUsersApi(baseUrl: string, fetchImpl?: ClientRequestOptions
 
     async setAdmin(id: string, admin: boolean) {
       const res = await client[":id"].admin.$put({ param: { id }, json: { admin } });
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
+    async setInstitution(id: string, institution: Institution | null) {
+      const res = await client[":id"].institution.$put({ param: { id }, json: { institution } });
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },

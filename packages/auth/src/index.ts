@@ -71,6 +71,11 @@ export function createAuth(
           required: false,
           input: false,
         },
+        institution: {
+          type: "string",
+          required: false,
+          input: false,
+        },
       },
     },
     secret: env.BETTER_AUTH_SECRET,

@@ -328,3 +328,46 @@ describe("PUT /:id/admin", () => {
     expect((await stored("admin"))?.role).toBe("admin");
   });
 });
+
+describe("institution", () => {
+  const setInstitution = (who: string, id: string, institution: string | null) =>
+    send<Record<string, unknown>>(who, "PUT", `/${id}/institution`, { institution });
+
+  test("admins, Tech/Live and host registration leaders set it", async () => {
+    await t.seedUser("reg-head", { seat: "head", department: "ทะเบียน", institution: "kmitl" });
+    for (const who of ["admin", "tech-staff", "reg-head"]) {
+      const { res, body } = await setInstitution(who, "art-staff", "kmutt");
+      expect(res.status).toBe(200);
+      expect(body).toMatchObject({ institution: "kmutt", canSetInstitution: true });
+    }
+    expect((await stored("art-staff"))?.institution).toBe("kmutt");
+    expect((await setInstitution("admin", "art-staff", null)).body.institution).toBeNull();
+  });
+
+  test("registration without a seat or from another institution cannot", async () => {
+    await t.seedUser("reg-staff", { department: "ทะเบียน", institution: "kmitl" });
+    await t.seedUser("reg-kmutt", { seat: "head", department: "ทะเบียน", institution: "kmutt" });
+    // reg-vice has no institution yet, so it has no sport rights at all.
+    for (const who of ["reg-staff", "reg-kmutt", "reg-vice", "art-staff"]) {
+      expect((await setInstitution(who, "guest", "kmitl")).res.status).toBe(403);
+    }
+    expect((await stored("guest"))?.institution).toBeNull();
+  });
+
+  test("only admins change an admin's institution", async () => {
+    expect((await setInstitution("tech-staff", "admin", "kmitl")).res.status).toBe(403);
+    expect((await setInstitution("admin", "admin", "kmitl")).res.status).toBe(200);
+  });
+
+  test("rejects unknown institutions", async () => {
+    expect((await setInstitution("admin", "guest", "harvard")).res.status).toBe(400);
+  });
+
+  test("/me reports the caller's sport rights", async () => {
+    await t.seedUser("reg-staff", { department: "ทะเบียน", institution: "kmitl" });
+    expect((await send("reg-staff", "GET", "/me")).body).toMatchObject({
+      institution: "kmitl",
+      sportAccess: { permissions: ["athletes.read", "kiosk.operate"], scope: { kind: "all" } },
+    });
+  });
+});

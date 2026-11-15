@@ -34,6 +34,10 @@ export const INSTITUTIONS = [
     logo: "/institutions/kmutnb.png",
   },
 ] as const;
+export const INSTITUTION_IDS = ["kmitl", "kmutt", "kmutnb-bangkok", "kmutnb-prachinburi"] as const;
+export type Institution = (typeof INSTITUTION_IDS)[number];
+/** The host institution: its registration leaders run the sport system with Tech/Live. */
+export const HOST_INSTITUTION: Institution = "kmitl";
 
 export function suggestedInstitution(email: string) {
   const domain = email.toLowerCase().split("@")[1] ?? "";
@@ -56,7 +60,7 @@ export const draftSchema = z.strictObject({
   drugAllergies: medical,
   foodAllergies: medical,
   dietaryRestrictions: medical,
-  institution: z.enum(["", "kmitl", "kmutt", "kmutnb-bangkok", "kmutnb-prachinburi"]),
+  institution: z.enum(["", ...INSTITUTION_IDS]),
 });
 export type ProfileValues = z.infer<typeof draftSchema>;
 export const EMPTY_PROFILE: ProfileValues = {

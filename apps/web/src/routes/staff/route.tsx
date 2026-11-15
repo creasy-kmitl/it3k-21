@@ -29,6 +29,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/staff/users": "ผู้ใช้",
   "/staff/qr-code": "QR Code",
   "/staff/links": "ลิงก์สั้น",
+  "/staff/sports": "กีฬา",
 };
 
 /**

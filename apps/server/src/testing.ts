@@ -1,6 +1,7 @@
 // Test-only helpers: an in-memory database plus a header-based stand-in for
 // the Better Auth session so routes can be exercised with Hono#request.
 import { type LeadershipRole, department, leadership, user } from "@it3k/db/schema/index";
+import type { Institution } from "@it3k/db/profile";
 import { createTestDb } from "@it3k/db/testing";
 
 export { defined } from "@it3k/db/testing";
@@ -41,6 +42,7 @@ export function createTestContext() {
       seat?: LeadershipRole;
       banned?: boolean;
       name?: string;
+      institution?: Institution;
     } = {},
   ) {
     const deptId = options.department ? await departmentId(options.department) : null;
@@ -51,6 +53,7 @@ export function createTestContext() {
       role: options.role ?? "staff",
       banned: options.banned ?? false,
       departmentId: deptId,
+      institution: options.institution ?? null,
     });
     if (options.seat) {
       if (!deptId) throw new Error(`A seat needs a department (${id})`);

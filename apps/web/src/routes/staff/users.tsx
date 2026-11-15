@@ -36,7 +36,7 @@ import { PageHeader } from "@/components/page-header";
 import { ROLE_BADGES, RoleBadge } from "@/components/role-badge";
 import { useApis } from "@/lib/api-context";
 import { type ListFilters, listSearchSchema, replacesHistory } from "@/lib/list-search";
-import { GiB } from "@it3k/db/profile";
+import { GiB, INSTITUTIONS, type Institution } from "@it3k/db/profile";
 import { fileSize } from "@/lib/files";
 
 export const Route = createFileRoute("/staff/users")({
@@ -263,9 +263,24 @@ function AccountBadges({ account }: { account: Account }) {
           {account.department && <DepartmentBadge department={account.department} />}
         </>
       )}
+      {account.institution && <InstitutionBadge institution={account.institution} />}
     </span>
   );
 }
+
+export function institutionShort(id: Institution) {
+  return INSTITUTIONS.find((institution) => institution.id === id)?.short ?? id;
+}
+
+function InstitutionBadge({ institution }: { institution: Institution }) {
+  return (
+    <span className="rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground">
+      {institutionShort(institution)}
+    </span>
+  );
+}
+
+const NO_INSTITUTION = "none";
 
 function EditAccountDialog({
   account,
@@ -288,6 +303,7 @@ function EditAccountDialog({
   const [status, setStatus] = useState<Status>(initialStatus);
   const [departmentId, setDepartmentId] = useState(account.department?.id ?? "");
   const [admin, setAdmin] = useState(account.role === "admin");
+  const [institution, setInstitution] = useState<Institution | null>(account.institution);
   const [savedAccount, setSavedAccount] = useState(account);
   const [storageGB, setStorageGB] = useState(String(account.storageLimit / GiB));
   const storageLimit = Math.round(Number(storageGB) * GiB);
@@ -311,6 +327,11 @@ function EditAccountDialog({
       let saved = savedAccount;
       if (storageLimit !== saved.storageLimit) {
         saved = await api.setStorage(account.id, storageLimit, saved.storageLimit);
+        setSavedAccount(saved);
+      }
+      // Before the assignment too: it may take away the caller's right to set it.
+      if (account.canSetInstitution && institution !== saved.institution) {
+        saved = await api.setInstitution(account.id, institution);
         setSavedAccount(saved);
       }
       // Compared with what the account is, not with the status the dialog opened
@@ -345,6 +366,10 @@ function EditAccountDialog({
     },
   });
 
+  const institutionItems = [
+    { value: NO_INSTITUTION, label: "ไม่ระบุ" },
+    ...INSTITUTIONS.map((i) => ({ value: i.id, label: i.short })),
+  ];
   const statusItems = STATUSES.map((value) => ({ value, label: ROLE_BADGES[value].label }));
   const departmentItems = departments.map((d) => ({
     value: d.id,
@@ -408,6 +433,34 @@ function EditAccountDialog({
                   จะแทนที่ {occupant.data.displayName} ซึ่งจะกลายเป็น Staff ของฝ่ายนี้
                 </FieldDescription>
               )}
+            </Field>
+          )}
+          {account.canSetInstitution && (
+            <Field>
+              <FieldLabel htmlFor="account-institution">สถาบัน</FieldLabel>
+              <Select
+                items={institutionItems}
+                value={institution ?? NO_INSTITUTION}
+                onValueChange={(value: string | null) =>
+                  setInstitution(
+                    !value || value === NO_INSTITUTION ? null : (value as Institution),
+                  )
+                }
+              >
+                <SelectTrigger id="account-institution" aria-label="สถาบัน">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {institutionItems.map((i) => (
+                      <SelectItem key={i.value} value={i.value}>
+                        {i.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <FieldDescription>ใช้กำหนดว่าฝ่ายทะเบียนเห็นนักกีฬาของสถาบันใด</FieldDescription>
             </Field>
           )}
           {canGrantAdmin && (

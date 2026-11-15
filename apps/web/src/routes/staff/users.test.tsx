@@ -20,6 +20,8 @@ function account(overrides: Partial<Account> = {}): Account {
     department: null,
     seatRole: null,
     canEdit: true,
+    institution: null,
+    canSetInstitution: false,
     ...overrides,
   };
 }
@@ -32,12 +34,15 @@ function setup(items: Account[], canGrantAdmin = false, overrides: Partial<Users
     setStorage: async () => {
       throw new Error("Unexpected quota update");
     },
+    setInstitution: unexpected("setInstitution"),
     me: async () => ({
       id: "me",
       role: "staff",
       department: null,
       seatRole: null,
       canManageUsers: true,
+      institution: null,
+      sportAccess: { permissions: [], scope: { kind: "none" } },
     }),
     list: async () => ({ items, page: 1, hasMore: false, canGrantAdmin }),
     assign: async (id, json) => {
@@ -89,6 +94,27 @@ describe("/staff/users", () => {
     await choose(view.getByRole("combobox", { name: "สถานะ" }), "Guest");
     fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
     await waitFor(() => expect(assigned).toEqual([["u-stray", { kind: "guest" }]]));
+  });
+
+  test("sets an account's institution when allowed, and only then offers it", async () => {
+    // A guest needs no department, so the dialog can save without one.
+    const staff = account({ id: "u-reg", name: "Reg Staff", role: "guest", canSetInstitution: true });
+    const set: [string, string | null][] = [];
+    const { view } = setup([staff, account({ name: "Other" })], false, {
+      setInstitution: async (id, institution) => {
+        set.push([id, institution]);
+        return { ...staff, institution };
+      },
+    });
+    fireEvent.click(await view.findByRole("button", { name: "แก้ไข Other" }));
+    expect(view.queryByRole("combobox", { name: "สถาบัน" })).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "ยกเลิก" }));
+    await waitFor(() => expect(view.queryByRole("alertdialog")).toBeNull());
+
+    fireEvent.click(view.getByRole("button", { name: "แก้ไข Reg Staff" }));
+    await choose(view.getByRole("combobox", { name: "สถาบัน" }), "มจธ.");
+    fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(set).toEqual([["u-reg", "kmutt"]]));
   });
 
   test("saving an unchanged guest sends nothing", async () => {

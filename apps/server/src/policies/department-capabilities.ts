@@ -11,12 +11,19 @@ import {
 } from "@it3k/db/schema/department";
 import { type SQL, inArray, sql } from "drizzle-orm";
 
-export type Capability = "manageAccounts" | "manageShortLinks";
+export type Capability =
+  | "manageAccounts"
+  | "manageShortLinks"
+  // Every member runs the whole sport system (policies/sports.ts).
+  | "runSports"
+  // Members work on athlete registrations; how far depends on their seat
+  // and institution (policies/sports.ts).
+  | "registerAthletes";
 
 export const DEPARTMENT_CAPABILITIES = {
-  // Assign departments, seats and roles to any non-admin account.
-  "tech-live": ["manageAccounts", "manageShortLinks"],
-  registration: ["manageAccounts"],
+  // manageAccounts: assign departments, seats and roles to any non-admin account.
+  "tech-live": ["manageAccounts", "manageShortLinks", "runSports"],
+  registration: ["manageAccounts", "registerAthletes"],
 } as const satisfies Record<ReservedDepartmentCode, readonly Capability[]>;
 
 function isReserved(code: string): code is ReservedDepartmentCode {

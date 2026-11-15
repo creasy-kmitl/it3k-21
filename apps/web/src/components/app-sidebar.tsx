@@ -14,6 +14,7 @@ import {
   CalendarDaysIcon,
   LayoutDashboardIcon,
   Link2Icon,
+  MedalIcon,
   QrCodeIcon,
   TrophyIcon,
   UserCogIcon,
@@ -30,6 +31,8 @@ export function AppSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar> & { userRole: string | null | undefined }) {
   const { data: me } = useMe();
+  // Shown to anyone with a right in the sport system; the API enforces each one.
+  const inSports = (me?.sportAccess.permissions.length ?? 0) > 0;
   const groups: NavMainGroup[] = [
     {
       label: "ภาพรวม",
@@ -49,6 +52,10 @@ export function AppSidebar({
           ? [{ title: "ฝ่าย", to: "/staff/departments", icon: <Building2Icon /> } as const]
           : []),
       ],
+    },
+    {
+      label: "กีฬา",
+      items: inSports ? [{ title: "กีฬา", to: "/staff/sports", icon: <MedalIcon /> } as const] : [],
     },
     {
       label: "เครื่องมือ",
