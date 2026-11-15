@@ -12,6 +12,9 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   general: "กิจกรรมทั่วไป",
 };
 
+export const CHECKIN_METHODS = ["scan", "manual"] as const;
+export type CheckinMethod = (typeof CHECKIN_METHODS)[number];
+
 /** An event may last at most this long, like a calendar item. */
 export const MAX_EVENT_MS = 31 * 24 * 60 * 60 * 1000;
 export const MAX_EVENT_DIVISIONS = 100;

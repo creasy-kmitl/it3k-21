@@ -1,9 +1,11 @@
 // Sport and general events. Members read them; catalog managers create, edit
-// and delete them. Check-ins and participants come with the kiosk.
+// and delete them. Kiosk operators check people in.
 import type { Database } from "@it3k/db";
 import {
+  CHECKIN_METHODS,
   EVENT_TYPES,
   event,
+  eventCheckin,
   eventDivision,
   eventInput,
   eventInstitution,
@@ -26,7 +28,8 @@ import {
 import { limitJsonBody } from "../../middleware/json-body-limit";
 import { allowSport } from "../../middleware/sport-permission";
 import { validate } from "../../middleware/validation";
-import { canSport, sportAccessIsAsRead } from "../../policies/sports";
+import { canSport, sportAccess, sportAccessIsAsRead } from "../../policies/sports";
+import { expectedAt, findCheckin, findPerson, listParticipants } from "./checkins";
 
 const idParam = z.strictObject({ id: z.string().min(1) });
 const listQuery = z.strictObject({
@@ -34,12 +37,23 @@ const listQuery = z.strictObject({
   // Events still running at or after this time; omit for every event.
   endsAfter: z.coerce.number().int().min(0).optional(),
 });
+const checkinParam = z.strictObject({ id: z.string().min(1), userId: z.string().min(1) });
+const checkinInput = z.strictObject({
+  // What the barcode on /me encodes: the account id.
+  userId: z.string().trim().min(1).max(128),
+  method: z.enum(CHECKIN_METHODS),
+  // Catalog managers may check in someone the event does not expect.
+  force: z.boolean().optional(),
+});
 const updateInput = eventInput.and(z.strictObject({ version: z.number().int().positive() }));
 
 /** Plenty for one festival; the list is not paged. */
 const MAX_EVENTS = 500;
 
 export const STALE = "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่";
+const UNKNOWN_PERSON = "ไม่พบผู้ใช้จากรหัสนี้";
+const ALREADY_IN = "เช็คอินไปแล้ว";
+const NOT_LISTED = "ไม่อยู่ในรายชื่อของกิจกรรมนี้";
 const MISSING_LINK = "ไม่พบสถานที่หรือประเภทกีฬาที่เลือก กรุณาโหลดใหม่";
 
 /** Events with their venue, institutions and divisions, in start order. */
@@ -223,6 +237,142 @@ export const createEventRoutes = (deps: RouteDeps) =>
         if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
         throw error;
       }
-    });
+    })
+
+    // The kiosk's list and the participants page, limited to the viewer's scope.
+    .get("/:id/participants", validate("param", idParam), async (c) => {
+      const actor = c.var.user;
+      if (!canSport(actor, "athletes.read") && !canSport(actor, "kiosk.operate")) {
+        return c.json({ message: "Forbidden" }, 403);
+      }
+      const [item] = await c.var.db
+        .select({ id: event.id, type: event.type })
+        .from(event)
+        .where(eq(event.id, c.req.valid("param").id));
+      if (!item) return c.json({ message: "Event not found" }, 404);
+      const items = await listParticipants(c.var.db, item, sportAccess(actor).scope);
+      return c.json(
+        {
+          items,
+          canCheckIn: canSport(actor, "kiosk.operate"),
+          canUndo: canSport(actor, "catalog.manage"),
+          canExport: canSport(actor, "athletes.export") || canSport(actor, "catalog.manage"),
+        },
+        200,
+      );
+    })
+
+    .post(
+      "/:id/checkins",
+      allowSport("kiosk.operate"),
+      validate("param", idParam),
+      validate("json", checkinInput),
+      async (c) => {
+        const db = c.var.db;
+        const actor = c.var.user;
+        const { id } = c.req.valid("param");
+        const { userId, method, force } = c.req.valid("json");
+        const [item] = await db
+          .select({ id: event.id, type: event.type })
+          .from(event)
+          .where(eq(event.id, id));
+        if (!item) return c.json({ message: "Event not found" }, 404);
+        const person = await findPerson(db, id, userId);
+        if (!person) return c.json({ code: "unknown" as const, message: UNKNOWN_PERSON }, 404);
+
+        const already = await findCheckin(db, id, userId);
+        if (already) {
+          return c.json(
+            {
+              code: "duplicate" as const,
+              message: ALREADY_IN,
+              person,
+              checkedInAt: already.createdAt.toISOString(),
+            },
+            409,
+          );
+        }
+        const expected = item.type === "general" || person.divisions.length > 0;
+        const forced = !expected;
+        if (forced && !(force && canSport(actor, "catalog.manage"))) {
+          return c.json(
+            {
+              code: "not-listed" as const,
+              message: NOT_LISTED,
+              person,
+              canForce: canSport(actor, "catalog.manage"),
+            },
+            409,
+          );
+        }
+        try {
+          await db.batch([
+            abortUnless(
+              db,
+              actor.id,
+              and(
+                sportAccessIsAsRead(actor),
+                item.type === "sport" && !forced ? expectedAt(id, userId) : sql`1`,
+              ) ?? sql`0`,
+            ),
+            db.insert(eventCheckin).values({
+              eventId: id,
+              userId,
+              checkedInBy: actor.id,
+              method,
+              forced,
+            }),
+          ]);
+        } catch (error) {
+          if (constraintError(error) === "unique") {
+            const row = await findCheckin(db, id, userId);
+            return c.json(
+              {
+                code: "duplicate" as const,
+                message: ALREADY_IN,
+                person,
+                checkedInAt: (row?.createdAt ?? new Date()).toISOString(),
+              },
+              409,
+            );
+          }
+          if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
+          if (constraintError(error) === "foreign-key") {
+            return c.json({ message: "Event not found" }, 404);
+          }
+          throw error;
+        }
+        const row = await findCheckin(db, id, userId);
+        if (!row) throw new Error("Check-in vanished");
+        return c.json(
+          { code: "checked-in" as const, person, checkedInAt: row.createdAt.toISOString(), forced },
+          201,
+        );
+      },
+    )
+
+    .delete(
+      "/:id/checkins/:userId",
+      allowSport("catalog.manage"),
+      validate("param", checkinParam),
+      async (c) => {
+        const db = c.var.db;
+        const { id, userId } = c.req.valid("param");
+        try {
+          const [, rows] = await db.batch([
+            abortUnless(db, c.var.user.id, sportAccessIsAsRead(c.var.user)),
+            db
+              .delete(eventCheckin)
+              .where(and(eq(eventCheckin.eventId, id), eq(eventCheckin.userId, userId)))
+              .returning({ id: eventCheckin.id }),
+          ]);
+          if (!rows[0]) return c.json({ message: "Check-in not found" }, 404);
+          return c.json({ userId }, 200);
+        } catch (error) {
+          if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
+          throw error;
+        }
+      },
+    );
 
 export type EventRoutes = ReturnType<typeof createEventRoutes>;

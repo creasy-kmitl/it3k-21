@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 
 import type { EventInput } from "@it3k/db/event-rules";
 import type { EventItem, EventsApi } from "@/lib/events";
 import type { Division, Sport } from "@/lib/sports";
 import type { Venue } from "@/lib/venues";
-import { choose, fakeEventsApi, fakeSportsApi, fakeVenuesApi, renderRoute } from "@/test/query";
+import { ApiProvider } from "@/lib/api-context";
+import { choose, fakeApis, fakeEventsApi, fakeSportsApi, fakeVenuesApi } from "@/test/query";
+import { renderAtRoot } from "@/test/router";
 
 import { EventsPage, eventIcon } from "./events";
 
@@ -96,7 +99,15 @@ function setup(items: EventItem[], canManage: boolean, overrides: Partial<Events
   const events = fakeEventsApi({ list: async () => ({ items, canManage }), ...overrides });
   const venues = fakeVenuesApi({ list: async () => ({ items: [VENUE], canManage }) });
   const sports = fakeSportsApi({ list: async () => ({ items: [BASKETBALL], canManage }) });
-  return renderRoute({ options: { component: EventsPage } }, { events, venues, sports });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // In a router, because each card links to its participants page.
+  return renderAtRoot(() => (
+    <QueryClientProvider client={client}>
+      <ApiProvider value={fakeApis({ events, venues, sports })}>
+        <EventsPage />
+      </ApiProvider>
+    </QueryClientProvider>
+  ));
 }
 
 describe("eventIcon", () => {
@@ -108,7 +119,7 @@ describe("eventIcon", () => {
 
 describe("/staff/events", () => {
   test("lists events with their time, venue, institutions and sports", async () => {
-    const view = setup([item()], false);
+    const view = await setup([item()], false);
     expect(await view.findByText("บาสรอบแรก")).toBeTruthy();
     expect(view.getByText("กิจกรรมกีฬา")).toBeTruthy();
     expect(view.getByText(/09:00–12:00/)).toBeTruthy();
@@ -122,7 +133,7 @@ describe("/staff/events", () => {
 
   test("shows past events on request", async () => {
     const filters: unknown[] = [];
-    const view = setup([], false, {
+    const view = await setup([], false, {
       list: async (query) => {
         filters.push(query);
         return { items: [], canManage: false };
@@ -136,7 +147,7 @@ describe("/staff/events", () => {
 
   test("a sport event needs institutions and sports; a sport's box picks all its divisions", async () => {
     const created: EventInput[] = [];
-    const view = setup([], true, {
+    const view = await setup([], true, {
       create: async (json) => {
         created.push(json);
         return item();
@@ -165,7 +176,7 @@ describe("/staff/events", () => {
 
   test("editing sends the version; a general event drops sport picks", async () => {
     const updated: unknown[] = [];
-    const view = setup([item()], true, {
+    const view = await setup([item()], true, {
       update: async (id, json) => {
         updated.push([id, json]);
         return item();

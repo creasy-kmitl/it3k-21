@@ -63,8 +63,16 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
     calendar: apis.calendar ?? fakeCalendarApi(),
     links: apis.links ?? fakeLinksApi(),
     qrPresets: apis.qrPresets ?? fakeQrPresetsApi(),
-    profile: apis.profile ?? { me: unexpected("profile.me"), saveDraft: unexpected("profile.saveDraft"), submit: unexpected("profile.submit") },
-    files: apis.files ?? { list: unexpected("files.list"), remove: unexpected("files.remove"), upload: unexpected("files.upload") },
+    profile: apis.profile ?? {
+      me: unexpected("profile.me"),
+      saveDraft: unexpected("profile.saveDraft"),
+      submit: unexpected("profile.submit"),
+    },
+    files: apis.files ?? {
+      list: unexpected("files.list"),
+      remove: unexpected("files.remove"),
+      upload: unexpected("files.upload"),
+    },
     sports: apis.sports ?? fakeSportsApi(),
     registrations: apis.registrations ?? fakeRegistrationsApi(),
     athletes: apis.athletes ?? fakeAthletesApi(),
@@ -112,6 +120,9 @@ export function fakeEventsApi(overrides: Partial<EventsApi> = {}): EventsApi {
     create: unexpected("events.create"),
     update: unexpected("events.update"),
     remove: unexpected("events.remove"),
+    participants: unexpected("events.participants"),
+    checkIn: unexpected("events.checkIn"),
+    undoCheckIn: unexpected("events.undoCheckIn"),
     ...overrides,
   };
 }

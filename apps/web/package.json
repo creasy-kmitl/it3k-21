@@ -35,7 +35,8 @@
     "tailwindcss": "catalog:",
     "uqr": "^0.1.3",
     "varlock": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "zxing-wasm": "^3.1.6"
   },
   "devDependencies": {
     "@it3k/config": "workspace:*",

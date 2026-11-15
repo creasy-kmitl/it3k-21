@@ -30,8 +30,8 @@ import {
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { Textarea } from "@it3k/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
-import { CalendarCheck, Clock, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
+import { Link, createFileRoute } from "@tanstack/react-router";
+import { CalendarCheck, Clock, MapPin, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -153,7 +153,15 @@ export function EventsPage() {
               />
               <div className="flex flex-1 flex-col gap-2 p-4">
                 <div className="flex items-start gap-2">
-                  <h2 className="flex-1 font-semibold">{event.name}</h2>
+                  <h2 className="flex-1 font-semibold">
+                    <Link
+                      to="/staff/events/$eventId"
+                      params={{ eventId: event.id }}
+                      className="underline-offset-4 hover:underline"
+                    >
+                      {event.name}
+                    </Link>
+                  </h2>
                   <Badge variant={event.type === "sport" ? "default" : "secondary"}>
                     {EVENT_TYPE_LABELS[event.type]}
                   </Badge>
@@ -186,26 +194,37 @@ export function EventsPage() {
                   </p>
                 ))}
               </div>
-              {canManage && (
-                <div className="flex justify-end border-t p-2">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`แก้ไข ${event.name}`}
-                    onClick={() => setEditing({ kind: "event", event })}
-                  >
-                    <Pencil />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`ลบ ${event.name}`}
-                    onClick={() => setEditing({ kind: "delete", event })}
-                  >
-                    <Trash2 className="text-destructive" />
-                  </Button>
-                </div>
-              )}
+              <div className="flex items-center justify-end gap-1 border-t p-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mr-auto"
+                  render={<Link to="/staff/events/$eventId" params={{ eventId: event.id }} />}
+                  nativeButton={false}
+                >
+                  <Users data-icon="inline-start" aria-hidden /> ผู้เข้าร่วม
+                </Button>
+                {canManage && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`แก้ไข ${event.name}`}
+                      onClick={() => setEditing({ kind: "event", event })}
+                    >
+                      <Pencil />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`ลบ ${event.name}`}
+                      onClick={() => setEditing({ kind: "delete", event })}
+                    >
+                      <Trash2 className="text-destructive" />
+                    </Button>
+                  </>
+                )}
+              </div>
             </li>
           ))}
         </ul>
