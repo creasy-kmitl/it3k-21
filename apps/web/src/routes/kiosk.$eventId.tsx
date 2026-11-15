@@ -152,7 +152,7 @@ export function KioskPage({
 
   if (participants.isSuccess && !canCheckIn) {
     return (
-      <main className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background p-4 text-center">
+      <main className="flex min-h-dvh w-full min-w-0 flex-col items-center justify-center gap-4 bg-background p-4 text-center">
         <p role="alert" className="text-lg">
           บัญชีนี้ไม่มีสิทธิ์ใช้ Kiosk เช็คอิน
         </p>
@@ -165,24 +165,26 @@ export function KioskPage({
 
   // Everything below keeps its size while data loads, so the camera and the
   // input never jump: placeholders hold the title, time and count lines.
+  // The root layout is a flex row, so without w-full the page shrinks to its
+  // content and widens when the camera's video gets its real size.
   return (
-    <main className="flex min-h-dvh flex-col gap-4 bg-background p-4 md:p-6 wide:h-dvh wide:gap-6 wide:overflow-hidden wide:p-8 2xl:p-10">
+    <main className="flex min-h-dvh w-full min-w-0 flex-col gap-4 bg-background p-4 md:p-6 wide:h-dvh wide:gap-6 wide:overflow-hidden wide:p-8 wide-xl:p-10">
       <header className="flex items-start gap-3 wide:gap-4">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center gap-2">
-            <ScanBarcode className="size-6 shrink-0 text-primary 2xl:size-9" aria-hidden />
+            <ScanBarcode className="size-6 shrink-0 text-primary wide-xl:size-9" aria-hidden />
             {event.isPending ? (
-              <Skeleton className="h-7 w-48 max-w-full md:h-8 md:w-72 2xl:h-10" />
+              <Skeleton className="h-7 w-48 max-w-full md:h-8 md:w-72 wide-xl:h-10" />
             ) : (
-              <h1 className="truncate text-xl font-semibold md:text-2xl 2xl:text-4xl">
+              <h1 className="truncate text-xl font-semibold md:text-2xl wide-xl:text-4xl">
                 {event.data?.name ?? "Kiosk เช็คอิน"}
               </h1>
             )}
           </div>
-          <div className="flex min-h-5 items-center gap-2 text-sm text-muted-foreground 2xl:min-h-7 2xl:text-lg">
+          <div className="flex min-h-5 items-center gap-2 text-sm text-muted-foreground wide-xl:min-h-7 wide-xl:text-lg">
             {event.data ? (
               <>
-                <Clock className="size-4 shrink-0 2xl:size-5" aria-hidden />
+                <Clock className="size-4 shrink-0 wide-xl:size-5" aria-hidden />
                 <p className="min-w-0 truncate">
                   {eventTime(event.data)}
                   {event.data.venue && ` · ${event.data.venue.name}`}
@@ -194,17 +196,17 @@ export function KioskPage({
           </div>
         </div>
         <p
-          className="min-w-28 rounded-2xl border px-4 py-2 text-center wide:min-w-36 2xl:px-6 2xl:py-3"
+          className="min-w-28 rounded-2xl border px-4 py-2 text-center wide:min-w-36 wide-xl:px-6 wide-xl:py-3"
           aria-live="polite"
         >
-          <span className="block text-2xl font-semibold tabular-nums 2xl:text-4xl">
+          <span className="block text-2xl font-semibold tabular-nums wide-xl:text-4xl">
             {participants.data ? checkedIn : "–"}
-            <span className="text-base font-normal text-muted-foreground 2xl:text-2xl">
+            <span className="text-base font-normal text-muted-foreground wide-xl:text-2xl">
               {" "}
               / {participants.data ? items.length : "–"}
             </span>
           </span>
-          <span className="text-xs text-muted-foreground 2xl:text-sm">เช็คอินแล้ว</span>
+          <span className="text-xs text-muted-foreground wide-xl:text-sm">เช็คอินแล้ว</span>
         </p>
         <Button
           variant="outline"
@@ -217,7 +219,7 @@ export function KioskPage({
       </header>
 
       {/* Phones and portrait screens stack; big landscape screens put the camera beside the input. */}
-      <div className="flex flex-col gap-4 wide:grid wide:min-h-0 wide:flex-1 wide:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)] wide:gap-6 2xl:grid-cols-[minmax(0,1fr)_32rem]">
+      <div className="flex flex-col gap-4 wide:grid wide:min-h-0 wide:flex-1 wide:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)] wide:gap-6 wide-xl:grid-cols-[minmax(0,1fr)_32rem]">
         <Camera decoderFactory={decoderFactory} onCode={handleCode} />
 
         <aside className="mx-auto flex w-full max-w-xl flex-col gap-4 md:max-w-3xl wide:mx-0 wide:max-w-none wide:gap-6">
@@ -237,7 +239,7 @@ export function KioskPage({
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               onBlur={keepFocus}
-              className="wide:h-12 wide:px-4 wide:text-base 2xl:h-14 2xl:text-lg"
+              className="wide:h-12 wide:px-4 wide:text-base wide-xl:h-14 wide-xl:text-lg"
             />
             {/* An icon from the start, so the spinner swaps in without widening the button. */}
             <LoadingButton
@@ -245,13 +247,13 @@ export function KioskPage({
               icon={UserCheck}
               loading={pending}
               disabled={!typed.trim()}
-              className="wide:h-12 wide:px-5 wide:text-base 2xl:h-14 2xl:text-lg"
+              className="wide:h-12 wide:px-5 wide:text-base wide-xl:h-14 wide-xl:text-lg"
             >
               เช็คอิน
             </LoadingButton>
           </form>
 
-          <p className="hidden items-start gap-3 rounded-2xl border border-dashed p-4 text-muted-foreground wide:flex 2xl:text-lg">
+          <p className="hidden items-start gap-3 rounded-2xl border border-dashed p-4 text-muted-foreground wide:flex wide-xl:text-lg">
             <ScanBarcode className="mt-0.5 size-5 shrink-0" aria-hidden />
             ให้ผู้เข้าร่วมเปิดบาร์โค้ดในหน้าโปรไฟล์ แล้วหันเข้ากล้องให้อยู่ในกรอบ
           </p>
@@ -351,18 +353,16 @@ function Camera({
   }, [deviceId, decoderFactory, onCode]);
 
   return (
-    // A fixed 16:9 box (or the whole column on wide screens) whether the
-    // camera is on or not, so starting it moves nothing.
-    <section className="relative mx-auto w-full max-w-xl overflow-hidden rounded-3xl border bg-muted md:max-w-3xl wide:mx-0 wide:h-full wide:max-w-none">
+    // The box itself is 16:9 (or the whole column on wide screens), and the
+    // video and the placeholder are laid over it, so neither can change its
+    // size: an inline <video> would add a baseline gap the placeholder lacks.
+    <section className="relative mx-auto aspect-video w-full max-w-xl overflow-hidden rounded-3xl border bg-muted md:max-w-3xl wide:mx-0 wide:aspect-auto wide:h-full wide:max-w-none">
       <video
         ref={video}
         muted
         playsInline
         aria-label="ภาพจากกล้อง"
-        className={cn(
-          "aspect-video w-full object-cover wide:aspect-auto wide:h-full",
-          state !== "on" && "hidden",
-        )}
+        className={cn("absolute inset-0 size-full object-cover", state !== "on" && "invisible")}
       />
       {state === "on" && (
         <div
@@ -371,8 +371,8 @@ function Camera({
         />
       )}
       {state !== "on" && (
-        <div className="flex aspect-video flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground wide:aspect-auto wide:h-full 2xl:text-lg">
-          <VideoOff className="size-8 2xl:size-12" aria-hidden />
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 overflow-y-auto p-6 text-center text-muted-foreground wide-xl:text-lg">
+          <VideoOff className="size-8 wide-xl:size-12" aria-hidden />
           <p>
             {state === "starting"
               ? "กำลังเปิดกล้อง"
@@ -454,22 +454,22 @@ function Result({
         if (e.key === "Escape" || e.key === "Enter") onDismiss();
       }}
     >
-      <Icon className="size-24 wide:size-32 2xl:size-40" aria-hidden />
-      <p className="text-3xl font-semibold md:text-5xl 2xl:text-7xl">{title}</p>
+      <Icon className="size-24 wide:size-32 wide-xl:size-40" aria-hidden />
+      <p className="text-3xl font-semibold md:text-5xl wide-xl:text-7xl">{title}</p>
       {person && (
-        <div className="flex flex-col items-center gap-2 2xl:gap-4">
+        <div className="flex flex-col items-center gap-2 wide-xl:gap-4">
           {person.image && (
             <img
               src={person.image}
               alt=""
-              className="size-24 rounded-full border-4 border-white/70 object-cover wide:size-32 2xl:size-44"
+              className="size-24 rounded-full border-4 border-white/70 object-cover wide:size-32 wide-xl:size-44"
             />
           )}
-          <p className="text-2xl md:text-4xl 2xl:text-6xl">
+          <p className="text-2xl md:text-4xl wide-xl:text-6xl">
             {personName(person)}
             {person.nickname && ` (${person.nickname})`}
           </p>
-          <p className="text-lg opacity-90 2xl:text-2xl">
+          <p className="text-lg opacity-90 wide-xl:text-2xl">
             {[institution?.short, person.studentId, ...person.divisions.map((d) => d.name)]
               .filter(Boolean)
               .join(" · ")}
@@ -494,7 +494,7 @@ function Result({
           </Button>
         </div>
       )}
-      <p className="text-sm opacity-80 2xl:text-lg">แตะเพื่อสแกนคนถัดไป</p>
+      <p className="text-sm opacity-80 wide-xl:text-lg">แตะเพื่อสแกนคนถัดไป</p>
     </div>
   );
 }
