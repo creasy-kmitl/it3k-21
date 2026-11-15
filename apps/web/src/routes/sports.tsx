@@ -1,5 +1,5 @@
 import { INSTITUTIONS } from "@it3k/db/profile";
-import { studentIdInput } from "@it3k/db/sport-rules";
+import { FORMAT_LABELS, GENDER_LABELS, studentIdInput } from "@it3k/db/sport-rules";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -11,14 +11,6 @@ import {
 } from "@it3k/ui/components/alert-dialog";
 import { Badge } from "@it3k/ui/components/badge";
 import { Button } from "@it3k/ui/components/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@it3k/ui/components/card";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +30,8 @@ import {
   Medal,
   MessageCircle,
   Pencil,
+  Plus,
+  Search,
   Trash2,
   UserRoundPlus,
 } from "lucide-react";
@@ -45,6 +39,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { SideDrawer } from "@/components/calendar/side-drawer";
 import { PageHeader } from "@/components/page-header";
 import { ParticipantShell } from "@/components/participant-shell";
 import {
@@ -54,7 +49,7 @@ import {
   toDraft,
 } from "@/components/registration-fields";
 import { SportThumbnail } from "@/components/sport-art";
-import { DivisionBadges, StatusBadge } from "@/components/sport-badges";
+import { StatusBadge } from "@/components/sport-badges";
 import { useApis } from "@/lib/api-context";
 import { requireParticipantSession } from "@/lib/participant-auth";
 import type { MyRegistration, MyRegistrations } from "@/lib/registrations";
@@ -98,23 +93,61 @@ function RouteComponent() {
 }
 
 type Dialogs =
-  | { kind: "register"; sport: Sport; division: Division }
+  | { kind: "register"; division: Division }
   | { kind: "edit"; registration: MyRegistration; division: Division }
   | { kind: "withdraw"; registration: MyRegistration };
 
-/** An athlete's registrations and the sports open to register for. */
+/** Esports is the sport whose divisions need a game profile, and with it Discord. */
+const isEsports = (sport: Sport) => sport.divisions.some((d) => d.requiresGameProfile);
+
+/** One line instead of a row of badges: "ชาย · ทีม · เบอร์เสื้อ". */
+export function divisionSummary(division: Division) {
+  return [
+    GENDER_LABELS[division.gender],
+    FORMAT_LABELS[division.format],
+    division.requiresShirtNumber && "เบอร์เสื้อ",
+    division.requiresBadmintonRank && "มือ 1/2",
+    division.requiresGameProfile && "IGN · Discord",
+    division.maxPerInstitution != null && `สูงสุด ${division.maxPerInstitution} คน/สถาบัน`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * The sports matching `query`, by sport name, description or code, or by
+ * division name. A sport that matches keeps all its divisions; otherwise only
+ * the matching divisions stay.
+ */
+export function filterSports(sports: Sport[], query: string): Sport[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return sports;
+  const has = (text: string | null) => !!text && text.toLowerCase().includes(needle);
+  return sports.flatMap((sport) => {
+    if (has(sport.name) || has(sport.description) || has(sport.code)) return [sport];
+    const divisions = sport.divisions.filter((d) => has(d.name) || has(d.code));
+    return divisions.length > 0 ? [{ ...sport, divisions }] : [];
+  });
+}
+
+/**
+ * An athlete's registrations, with the sports to enroll in kept in a drawer
+ * so the page is about what they have already signed up for.
+ */
 export function SportsRegistrationPage() {
   const { registrations: api, sports: sportsApi } = useApis();
   const me = useQuery({ queryKey: ["registrations", "me"], queryFn: () => api.me() });
   const sports = useQuery({ queryKey: ["sports"], queryFn: () => sportsApi.list() });
   const [dialog, setDialog] = useState<Dialogs | null>(null);
+  const [query, setQuery] = useState("");
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
   if (me.isPending || sports.isPending) {
     return (
       <div role="status" className="flex flex-col gap-4">
         <span className="sr-only">กำลังโหลด</span>
-        <Skeleton className="h-24" />
-        <Skeleton className="h-72" />
+        <Skeleton className="h-16" />
+        <Skeleton className="h-40" />
       </div>
     );
   }
@@ -133,98 +166,138 @@ export function SportsRegistrationPage() {
   }
 
   const data = me.data;
+  const sportsById = new Map(sports.data.items.map((sport) => [sport.id, sport] as const));
   const divisions = new Map(
     sports.data.items.flatMap((sport) => sport.divisions.map((d) => [d.id, d] as const)),
   );
-  const registered = new Set(data.registrations.map((r) => r.divisionId));
+  const mine = new Map(data.registrations.map((r) => [r.divisionId, r] as const));
   const institution = INSTITUTIONS.find((item) => item.id === data.institution);
-  const hasEsports = sports.data.items.some((s) => s.divisions.some((d) => d.requiresGameProfile));
+  const visible = filterSports(sports.data.items, query);
+  const openCatalog = () => setCatalogOpen(true);
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        icon={Medal}
-        title="สมัครกีฬา"
-        description={
-          institution ? `สมัครในนาม ${institution.short} · สมัครได้หลายประเภท` : "สมัครได้หลายประเภท"
-        }
-      />
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <PageHeader
+          icon={Medal}
+          title="สมัครกีฬา"
+          description={
+            institution ? `สมัครในนาม ${institution.short} · สมัครได้หลายประเภท` : "สมัครได้หลายประเภท"
+          }
+        />
+        <Button variant={data.profileSubmitted ? "default" : "outline"} onClick={openCatalog}>
+          {data.profileSubmitted ? (
+            <>
+              <Plus data-icon="inline-start" aria-hidden /> สมัครกีฬา
+            </>
+          ) : (
+            <>
+              <Medal data-icon="inline-start" aria-hidden /> ดูประเภทกีฬา
+            </>
+          )}
+        </Button>
+      </div>
 
       {!data.profileSubmitted ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserRoundPlus className="size-5 text-primary" aria-hidden />
-              ลงทะเบียนผู้เข้าร่วมก่อน
-            </CardTitle>
-            <CardDescription>ส่งข้อมูลผู้เข้าร่วมให้ครบ แล้วกลับมาสมัครกีฬาได้ที่หน้านี้</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button render={<Link to="/signup" />} nativeButton={false}>
-              ไปลงทะเบียน
-              <ArrowRight data-icon="inline-end" aria-hidden />
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border bg-card p-4">
+          <UserRoundPlus className="size-5 shrink-0 text-primary" aria-hidden />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="font-medium">ลงทะเบียนผู้เข้าร่วมก่อน</span>
+            <span className="text-sm text-muted-foreground">
+              ส่งข้อมูลผู้เข้าร่วมให้ครบ แล้วกลับมาสมัครกีฬาได้ที่หน้านี้
+            </span>
+          </div>
+          <Button size="sm" render={<Link to="/signup" />} nativeButton={false}>
+            ไปลงทะเบียน
+            <ArrowRight data-icon="inline-end" aria-hidden />
+          </Button>
+        </div>
       ) : (
-        <>
-          <MyRegistrationList
-            registrations={data.registrations}
-            onEdit={(registration) => {
-              const division = divisions.get(registration.divisionId);
-              if (division) setDialog({ kind: "edit", registration, division });
-            }}
-            onWithdraw={(registration) => setDialog({ kind: "withdraw", registration })}
-          />
-          {hasEsports && <DiscordCard discord={data.discord} />}
-        </>
+        <MyRegistrationList
+          registrations={data.registrations}
+          sportsById={sportsById}
+          onBrowse={openCatalog}
+          onEdit={(registration) => {
+            const division = divisions.get(registration.divisionId);
+            if (division) setDialog({ kind: "edit", registration, division });
+          }}
+          onWithdraw={(registration) => setDialog({ kind: "withdraw", registration })}
+        />
       )}
 
-      <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {sports.data.items.map((sport) => (
-          <li key={sport.id} className="flex flex-col overflow-hidden rounded-2xl border bg-card">
-            <SportThumbnail
-              src={sport.thumbnailUrl}
-              icon={sport.icon}
-              seed={sport.id}
-              label={sport.name}
+      <SideDrawer
+        open={catalogOpen}
+        onOpenChange={setCatalogOpen}
+        title="เลือกกีฬาที่จะสมัคร"
+        description={institution ? `สมัครในนาม ${institution.short}` : undefined}
+        width="44rem"
+      >
+        <div className="flex flex-col gap-4">
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
             />
-            <h2 className="p-4 pb-2 font-semibold">{sport.name}</h2>
-            {sport.description && (
-              <p className="px-4 pb-2 text-sm text-muted-foreground">{sport.description}</p>
-            )}
-            <ul className="flex flex-1 flex-col divide-y border-t">
-              {sport.divisions.map((division) => {
-                const already = registered.has(division.id);
-                return (
-                  <li key={division.id} className="flex items-center gap-2 px-4 py-2 text-sm">
-                    <div className="flex min-w-0 flex-1 flex-col gap-1">
-                      <span className="font-medium">{division.name}</span>
-                      <DivisionBadges division={division} />
+            <Input
+              type="search"
+              aria-label="ค้นหากีฬา"
+              placeholder="ค้นหากีฬาหรือประเภท เช่น ฟุตบอล, ROV, หญิง"
+              className="pl-9"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+          {visible.length === 0 ? (
+            <p className="py-8 text-center text-muted-foreground">ไม่พบกีฬาที่ตรงกับ “{query.trim()}”</p>
+          ) : (
+            // Columns rather than a grid, so a sport with many divisions does
+            // not leave a hole next to a short one.
+            <ul className="columns-1 gap-3 sm:columns-2">
+              {visible.map((sport) => (
+                <li
+                  key={sport.id}
+                  className="mb-3 flex break-inside-avoid flex-col overflow-hidden rounded-2xl border bg-card"
+                >
+                  <div className="flex items-center gap-3 p-3">
+                    <SportThumbnail
+                      src={sport.thumbnailUrl}
+                      icon={sport.icon}
+                      seed={sport.id}
+                      label={sport.name}
+                      className="aspect-square size-10 w-10 shrink-0 rounded-xl"
+                    />
+                    <div className="flex min-w-0 flex-col">
+                      <h2 className="truncate font-semibold">{sport.name}</h2>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">
+                        {sport.description || `${sport.divisions.length} ประเภท`}
+                      </p>
                     </div>
-                    {already ? (
-                      <Badge variant="outline">สมัครแล้ว</Badge>
-                    ) : !division.registrationOpen ? (
-                      <Badge variant="outline">
-                        <Lock aria-hidden /> ปิดรับสมัคร
-                      </Badge>
-                    ) : (
-                      <Button
-                        size="sm"
-                        disabled={!data.profileSubmitted}
-                        aria-label={`สมัคร ${division.name}`}
-                        onClick={() => setDialog({ kind: "register", sport, division })}
-                      >
-                        สมัคร
-                      </Button>
-                    )}
-                  </li>
-                );
-              })}
+                  </div>
+                  <ul className="flex flex-col divide-y border-t">
+                    {sport.divisions.map((division) => (
+                      <DivisionRow
+                        key={division.id}
+                        division={division}
+                        registration={mine.get(division.id) ?? null}
+                        canRegister={data.profileSubmitted}
+                        onRegister={() => {
+                          // The form takes over from the drawer; the new entry
+                          // then shows on the page.
+                          setCatalogOpen(false);
+                          setDialog({ kind: "register", division });
+                        }}
+                      />
+                    ))}
+                  </ul>
+                  {isEsports(sport) && data.profileSubmitted && (
+                    <DiscordBar discord={data.discord} />
+                  )}
+                </li>
+              ))}
             </ul>
-          </li>
-        ))}
-      </ul>
+          )}
+        </div>
+      </SideDrawer>
 
       {dialog?.kind === "withdraw" ? (
         <WithdrawDialog registration={dialog.registration} onClose={() => setDialog(null)} />
@@ -242,84 +315,151 @@ export function SportsRegistrationPage() {
   );
 }
 
+function DivisionRow({
+  division,
+  registration,
+  canRegister,
+  onRegister,
+}: {
+  division: Division;
+  registration: MyRegistration | null;
+  canRegister: boolean;
+  onRegister: () => void;
+}) {
+  return (
+    <li className="flex items-center gap-2 px-3 py-2 text-sm">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="font-medium">{division.name}</span>
+        <span className="text-xs text-muted-foreground">{divisionSummary(division)}</span>
+      </div>
+      {registration ? (
+        <StatusBadge status={registration.status} />
+      ) : !division.registrationOpen ? (
+        <Badge variant="outline">
+          <Lock aria-hidden /> ปิดรับ
+        </Badge>
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!canRegister}
+          aria-label={`สมัคร ${division.name}`}
+          onClick={onRegister}
+        >
+          สมัคร
+        </Button>
+      )}
+    </li>
+  );
+}
+
 function MyRegistrationList({
   registrations,
+  sportsById,
+  onBrowse,
   onEdit,
   onWithdraw,
 }: {
   registrations: MyRegistration[];
+  sportsById: Map<string, Sport>;
+  onBrowse: () => void;
   onEdit: (registration: MyRegistration) => void;
   onWithdraw: (registration: MyRegistration) => void;
 }) {
+  if (registrations.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed p-8 text-center">
+        <Medal className="size-8 text-muted-foreground" aria-hidden />
+        <div className="flex flex-col gap-1">
+          <p className="font-medium">ยังไม่ได้สมัครกีฬา</p>
+          <p className="text-sm text-muted-foreground">
+            เลือกได้หลายประเภท ฝ่ายทะเบียนจะตรวจสอบและแจ้งผลที่นี่
+          </p>
+        </div>
+        <Button onClick={onBrowse}>
+          เลือกกีฬาที่จะสมัคร
+          <ArrowRight data-icon="inline-end" aria-hidden />
+        </Button>
+      </div>
+    );
+  }
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>การสมัครของฉัน</CardTitle>
-        <CardDescription>
-          {registrations.length === 0
-            ? "ยังไม่ได้สมัครกีฬา เลือกประเภทที่ต้องการด้านล่าง"
-            : "แก้ไขหรือถอนได้ระหว่างรอตรวจสอบ หลังจากนั้นติดต่อฝ่ายทะเบียน"}
-        </CardDescription>
-      </CardHeader>
-      {registrations.length > 0 && (
-        <CardContent>
-          <ul className="flex flex-col divide-y">
-            {registrations.map((registration) => (
-              <li key={registration.id} className="flex flex-wrap items-center gap-3 py-3">
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <span className="font-medium">
-                    {registration.sport.name} · {registration.division.name}
-                  </span>
-                  <span className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                    <StatusBadge status={registration.status} />
-                    {registration.shirtNumber !== null && (
-                      <span>เบอร์ {registration.shirtNumber}</span>
-                    )}
-                    {registration.badmintonRank !== null && (
-                      <span>มือ {registration.badmintonRank}</span>
-                    )}
-                    {registration.ign && <span>IGN {registration.ign}</span>}
-                  </span>
-                  {registration.reviewNote && (
-                    <p className="text-sm text-destructive">เหตุผล: {registration.reviewNote}</p>
-                  )}
-                </div>
-                {registration.status === "review" && (
-                  <div className="flex">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`แก้ไข ${registration.division.name}`}
-                      onClick={() => onEdit(registration)}
-                    >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`ถอน ${registration.division.name}`}
-                      onClick={() => onWithdraw(registration)}
-                    >
-                      <Trash2 className="text-destructive" />
-                    </Button>
-                  </div>
+    <section aria-labelledby="my-registrations" className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+        <h2 id="my-registrations" className="font-semibold">
+          การสมัครของฉัน ({registrations.length})
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          แก้ไขหรือถอนได้ระหว่างรอตรวจสอบ หลังจากนั้นติดต่อฝ่ายทะเบียน
+        </p>
+      </div>
+      <ul className="flex flex-col divide-y rounded-2xl border bg-card">
+        {registrations.map((registration) => (
+          <li key={registration.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <SportThumbnail
+              src={sportsById.get(registration.sport.id)?.thumbnailUrl ?? null}
+              icon={registration.sport.icon}
+              seed={registration.sport.id}
+              label={registration.sport.name}
+              className="aspect-square size-10 w-10 shrink-0 rounded-xl"
+            />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="flex flex-wrap items-center gap-2 font-medium">
+                {registration.division.name}
+                <StatusBadge status={registration.status} />
+              </span>
+              <span className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+                <span>{registration.sport.name}</span>
+                {registration.shirtNumber !== null && <span>เบอร์ {registration.shirtNumber}</span>}
+                {registration.badmintonRank !== null && (
+                  <span>มือ {registration.badmintonRank}</span>
                 )}
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      )}
-    </Card>
+                {registration.ign && <span>IGN {registration.ign}</span>}
+              </span>
+              {registration.reviewNote && (
+                <p className="text-xs text-destructive">เหตุผล: {registration.reviewNote}</p>
+              )}
+            </div>
+            {registration.status === "review" && (
+              <div className="flex">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`แก้ไข ${registration.division.name}`}
+                  onClick={() => onEdit(registration)}
+                >
+                  <Pencil />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`ถอน ${registration.division.name}`}
+                  onClick={() => onWithdraw(registration)}
+                >
+                  <Trash2 className="text-destructive" />
+                </Button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
-function DiscordCard({ discord }: { discord: MyRegistrations["discord"] }) {
+function useLinkDiscord() {
   const { registrations: api } = useApis();
-  const queryClient = useQueryClient();
-  const link = useMutation({
+  return useMutation({
     mutationFn: () => api.linkDiscord(`${window.location.origin}/sports`),
     onError: (error) => toast.error(error.message),
   });
+}
+
+/** Discord status at the foot of the esports card, the only sport that needs it. */
+function DiscordBar({ discord }: { discord: MyRegistrations["discord"] }) {
+  const { registrations: api } = useApis();
+  const queryClient = useQueryClient();
+  const link = useLinkDiscord();
   const unlink = useMutation({
     mutationFn: (accountId: string) => api.unlinkDiscord(accountId),
     onSuccess: () => toast.success("ยกเลิกการเชื่อม Discord แล้ว"),
@@ -329,44 +469,32 @@ function DiscordCard({ discord }: { discord: MyRegistrations["discord"] }) {
   const linked = discord.linked;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <MessageCircle className="size-5 text-primary" aria-hidden />
-          Discord
-        </CardTitle>
-        <CardDescription>
-          {!discord.enabled
-            ? "ยังไม่เปิดให้เชื่อม Discord"
-            : linked
-              ? `เชื่อมแล้ว${linked.username ? `: ${linked.username}` : ""}`
-              : "ต้องเชื่อม Discord ก่อนสมัครกีฬา Esports (เชื่อมได้ 1 บัญชี)"}
-        </CardDescription>
-        {discord.enabled && (
-          <CardAction className="flex gap-2">
-            {linked ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={unlink.isPending}
-                onClick={() => unlink.mutate(linked.accountId)}
-              >
-                ยกเลิกการเชื่อม
-              </Button>
-            ) : (
-              <Button size="sm" disabled={link.isPending} onClick={() => link.mutate()}>
-                เชื่อม Discord
-              </Button>
-            )}
-          </CardAction>
-        )}
-      </CardHeader>
-      {linked && discord.enabled && (
-        <CardContent className="text-sm text-muted-foreground">
-          จะเปลี่ยนบัญชี ให้ยกเลิกการเชื่อมแล้วเชื่อมบัญชีใหม่ การสมัครที่ส่งไปแล้วจะอัปเดตเมื่อแก้ไขครั้งถัดไป
-        </CardContent>
-      )}
-    </Card>
+    <div className="flex items-center gap-2 border-t bg-muted/50 px-3 py-2 text-sm">
+      <MessageCircle className="size-4 shrink-0 text-primary" aria-hidden />
+      <span className="min-w-0 flex-1 text-muted-foreground">
+        {!discord.enabled
+          ? "ยังไม่เปิดให้เชื่อม Discord"
+          : linked
+            ? `เชื่อมแล้ว${linked.username ? `: ${linked.username}` : ""}`
+            : "ต้องเชื่อม Discord ก่อนสมัคร"}
+      </span>
+      {discord.enabled &&
+        (linked ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            title="จะเปลี่ยนบัญชี ให้ยกเลิกแล้วเชื่อมใหม่"
+            disabled={unlink.isPending}
+            onClick={() => unlink.mutate(linked.accountId)}
+          >
+            ยกเลิกการเชื่อม
+          </Button>
+        ) : (
+          <Button size="sm" disabled={link.isPending} onClick={() => link.mutate()}>
+            เชื่อม Discord
+          </Button>
+        ))}
+    </div>
   );
 }
 
@@ -389,6 +517,7 @@ function RegistrationDialog({
   const [studentId, setStudentId] = useState("");
   const [issues, setIssues] = useState<FieldIssues & { studentId?: string }>({});
   const needsDiscord = division.requiresGameProfile && !discord.linked;
+  const link = useLinkDiscord();
 
   const save = useMutation({
     mutationFn: async () => {
@@ -437,12 +566,28 @@ function RegistrationDialog({
             <DialogTitle>
               {registration ? `แก้ไข ${division.name}` : `สมัคร ${division.name}`}
             </DialogTitle>
-            <DialogDescription>
-              {needsDiscord
-                ? "เชื่อม Discord ในหน้านี้ก่อน แล้วกลับมาสมัคร"
-                : "ฝ่ายทะเบียนจะตรวจสอบและแจ้งผลในหน้านี้"}
-            </DialogDescription>
+            <DialogDescription>ฝ่ายทะเบียนจะตรวจสอบและแจ้งผลในหน้านี้</DialogDescription>
           </DialogHeader>
+          {needsDiscord && (
+            <div className="flex items-center gap-2 rounded-xl border bg-muted/50 px-3 py-2 text-sm">
+              <MessageCircle className="size-4 shrink-0 text-primary" aria-hidden />
+              <span className="min-w-0 flex-1">
+                {discord.enabled
+                  ? "ต้องเชื่อม Discord ก่อนสมัคร แล้วกลับมาที่หน้านี้"
+                  : "ยังไม่เปิดให้เชื่อม Discord จึงยังสมัครประเภทนี้ไม่ได้"}
+              </span>
+              {discord.enabled && (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={link.isPending}
+                  onClick={() => link.mutate()}
+                >
+                  เชื่อม Discord
+                </Button>
+              )}
+            </div>
+          )}
           <FieldGroup>
             {askStudentId && !registration && (
               <Field data-invalid={!!issues.studentId}>
