@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { SideDrawer } from "@/components/calendar/side-drawer";
+import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
 import { ParticipantShell } from "@/components/participant-shell";
 import {
@@ -52,6 +53,7 @@ import {
   toDraft,
 } from "@/components/registration-fields";
 import { SportThumbnail } from "@/components/sport-art";
+import { RegistrationRow, RegistrationRows } from "@/components/sport-registration-row";
 import { DivisionTags, StatusBadge } from "@/components/sport-badges";
 import { useApis } from "@/lib/api-context";
 import { requireParticipantSession } from "@/lib/participant-auth";
@@ -155,7 +157,6 @@ export function SportsRegistrationPage() {
   }
 
   const data = me.data;
-  const sportsById = new Map(sports.data.items.map((sport) => [sport.id, sport] as const));
   const divisions = new Map(
     sports.data.items.flatMap((sport) => sport.divisions.map((d) => [d.id, d] as const)),
   );
@@ -204,7 +205,6 @@ export function SportsRegistrationPage() {
       ) : (
         <MyRegistrationList
           registrations={data.registrations}
-          sportsById={sportsById}
           onBrowse={openCatalog}
           onEdit={(registration) => {
             const division = divisions.get(registration.divisionId);
@@ -361,13 +361,11 @@ function DivisionRow({
 
 function MyRegistrationList({
   registrations,
-  sportsById,
   onBrowse,
   onEdit,
   onWithdraw,
 }: {
   registrations: MyRegistration[];
-  sportsById: Map<string, Sport>;
   onBrowse: () => void;
   onEdit: (registration: MyRegistration) => void;
   onWithdraw: (registration: MyRegistration) => void;
@@ -399,56 +397,36 @@ function MyRegistrationList({
           แก้ไขหรือถอนได้ระหว่างรอตรวจสอบ หลังจากนั้นติดต่อฝ่ายทะเบียน
         </p>
       </div>
-      <ul className="flex flex-col divide-y rounded-2xl border bg-card">
+      <RegistrationRows>
         {registrations.map((registration) => (
-          <li key={registration.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-            <SportThumbnail
-              src={sportsById.get(registration.sport.id)?.thumbnailUrl ?? null}
-              icon={registration.sport.icon}
-              seed={registration.sport.id}
-              label={registration.sport.name}
-              className="aspect-square size-10 w-10 shrink-0 rounded-xl"
-            />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="flex flex-wrap items-center gap-2 font-medium">
-                {registration.division.name}
-                <StatusBadge status={registration.status} />
-              </span>
-              <span className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
-                <span>{registration.sport.name}</span>
-                {registration.shirtNumber !== null && <span>เบอร์ {registration.shirtNumber}</span>}
-                {registration.badmintonRank !== null && (
-                  <span>มือ {registration.badmintonRank}</span>
-                )}
-                {registration.ign && <span>IGN {registration.ign}</span>}
-              </span>
-              {registration.reviewNote && (
-                <p className="text-xs text-destructive">เหตุผล: {registration.reviewNote}</p>
-              )}
-            </div>
-            {registration.status === "review" && (
-              <div className="flex">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`แก้ไข ${registration.division.name}`}
-                  onClick={() => onEdit(registration)}
-                >
-                  <Pencil />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`ถอน ${registration.division.name}`}
-                  onClick={() => onWithdraw(registration)}
-                >
-                  <Trash2 className="text-destructive" />
-                </Button>
-              </div>
-            )}
-          </li>
+          <RegistrationRow
+            key={registration.id}
+            registration={registration}
+            actions={
+              registration.status === "review" && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`แก้ไข ${registration.division.name}`}
+                    onClick={() => onEdit(registration)}
+                  >
+                    <Pencil />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`ถอน ${registration.division.name}`}
+                    onClick={() => onWithdraw(registration)}
+                  >
+                    <Trash2 className="text-destructive" />
+                  </Button>
+                </>
+              )
+            }
+          />
         ))}
-      </ul>
+      </RegistrationRows>
     </section>
   );
 }
@@ -486,19 +464,19 @@ function DiscordBar({ discord }: { discord: MyRegistrations["discord"] }) {
       </span>
       {discord.enabled &&
         (linked ? (
-          <Button
+          <LoadingButton
             variant="ghost"
             size="sm"
             title="จะเปลี่ยนบัญชี ให้ยกเลิกแล้วเชื่อมใหม่"
-            disabled={unlink.isPending}
+            loading={unlink.isPending}
             onClick={() => unlink.mutate(linked.accountId)}
           >
             ยกเลิกการเชื่อม
-          </Button>
+          </LoadingButton>
         ) : (
-          <Button size="sm" disabled={link.isPending} onClick={() => link.mutate()}>
+          <LoadingButton size="sm" loading={link.isPending} onClick={() => link.mutate()}>
             เชื่อม Discord
-          </Button>
+          </LoadingButton>
         ))}
     </div>
   );
@@ -583,14 +561,14 @@ function RegistrationDialog({
                   : "ยังไม่เปิดให้เชื่อม Discord จึงยังสมัครประเภทนี้ไม่ได้"}
               </span>
               {discord.enabled && (
-                <Button
+                <LoadingButton
                   type="button"
                   size="sm"
-                  disabled={link.isPending}
+                  loading={link.isPending}
                   onClick={() => link.mutate()}
                 >
                   เชื่อม Discord
-                </Button>
+                </LoadingButton>
               )}
             </div>
           )}
@@ -622,9 +600,9 @@ function RegistrationDialog({
             <Button type="button" variant="ghost" onClick={onClose}>
               ยกเลิก
             </Button>
-            <Button type="submit" disabled={save.isPending || needsDiscord}>
+            <LoadingButton type="submit" loading={save.isPending} disabled={needsDiscord}>
               {registration ? "บันทึก" : "สมัคร"}
-            </Button>
+            </LoadingButton>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -659,13 +637,13 @@ function WithdrawDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-          <Button
+          <LoadingButton
             variant="destructive"
-            disabled={withdraw.isPending}
+            loading={withdraw.isPending}
             onClick={() => withdraw.mutate()}
           >
             ถอน
-          </Button>
+          </LoadingButton>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

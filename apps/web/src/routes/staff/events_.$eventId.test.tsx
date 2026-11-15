@@ -154,6 +154,27 @@ describe("/staff/events/$eventId", () => {
     fireEvent.click(await view.findByRole("button", { name: "ยกเลิกการเช็คอิน Malee K" }));
     await waitFor(() => expect(undone).toEqual([["e-1", "u-2"]]));
   });
+
+  test("only the row being undone spins", async () => {
+    let finish = () => {};
+    const view = await setup(
+      { canUndo: true },
+      {
+        undoCheckIn: (_id, userId) =>
+          new Promise((resolve) => {
+            finish = () => resolve({ userId });
+          }),
+      },
+    );
+    const malee = await view.findByRole("button", { name: "ยกเลิกการเช็คอิน Malee K" });
+    fireEvent.click(malee);
+    await waitFor(() => expect(malee.getAttribute("aria-busy")).toBe("true"));
+    const guest = view.getByRole("button", { name: "ยกเลิกการเช็คอิน Guest X" });
+    expect(guest.hasAttribute("disabled")).toBe(true);
+    expect(guest.getAttribute("aria-busy")).toBeNull();
+    finish();
+    await waitFor(() => expect(malee.getAttribute("aria-busy")).toBeNull());
+  });
 });
 
 describe("participantsCsv", () => {

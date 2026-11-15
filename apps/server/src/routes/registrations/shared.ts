@@ -52,7 +52,13 @@ export function selectRegistrations(db: Database) {
         requiresBadmintonRank: sportDivision.requiresBadmintonRank,
         requiresGameProfile: sportDivision.requiresGameProfile,
       },
-      sport: { id: sport.id, code: sport.code, name: sport.name, icon: sport.icon },
+      sport: {
+        id: sport.id,
+        code: sport.code,
+        name: sport.name,
+        icon: sport.icon,
+        thumbnailUrl: sport.thumbnailUrl,
+      },
       athlete: { name: user.name, image: user.image, studentId: athlete.studentId },
       profile: userProfile.values,
     })

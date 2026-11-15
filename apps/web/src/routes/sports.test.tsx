@@ -95,7 +95,13 @@ function registration(overrides: Partial<MyRegistration> = {}): MyRegistration {
       requiresBadmintonRank: false,
       requiresGameProfile: false,
     },
-    sport: { id: "s-football", code: "football", name: "กีฬาฟุตบอล", icon: "football" },
+    sport: {
+      id: "s-football",
+      code: "football",
+      name: "กีฬาฟุตบอล",
+      icon: "football",
+      thumbnailUrl: null,
+    },
     ...overrides,
   };
 }

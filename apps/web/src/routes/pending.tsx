@@ -1,10 +1,12 @@
-import { Button, buttonVariants } from "@it3k/ui/components/button";
+import { buttonVariants } from "@it3k/ui/components/button";
 import { cn } from "@it3k/ui/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, LogOut } from "lucide-react";
+import { useState } from "react";
 
 import { DictionaryEntry, Furigana } from "@/components/dictionary-entry";
+import { LoadingButton } from "@/components/loading-button";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/pending")({
@@ -18,6 +20,7 @@ export const Route = createFileRoute("/pending")({
 function PendingPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [signingOut, setSigningOut] = useState(false);
 
   return (
     <DictionaryEntry
@@ -41,21 +44,25 @@ function PendingPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Link to="/signup" className={buttonVariants()}>ลงทะเบียนผู้เข้าร่วม</Link>
           <Link to="/me" className={buttonVariants({ variant: "outline" })}>โปรไฟล์ของฉัน</Link>
-          <Button
+          <LoadingButton
+            icon={LogOut}
+            loading={signingOut}
             onClick={() => {
-              void authClient.signOut({
-                fetchOptions: {
-                  onSuccess: () => {
-                    queryClient.clear();
-                    void navigate({ to: "/" });
+              setSigningOut(true);
+              void authClient
+                .signOut({
+                  fetchOptions: {
+                    onSuccess: () => {
+                      queryClient.clear();
+                      void navigate({ to: "/" });
+                    },
                   },
-                },
-              });
+                })
+                .finally(() => setSigningOut(false));
             }}
           >
-            <LogOut />
             ออกจากระบบ
-          </Button>
+          </LoadingButton>
           <Link to="/" className={cn(buttonVariants({ variant: "ghost" }), "cursor-pointer")}>
             <ArrowLeft size={"1.2em"} />
             กลับหน้าแรก

@@ -37,7 +37,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { ParticipantShell } from "@/components/participant-shell";
 import { RoleBadge } from "@/components/role-badge";
-import { StatusBadge } from "@/components/sport-badges";
+import { RegistrationRow, RegistrationRows } from "@/components/sport-registration-row";
 import { UserBarcode } from "@/components/user-barcode";
 import { useApis } from "@/lib/api-context";
 import { publicFileUrl } from "@/lib/files";
@@ -265,21 +265,11 @@ function AthleteCard() {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {items.length > 0 && (
-          <ul className="flex flex-col divide-y">
+          <RegistrationRows>
             {items.map((item) => (
-              <li key={item.id} className="flex flex-col gap-1 py-2">
-                <span className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-medium">
-                    {item.sport.name} · {item.division.name}
-                  </span>
-                  <StatusBadge status={item.status} />
-                </span>
-                {item.status === "rejected" && item.reviewNote && (
-                  <span className="text-sm text-destructive">เหตุผล: {item.reviewNote}</span>
-                )}
-              </li>
+              <RegistrationRow key={item.id} registration={item} />
             ))}
-          </ul>
+          </RegistrationRows>
         )}
         <Button className="self-start" render={<Link to="/sports" />} nativeButton={false}>
           <Trophy data-icon="inline-start" aria-hidden />

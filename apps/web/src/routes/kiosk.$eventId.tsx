@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { LoadingButton } from "@/components/loading-button";
 import { SessionBoundary } from "@/components/session-boundary";
 import { useApis } from "@/lib/api-context";
 import { authClient } from "@/lib/auth-client";
@@ -209,9 +210,9 @@ export function KioskPage({
           onChange={(e) => setTyped(e.target.value)}
           onBlur={keepFocus}
         />
-        <Button type="submit" disabled={pending || !typed.trim()}>
+        <LoadingButton type="submit" loading={pending} disabled={!typed.trim()}>
           เช็คอิน
-        </Button>
+        </LoadingButton>
       </form>
 
       {(outcome || failure) && (
@@ -418,17 +419,17 @@ function Result({
       )}
       {outcome?.code === "not-listed" && outcome.canForce && (
         <div className="flex gap-2">
-          <Button
+          <LoadingButton
             variant="secondary"
             size="lg"
-            disabled={forcing}
+            loading={forcing}
             onClick={(e) => {
               e.stopPropagation();
               onForce(outcome.person.userId);
             }}
           >
             เช็คอินนอกรายชื่อ
-          </Button>
+          </LoadingButton>
           <Button variant="outline" size="lg" className="bg-transparent text-inherit">
             ไม่เช็คอิน
           </Button>

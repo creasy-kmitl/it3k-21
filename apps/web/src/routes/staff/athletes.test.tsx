@@ -40,7 +40,13 @@ function item(overrides: Partial<AthleteItem> = {}): AthleteItem {
       requiresBadmintonRank: false,
       requiresGameProfile: false,
     },
-    sport: { id: "s-football", code: "football", name: "กีฬาฟุตบอล", icon: "football" },
+    sport: {
+      id: "s-football",
+      code: "football",
+      name: "กีฬาฟุตบอล",
+      icon: "football",
+      thumbnailUrl: null,
+    },
     athlete: {
       userId: "u-1",
       name: "Somchai G",
@@ -95,6 +101,30 @@ describe("/staff/athletes", () => {
     await waitFor(() =>
       expect(reviewed).toEqual([["r-1", { status: "approved", note: "", version: 3 }]]),
     );
+  });
+
+  test("only the clicked row spins while its review runs", async () => {
+    let finish = () => {};
+    const other = item({
+      id: "r-2",
+      userId: "u-2",
+      athlete: { ...item().athlete, userId: "u-2", name: "Somsri K" },
+    });
+    const view = setup(listPage({ items: [item(), other] }), {
+      review: () =>
+        new Promise((resolve) => {
+          finish = () => resolve(item({ status: "approved" }));
+        }),
+    });
+    const mine = await view.findByRole("button", { name: "อนุมัติ Somchai G ฟุตบอลชาย" });
+    fireEvent.click(mine);
+    await waitFor(() => expect(mine.getAttribute("aria-busy")).toBe("true"));
+    // The other row waits too, but without a spinner.
+    const theirs = view.getByRole("button", { name: "อนุมัติ Somsri K ฟุตบอลชาย" });
+    expect(theirs.hasAttribute("disabled")).toBe(true);
+    expect(theirs.getAttribute("aria-busy")).toBeNull();
+    finish();
+    await waitFor(() => expect(mine.getAttribute("aria-busy")).toBeNull());
   });
 
   test("rejecting asks for a reason", async () => {

@@ -19,6 +19,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
 import { SegmentedControl } from "@/components/segmented-control";
 import { useApis } from "@/lib/api-context";
@@ -256,28 +257,30 @@ export function EventParticipantsPage({ eventId }: { eventId: string }) {
                         {item.checkin.method === "manual" ? " · มือ" : ""}
                       </Badge>
                       {participants.data.canUndo && (
-                        <Button
+                        <LoadingButton
                           variant="ghost"
                           size="icon-sm"
                           aria-label={`ยกเลิกการเช็คอิน ${item.name}`}
+                          icon={Undo2}
+                          loading={undo.isPending && undo.variables === item.userId}
                           disabled={undo.isPending}
                           onClick={() => undo.mutate(item.userId)}
-                        >
-                          <Undo2 />
-                        </Button>
+                        />
                       )}
                     </span>
                   ) : (
                     participants.data.canCheckIn && (
-                      <Button
+                      <LoadingButton
                         variant="outline"
                         size="sm"
                         aria-label={`เช็คอิน ${item.name}`}
+                        icon={LogIn}
+                        loading={checkIn.isPending && checkIn.variables === item.userId}
                         disabled={checkIn.isPending}
                         onClick={() => checkIn.mutate(item.userId)}
                       >
-                        <LogIn data-icon="inline-start" aria-hidden /> เช็คอิน
-                      </Button>
+                        เช็คอิน
+                      </LoadingButton>
                     )
                   )}
                 </li>
