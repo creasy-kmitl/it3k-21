@@ -23,23 +23,44 @@ import {
 import {
   Field,
   FieldDescription,
+  FieldError,
   FieldLabel,
-  FieldLegend,
   FieldSet,
 } from "@it3k/ui/components/field";
 import { Skeleton } from "@it3k/ui/components/skeleton";
-import { Textarea } from "@it3k/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { CalendarCheck, Clock, MapPin, Pencil, Plus, Trash2, Users } from "lucide-react";
+import {
+  CalendarCheck,
+  CalendarCheck2,
+  CalendarClock,
+  CalendarDays,
+  Clock,
+  ImageIcon,
+  type LucideIcon,
+  MapPin,
+  Medal,
+  Pencil,
+  Plus,
+  School,
+  Shapes,
+  TextAlignStart,
+  Trash2,
+  Type,
+  Users,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { DateTimePicker } from "@/components/calendar/date-time-picker";
+import { IconLabel } from "@/components/calendar/icon-label";
 import {
   ChoiceField,
   ConfirmDelete,
   FormDialog,
+  FormLabel,
+  FormLegend,
+  TextAreaField,
   TextField,
   issuesOf,
 } from "@/components/form-dialog";
@@ -256,6 +277,11 @@ export function EventsPage() {
   );
 }
 
+const TYPE_ICONS: Record<EventType, LucideIcon> = {
+  sport: Medal,
+  general: CalendarDays,
+};
+
 function nextHour() {
   return Math.ceil(Date.now() / HOUR_MS) * HOUR_MS;
 }
@@ -297,6 +323,7 @@ export function EventForm({
   return (
     <FormDialog
       title={initial ? `แก้ไข ${initial.name}` : "เพิ่มกิจกรรม"}
+      icon={initial ? CalendarCheck : Plus}
       pending={pending}
       onClose={onClose}
       onSubmit={() => {
@@ -330,44 +357,57 @@ export function EventForm({
       <ChoiceField
         id="event-type"
         label="ประเภทกิจกรรม"
+        icon={Shapes}
         value={type}
-        options={EVENT_TYPES.map((value) => ({ value, label: EVENT_TYPE_LABELS[value] }))}
+        options={EVENT_TYPES.map((value) => ({
+          value,
+          label: EVENT_TYPE_LABELS[value],
+          icon: TYPE_ICONS[value],
+        }))}
         onChange={setType}
       />
       <TextField
         id="event-name"
         label="ชื่อกิจกรรม"
+        icon={Type}
         value={name}
         onChange={setName}
         error={issues.name}
       />
-      <Field data-invalid={!!issues.description}>
-        <FieldLabel htmlFor="event-description">รายละเอียด</FieldLabel>
-        <Textarea
-          id="event-description"
-          value={description}
-          aria-invalid={!!issues.description}
-          onChange={(event) => setDescription(event.target.value)}
-        />
-        {issues.description && <FieldDescription>{issues.description}</FieldDescription>}
-      </Field>
+      <TextAreaField
+        id="event-description"
+        label="รายละเอียด"
+        icon={TextAlignStart}
+        value={description}
+        onChange={setDescription}
+        error={issues.description}
+      />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field>
+          <FormLabel htmlFor="event-start" icon={CalendarClock}>
+            เริ่ม
+          </FormLabel>
+          <DateTimePicker id="event-start" label="เริ่ม" value={startAt} onChange={setStartAt} />
+          <FieldDescription>เวลาไทย (UTC+07:00)</FieldDescription>
+        </Field>
+        <Field data-invalid={!!issues.endAt}>
+          <FormLabel htmlFor="event-end" icon={CalendarCheck2}>
+            สิ้นสุด
+          </FormLabel>
+          <DateTimePicker
+            id="event-end"
+            label="สิ้นสุด"
+            value={endAt}
+            onChange={setEndAt}
+            invalid={!!issues.endAt}
+          />
+          <FieldError>{issues.endAt}</FieldError>
+        </Field>
+      </div>
       <Field>
-        <FieldLabel htmlFor="event-start">เริ่ม</FieldLabel>
-        <DateTimePicker id="event-start" label="เริ่ม" value={startAt} onChange={setStartAt} />
-      </Field>
-      <Field data-invalid={!!issues.endAt}>
-        <FieldLabel htmlFor="event-end">สิ้นสุด</FieldLabel>
-        <DateTimePicker
-          id="event-end"
-          label="สิ้นสุด"
-          value={endAt}
-          onChange={setEndAt}
-          invalid={!!issues.endAt}
-        />
-        {issues.endAt && <FieldDescription>{issues.endAt}</FieldDescription>}
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="event-venue">สถานที่</FieldLabel>
+        <FormLabel htmlFor="event-venue" icon={MapPin}>
+          สถานที่
+        </FormLabel>
         <Combobox<Venue>
           items={venueItems}
           value={selectedVenue}
@@ -389,7 +429,7 @@ export function EventForm({
                 <ComboboxCollection>
                   {(venue: Venue) => (
                     <ComboboxItem key={venue.id} value={venue}>
-                      {venue.name}
+                      <IconLabel icon={MapPin}>{venue.name}</IconLabel>
                     </ComboboxItem>
                   )}
                 </ComboboxCollection>
@@ -401,6 +441,7 @@ export function EventForm({
       <TextField
         id="event-thumbnail"
         label="ลิงก์รูปปก"
+        icon={ImageIcon}
         inputMode="url"
         placeholder="https://..."
         value={thumbnailUrl}
@@ -411,7 +452,7 @@ export function EventForm({
       {type === "sport" && (
         <>
           <FieldSet data-invalid={!!issues.institutions}>
-            <FieldLegend variant="label">สถาบันที่เข้าร่วม</FieldLegend>
+            <FormLegend icon={School}>สถาบันที่เข้าร่วม</FormLegend>
             <div className="grid gap-2 sm:grid-cols-2">
               {INSTITUTIONS.map((institution) => (
                 <Field key={institution.id} orientation="horizontal">
@@ -432,7 +473,7 @@ export function EventForm({
                 </Field>
               ))}
             </div>
-            {issues.institutions && <FieldDescription>{issues.institutions}</FieldDescription>}
+            <FieldError>{issues.institutions}</FieldError>
           </FieldSet>
           <DivisionPicker
             sports={sports.data?.items ?? []}
@@ -464,7 +505,7 @@ function DivisionPicker({
   const picked = new Set(value);
   return (
     <FieldSet data-invalid={!!error}>
-      <FieldLegend variant="label">ประเภทกีฬา</FieldLegend>
+      <FormLegend icon={Medal}>ประเภทกีฬา</FormLegend>
       {loading && <Skeleton className="h-24" />}
       <div className="flex flex-col gap-3">
         {sports
@@ -515,7 +556,7 @@ function DivisionPicker({
             );
           })}
       </div>
-      {error && <FieldDescription>{error}</FieldDescription>}
+      <FieldError>{error}</FieldError>
     </FieldSet>
   );
 }

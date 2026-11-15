@@ -1,6 +1,8 @@
 import {
   DIVISION_FORMATS,
   DIVISION_GENDERS,
+  type DivisionFormat,
+  type DivisionGender,
   type DivisionInput,
   FORMAT_LABELS,
   GENDER_LABELS,
@@ -12,12 +14,36 @@ import {
 } from "@it3k/db/sport-rules";
 import { Button } from "@it3k/ui/components/button";
 import { Checkbox } from "@it3k/ui/components/checkbox";
-import { Field, FieldDescription, FieldLabel } from "@it3k/ui/components/field";
+import { Field } from "@it3k/ui/components/field";
 import { Skeleton } from "@it3k/ui/components/skeleton";
-import { Textarea } from "@it3k/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Lock, Medal, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowDownUp,
+  DoorOpen,
+  Gamepad2,
+  Hash,
+  ImageIcon,
+  Layers,
+  Lock,
+  type LucideIcon,
+  Mars,
+  Medal,
+  Palette,
+  Pencil,
+  Plus,
+  Shirt,
+  TextAlignStart,
+  Trash2,
+  Trophy,
+  Type,
+  User,
+  UserCheck,
+  Users,
+  UsersRound,
+  Venus,
+  VenusAndMars,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -25,6 +51,8 @@ import {
   ChoiceField,
   ConfirmDelete,
   FormDialog,
+  FormLabel,
+  TextAreaField,
   TextField,
   issuesOf,
 } from "@/components/form-dialog";
@@ -52,6 +80,31 @@ export const ICON_LABELS: Record<SportIcon, string> = {
   esports: "Esports",
   general: "ทั่วไป",
 };
+
+const GENDER_ICONS: Record<DivisionGender, LucideIcon> = {
+  male: Mars,
+  female: Venus,
+  mixed: VenusAndMars,
+  open: Users,
+};
+
+const FORMAT_ICONS: Record<DivisionFormat, LucideIcon> = {
+  individual: User,
+  pair: UsersRound,
+  team: Users,
+};
+
+/** The illustration as a small swatch, so the list shows what each one looks like. */
+function IconChoice({ icon }: { icon: SportIcon }) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <span aria-hidden className="shrink-0">
+        <SportArt icon={icon} seed={icon} label="" className="h-5 w-9 rounded" />
+      </span>
+      <span className="truncate">{ICON_LABELS[icon]}</span>
+    </span>
+  );
+}
 
 type Editing =
   | { kind: "sport"; sport: Sport | null }
@@ -296,6 +349,7 @@ function SportForm({
   return (
     <FormDialog
       title={initial ? `แก้ไข ${initial.name}` : "เพิ่มกีฬา"}
+      icon={initial ? Medal : Plus}
       pending={pending}
       onClose={onClose}
       onSubmit={() => {
@@ -313,35 +367,48 @@ function SportForm({
       }}
     >
       <SportArt icon={icon} seed={initial?.id ?? code} label="ภาพตัวอย่าง" className="rounded-xl" />
-      <TextField id="sport-name" label="ชื่อ" value={name} onChange={setName} error={issues.name} />
+      <TextField
+        id="sport-name"
+        label="ชื่อ"
+        icon={Type}
+        value={name}
+        onChange={setName}
+        error={issues.name}
+      />
       <TextField
         id="sport-code"
         label="รหัส"
+        icon={Hash}
         value={code}
         onChange={(value) => setCode(value.toLowerCase())}
         error={issues.code}
         hint="ตัวพิมพ์เล็ก a-z, 0-9 และ - เช่น football"
         className="font-mono"
       />
-      <Field data-invalid={!!issues.description}>
-        <FieldLabel htmlFor="sport-description">คำอธิบาย</FieldLabel>
-        <Textarea
-          id="sport-description"
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-        />
-        {issues.description && <FieldDescription>{issues.description}</FieldDescription>}
-      </Field>
+      <TextAreaField
+        id="sport-description"
+        label="คำอธิบาย"
+        icon={TextAlignStart}
+        value={description}
+        onChange={setDescription}
+        error={issues.description}
+      />
       <ChoiceField
         id="sport-icon"
         label="ภาพประกอบ"
+        icon={Palette}
         value={icon}
-        options={SPORT_ICONS.map((value) => ({ value, label: ICON_LABELS[value] }))}
+        options={SPORT_ICONS.map((value) => ({
+          value,
+          label: ICON_LABELS[value],
+          content: <IconChoice icon={value} />,
+        }))}
         onChange={setIcon}
       />
       <TextField
         id="sport-thumbnail"
         label="ลิงก์รูปหน้าปก"
+        icon={ImageIcon}
         value={thumbnailUrl}
         onChange={setThumbnailUrl}
         error={issues.thumbnailUrl}
@@ -351,6 +418,7 @@ function SportForm({
       <TextField
         id="sport-order"
         label="ลำดับการแสดง"
+        icon={ArrowDownUp}
         type="number"
         min={0}
         value={sortOrder}
@@ -393,15 +461,16 @@ function DivisionForm({
     setValues((previous) => ({ ...previous, [key]: value }));
 
   const flags = [
-    ["requiresShirtNumber", "ต้องกรอกเบอร์เสื้อ"],
-    ["requiresBadmintonRank", "ต้องเลือกมือ 1 หรือ มือ 2"],
-    ["requiresGameProfile", "ต้องกรอก IGN, Facebook และเชื่อม Discord"],
-    ["registrationOpen", "เปิดรับสมัคร"],
+    ["requiresShirtNumber", "ต้องกรอกเบอร์เสื้อ", Shirt],
+    ["requiresBadmintonRank", "ต้องเลือกมือ 1 หรือ มือ 2", Trophy],
+    ["requiresGameProfile", "ต้องกรอก IGN, Facebook และเชื่อม Discord", Gamepad2],
+    ["registrationOpen", "เปิดรับสมัคร", DoorOpen],
   ] as const;
 
   return (
     <FormDialog
       title={initial ? `แก้ไข ${initial.name}` : `เพิ่มประเภทใน ${sport.name}`}
+      icon={initial ? Layers : Plus}
       pending={pending}
       onClose={onClose}
       onSubmit={() => {
@@ -418,6 +487,7 @@ function DivisionForm({
       <TextField
         id="division-name"
         label="ชื่อ"
+        icon={Type}
         value={values.name}
         onChange={(value) => set("name", value)}
         error={issues.name}
@@ -425,6 +495,7 @@ function DivisionForm({
       <TextField
         id="division-code"
         label="รหัส"
+        icon={Hash}
         value={values.code}
         onChange={(value) => set("code", value.toLowerCase())}
         error={issues.code}
@@ -434,32 +505,47 @@ function DivisionForm({
         <ChoiceField
           id="division-gender"
           label="เพศ"
+          icon={VenusAndMars}
           value={values.gender}
-          options={DIVISION_GENDERS.map((value) => ({ value, label: GENDER_LABELS[value] }))}
+          options={DIVISION_GENDERS.map((value) => ({
+            value,
+            label: GENDER_LABELS[value],
+            icon: GENDER_ICONS[value],
+          }))}
           onChange={(value) => set("gender", value)}
         />
         <ChoiceField
           id="division-format"
           label="รูปแบบ"
+          icon={Users}
           value={values.format}
-          options={DIVISION_FORMATS.map((value) => ({ value, label: FORMAT_LABELS[value] }))}
+          options={DIVISION_FORMATS.map((value) => ({
+            value,
+            label: FORMAT_LABELS[value],
+            icon: FORMAT_ICONS[value],
+          }))}
           onChange={(value) => set("format", value)}
         />
       </div>
-      {flags.map(([key, label]) => (
-        <Field key={key} orientation="horizontal">
-          <Checkbox
-            id={`division-${key}`}
-            checked={values[key]}
-            onCheckedChange={(checked) => set(key, checked)}
-          />
-          <FieldLabel htmlFor={`division-${key}`}>{label}</FieldLabel>
-        </Field>
-      ))}
+      <div className="flex flex-col gap-3 rounded-2xl border p-3">
+        {flags.map(([key, label, icon]) => (
+          <Field key={key} orientation="horizontal">
+            <Checkbox
+              id={`division-${key}`}
+              checked={values[key]}
+              onCheckedChange={(checked) => set(key, checked)}
+            />
+            <FormLabel htmlFor={`division-${key}`} icon={icon} className="font-normal">
+              {label}
+            </FormLabel>
+          </Field>
+        ))}
+      </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           id="division-max"
           label="จำนวนสูงสุดต่อสถาบัน"
+          icon={UserCheck}
           type="number"
           min={1}
           value={maxPerInstitution}
@@ -470,6 +556,7 @@ function DivisionForm({
         <TextField
           id="division-order"
           label="ลำดับการแสดง"
+          icon={ArrowDownUp}
           type="number"
           min={0}
           value={sortOrder}
