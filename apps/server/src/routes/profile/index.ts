@@ -41,7 +41,7 @@ export const createProfileRoutes = (deps: RouteDeps) =>
         })
         .from(user)
         .where(eq(user.id, c.var.user.id));
-      if (!account) return c.json({ message: "Unauthorized" }, 401);
+      if (!account) return c.json({ message: "กรุณาเข้าสู่ระบบ" }, 401);
       const profile = (
         await db.select().from(userProfile).where(eq(userProfile.userId, account.id))
       ).at(0);

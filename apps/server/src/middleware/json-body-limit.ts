@@ -5,7 +5,7 @@ export const MAX_JSON_BODY_SIZE = 64 * 1024;
 /** Bound small API bodies before JSON parsing, including chunked requests. */
 export const limitJsonBody = createMiddleware(async (c, next) => {
   if (["GET", "HEAD", "OPTIONS"].includes(c.req.method) || !c.req.raw.body) return next();
-  const tooLarge = () => c.json({ message: "Request body exceeds 64 KiB" }, 413);
+  const tooLarge = () => c.json({ message: "ข้อมูลที่ส่งมีขนาดเกิน 64 KiB" }, 413);
   const length = c.req.header("content-length");
   if (length && /^\d+$/.test(length) && Number(length) > MAX_JSON_BODY_SIZE) return tooLarge();
 

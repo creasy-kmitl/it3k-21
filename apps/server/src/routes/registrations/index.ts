@@ -56,7 +56,7 @@ const NEEDS_DISCORD = "เชื่อมบัญชี Discord ก่อนส
 const DISCORD_OFF = "ยังไม่เปิดให้เชื่อม Discord จึงสมัคร Esports ไม่ได้ในตอนนี้";
 
 const fieldIssues = (missing: Record<string, string>) => ({
-  message: Object.values(missing)[0] ?? "Invalid input",
+  message: Object.values(missing)[0] ?? "ข้อมูลไม่ถูกต้อง",
   issues: Object.entries(missing).map(([field, message]) => ({ path: [field], message })),
 });
 
@@ -137,7 +137,7 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps) =>
       if (!athleteRow && !studentId) {
         return c.json(fieldIssues({ studentId: "กรอกรหัสนักศึกษา" }), 400);
       }
-      if (!division) return c.json({ message: "Division not found" }, 404);
+      if (!division) return c.json({ message: "ไม่พบประเภทนี้" }, 404);
       if (!division.registrationOpen) return c.json({ message: CLOSED }, 409);
       const missing = missingFields(division, input);
       if (Object.keys(missing).length > 0) return c.json(fieldIssues(missing), 400);
@@ -210,7 +210,7 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps) =>
         .from(sportRegistration)
         .innerJoin(sportDivision, eq(sportDivision.id, sportRegistration.divisionId))
         .where(and(eq(sportRegistration.id, id), eq(sportRegistration.userId, me.id)));
-      if (!row) return c.json({ message: "Registration not found" }, 404);
+      if (!row) return c.json({ message: "ไม่พบการสมัครนี้" }, 404);
       if (row.registration.status !== "review") {
         return c.json({ message: "แก้ไขได้เฉพาะตอนรอตรวจสอบ ติดต่อฝ่ายทะเบียนเพื่อแก้ไข" }, 409);
       }
@@ -244,7 +244,7 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps) =>
         throw error;
       }
       const [updated] = await selectRegistrations(db).where(eq(sportRegistration.id, id));
-      if (!updated) return c.json({ message: "Registration not found" }, 404);
+      if (!updated) return c.json({ message: "ไม่พบการสมัครนี้" }, 404);
       return c.json(
         { ...updated.registration, division: updated.division, sport: updated.sport },
         200,
@@ -265,7 +265,7 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps) =>
           .select()
           .from(sportRegistration)
           .where(and(eq(sportRegistration.id, id), eq(sportRegistration.userId, me.id)));
-        if (!registration) return c.json({ message: "Registration not found" }, 404);
+        if (!registration) return c.json({ message: "ไม่พบการสมัครนี้" }, 404);
         if (registration.status !== "review") {
           return c.json({ message: "ถอนได้เฉพาะตอนรอตรวจสอบ ติดต่อฝ่ายทะเบียนเพื่อถอน" }, 409);
         }

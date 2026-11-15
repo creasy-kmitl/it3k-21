@@ -71,7 +71,7 @@ const CHANGE_LOG_LIMIT = 50;
 const RANDOM_SLUG_ATTEMPTS = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export const STALE_MESSAGE = "This link changed while you were editing; reload and try again";
+export const STALE_MESSAGE = "ลิงก์นี้ถูกแก้ไขระหว่างที่คุณกำลังแก้ กรุณาโหลดใหม่แล้วลองอีกครั้ง";
 
 /** Machine-readable reasons, which the web app words in Thai. */
 export type LinkErrorCode = DestinationProblem | "slug-taken" | "slug-duplicate" | "expiry-past";
@@ -166,7 +166,7 @@ const updateInput = z
     /** The version the client read; a newer one means someone else saved first. */
     version: z.number().int().min(1),
   })
-  .refine((input) => Object.keys(input).some((key) => key !== "version"), "Nothing to update");
+  .refine((input) => Object.keys(input).some((key) => key !== "version"), "ไม่มีข้อมูลให้แก้ไข");
 
 /** `list` in runs of at most `size`. */
 function chunks<T>(list: T[], size: number): T[][] {
@@ -341,6 +341,8 @@ function actionFor(changes: Change): ShortLinkChangeAction {
 /** Which input a refusal is about, so the form can mark that field. */
 export type LinkErrorField = "destination" | "fallbackUrl" | "slug" | "expiresAt";
 
+const FIELD_LABELS = { destination: "ปลายทาง", fallbackUrl: "ลิงก์สำรอง" } as const;
+
 const refuse = (code: LinkErrorCode, field: LinkErrorField, message: string) => ({
   code,
   field,
@@ -349,11 +351,7 @@ const refuse = (code: LinkErrorCode, field: LinkErrorField, message: string) => 
 
 function expiryProblem(expiresAt: number | null | undefined) {
   if (expiresAt && expiresAt <= Date.now()) {
-    return refuse(
-      "expiry-past",
-      "expiresAt",
-      "The expiry must be in the future; switch the link off instead",
-    );
+    return refuse("expiry-past", "expiresAt", "วันหมดอายุต้องอยู่ในอนาคต ถ้าจะหยุดลิงก์ตอนนี้ให้ปิดลิงก์แทน");
   }
   return null;
 }
@@ -362,7 +360,7 @@ export const createLinkRoutes = (deps: LinkRouteDeps) => {
   const shortLinkHost = new URL(deps.webOrigin).host;
   const checkUrl = (value: string | null | undefined, field: "destination" | "fallbackUrl") => {
     const problem = value ? destinationProblem(value, shortLinkHost) : null;
-    return problem ? refuse(problem, field, `The ${field} is not allowed (${problem})`) : null;
+    return problem ? refuse(problem, field, `${FIELD_LABELS[field]}ใช้ไม่ได้ (${problem})`) : null;
   };
 
   return (
@@ -448,7 +446,7 @@ export const createLinkRoutes = (deps: LinkRouteDeps) => {
         const { days = DEFAULT_STATS_RANGE } = c.req.valid("query");
         const db = c.var.db;
         const link = await findLink(db, linkId, c.var.user, deps.webOrigin);
-        if (!link) return c.json({ message: "Link not found" }, 404);
+        if (!link) return c.json({ message: "ไม่พบลิงก์นี้" }, 404);
         const [changes, daily] = await Promise.all([
           db
             .select({
@@ -484,7 +482,7 @@ export const createLinkRoutes = (deps: LinkRouteDeps) => {
         const input = c.req.valid("json");
         const db = c.var.db;
         const actor = c.var.user;
-        if (!canCreateLinks(actor)) return c.json({ message: "Forbidden" }, 403);
+        if (!canCreateLinks(actor)) return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
         const invalid =
           checkUrl(input.destination, "destination") ??
           checkUrl(input.fallbackUrl, "fallbackUrl") ??
@@ -511,9 +509,9 @@ export const createLinkRoutes = (deps: LinkRouteDeps) => {
             const kind = constraintError(error);
             if (kind === "unique" && attempt < attempts) continue;
             if (kind === "unique") {
-              return c.json(refuse("slug-taken", "slug", "That short name is already in use"), 409);
+              return c.json(refuse("slug-taken", "slug", "ชื่อลิงก์สั้นนี้ถูกใช้แล้ว"), 409);
             }
-            if (kind === "stale") return c.json({ message: "Forbidden" }, 403);
+            if (kind === "stale") return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
             throw error;
           }
           const link = await findLink(db, linkId, actor, deps.webOrigin);
@@ -530,7 +528,7 @@ export const createLinkRoutes = (deps: LinkRouteDeps) => {
         const { links } = c.req.valid("json");
         const db = c.var.db;
         const actor = c.var.user;
-        if (!canCreateLinks(actor)) return c.json({ message: "Forbidden" }, 403);
+        if (!canCreateLinks(actor)) return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
 
         const rowProblems = async () => {
           const rows: (ReturnType<typeof refuse> & { index: number })[] = [];
@@ -545,7 +543,7 @@ export const createLinkRoutes = (deps: LinkRouteDeps) => {
             if (firstUse.has(link.slug)) {
               rows.push({
                 index,
-                ...refuse("slug-duplicate", "slug", "The same short name appears twice"),
+                ...refuse("slug-duplicate", "slug", "มีชื่อลิงก์สั้นซ้ำกัน"),
               });
             } else firstUse.set(link.slug, index);
           });
@@ -554,14 +552,14 @@ export const createLinkRoutes = (deps: LinkRouteDeps) => {
             if (taken.has(slug)) {
               rows.push({
                 index,
-                ...refuse("slug-taken", "slug", "That short name is already in use"),
+                ...refuse("slug-taken", "slug", "ชื่อลิงก์สั้นนี้ถูกใช้แล้ว"),
               });
             }
           }
           return rows.sort((a, b) => a.index - b.index);
         };
         const refused = (status: 400 | 409, rows: Awaited<ReturnType<typeof rowProblems>>) =>
-          c.json({ code: "rows" as const, message: "Some rows cannot be created", rows }, status);
+          c.json({ code: "rows" as const, message: "สร้างลิงก์บางแถวไม่ได้", rows }, status);
 
         const problems = await rowProblems();
         if (problems.length > 0) return refused(400, problems);
@@ -596,7 +594,7 @@ export const createLinkRoutes = (deps: LinkRouteDeps) => {
             ]);
           } catch (error) {
             const kind = constraintError(error);
-            if (kind === "stale") return c.json({ message: "Forbidden" }, 403);
+            if (kind === "stale") return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
             if (kind !== "unique") throw error;
             // Someone took a chosen slug in between, or a random one clashed.
             const late = await rowProblems();
@@ -622,8 +620,9 @@ export const createLinkRoutes = (deps: LinkRouteDeps) => {
         const db = c.var.db;
         const actor = c.var.user;
         const [current] = await db.select().from(shortLink).where(eq(shortLink.id, linkId));
-        if (!current) return c.json({ message: "Link not found" }, 404);
-        if (!canEditLink(actor, current.ownerId)) return c.json({ message: "Forbidden" }, 403);
+        if (!current) return c.json({ message: "ไม่พบลิงก์นี้" }, 404);
+        if (!canEditLink(actor, current.ownerId))
+          return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
         if (current.version !== version) return c.json({ message: STALE_MESSAGE }, 409);
 
         const set: Partial<typeof shortLink.$inferInsert> = {};
@@ -657,7 +656,7 @@ export const createLinkRoutes = (deps: LinkRouteDeps) => {
 
         if (Object.keys(changes).length === 0) {
           const link = await findLink(db, linkId, actor, deps.webOrigin);
-          if (!link) return c.json({ message: "Link not found" }, 404);
+          if (!link) return c.json({ message: "ไม่พบลิงก์นี้" }, 404);
           return c.json(link, 200);
         }
         // Only what changes is checked, so an old link can still be switched off.
@@ -689,7 +688,7 @@ export const createLinkRoutes = (deps: LinkRouteDeps) => {
         }
         if (updated.length === 0) return c.json({ message: STALE_MESSAGE }, 409);
         const link = await findLink(db, linkId, actor, deps.webOrigin);
-        if (!link) return c.json({ message: "Link not found" }, 404);
+        if (!link) return c.json({ message: "ไม่พบลิงก์นี้" }, 404);
         return c.json(link, 200);
       })
   );

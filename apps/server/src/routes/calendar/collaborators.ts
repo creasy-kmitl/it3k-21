@@ -21,7 +21,7 @@ import { id } from "./shared";
 export const collaboratorIds = z
   .array(id)
   .max(MAX_COLLABORATORS)
-  .refine((ids) => new Set(ids).size === ids.length, "Each department may only be listed once");
+  .refine((ids) => new Set(ids).size === ids.length, "เลือกแต่ละฝ่ายได้ครั้งเดียว");
 
 /** The item's collaborating department ids, comma-separated, for a select. */
 export const collaboratorIdList = sql<
@@ -74,14 +74,14 @@ export async function collaboratorsProblem(
   ownerDepartmentId: string,
 ): Promise<string | null> {
   if (ids.includes(ownerDepartmentId)) {
-    return "The owning department is not also a collaborator";
+    return "ฝ่ายเจ้าของรายการเป็นฝ่ายร่วมงานด้วยไม่ได้";
   }
   if (ids.length === 0) return null;
   const rows = await db
     .select({ id: department.id })
     .from(department)
     .where(inArray(department.id, ids));
-  return rows.length === ids.length ? null : "Department not found";
+  return rows.length === ids.length ? null : "ไม่พบฝ่ายนี้";
 }
 
 export async function currentCollaborators(db: Database, itemId: string) {

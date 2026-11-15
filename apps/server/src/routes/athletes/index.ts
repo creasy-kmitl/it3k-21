@@ -167,7 +167,7 @@ export const createAthleteRoutes = (deps: RouteDeps) =>
         const { id } = c.req.valid("param");
         const { status, note, version } = c.req.valid("json");
         const row = await findInScope(db, actor, id);
-        if (!row) return c.json({ message: "Registration not found" }, 404);
+        if (!row) return c.json({ message: "ไม่พบการสมัครนี้" }, 404);
         const { divisionId, institution, userId } = row.registration;
         // Only approvals take a place, so only approving can run into the limit.
         const room =
@@ -219,7 +219,7 @@ export const createAthleteRoutes = (deps: RouteDeps) =>
           throw error;
         }
         const updated = await findInScope(db, actor, id);
-        if (!updated) return c.json({ message: "Registration not found" }, 404);
+        if (!updated) return c.json({ message: "ไม่พบการสมัครนี้" }, 404);
         return c.json(toItem(updated), 200);
       },
     )
@@ -235,10 +235,10 @@ export const createAthleteRoutes = (deps: RouteDeps) =>
         const { id } = c.req.valid("param");
         const { studentId, institution, version, ...input } = c.req.valid("json");
         const row = await findInScope(db, actor, id);
-        if (!row) return c.json({ message: "Registration not found" }, 404);
+        if (!row) return c.json({ message: "ไม่พบการสมัครนี้" }, 404);
         const missing = missingFields(row.division, input);
         if (Object.keys(missing).length > 0) {
-          return c.json({ message: Object.values(missing)[0] ?? "Invalid input" }, 400);
+          return c.json({ message: Object.values(missing)[0] ?? "ข้อมูลไม่ถูกต้อง" }, 400);
         }
         const fields = applicableFields(row.division, input);
         const userId = row.registration.userId;
@@ -290,7 +290,7 @@ export const createAthleteRoutes = (deps: RouteDeps) =>
           throw error;
         }
         const updated = await findInScope(db, actor, id);
-        if (!updated) return c.json({ message: "Registration not found" }, 404);
+        if (!updated) return c.json({ message: "ไม่พบการสมัครนี้" }, 404);
         return c.json(toItem(updated), 200);
       },
     );

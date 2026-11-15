@@ -9,7 +9,7 @@ export function validate<Target extends keyof ValidationTargets, Schema extends 
 ) {
   return zValidator(target, schema, (result, c) => {
     if (!result.success) {
-      return c.json({ message: "Invalid input", issues: result.error.issues }, 400);
+      return c.json({ message: "ข้อมูลไม่ถูกต้อง", issues: result.error.issues }, 400);
     }
   });
 }

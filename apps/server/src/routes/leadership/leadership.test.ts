@@ -74,7 +74,7 @@ describe("authentication", () => {
   test("anonymous callers get 401 JSON", async () => {
     const res = await app.request("/", t.as(null));
     expect(res.status).toBe(401);
-    expect(await readJson(res)).toEqual({ message: "Unauthorized" });
+    expect(await readJson(res)).toEqual({ message: "กรุณาเข้าสู่ระบบ" });
   });
 
   test("banned callers get 403", async () => {
