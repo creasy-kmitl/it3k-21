@@ -155,6 +155,15 @@ export function applyMigrations(sqlite: Sqlite, range: { from?: string; before?:
   }
 }
 
+/**
+ * Drops the trigger that keeps department codes from changing, so a race test
+ * can revoke a code mid-request and check that the batch's SQL recheck still
+ * fails closed. Production codes cannot change; this only tests the fallback.
+ */
+export function unlockDepartmentCodes(sqlite: Sqlite) {
+  sqlite.run("DROP TRIGGER IF EXISTS department_code_locked");
+}
+
 export function createTestDb() {
   const sqlite = new Sqlite(":memory:", { strict: true });
   // D1 always enforces foreign keys; plain SQLite needs it switched on.

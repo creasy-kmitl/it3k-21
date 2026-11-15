@@ -1,4 +1,4 @@
-import { isMember } from "@it3k/auth/permissions";
+import { hasRole, isMember } from "@it3k/auth/permissions";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -12,8 +12,9 @@ import { cn } from "@it3k/ui/lib/utils";
 import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-router";
 
 import { AppSidebar } from "@/components/app-sidebar";
+import { SessionBoundary } from "@/components/session-boundary";
 import { NotificationBell } from "@/components/calendar/notification-bell";
-import { authClient } from "@/lib/auth-client";
+import { getSessionOrThrow } from "@/lib/auth-client";
 import { clearCacheOnUserChange } from "@/lib/query-cache";
 
 // Every staff page shares one column, so the header and page title stay put
@@ -29,6 +30,10 @@ const PAGE_TITLES: Record<string, string> = {
   "/staff/qr-code": "QR Code",
   "/staff/links": "ลิงก์สั้น",
   "/staff/scores": "คะแนน",
+  "/staff/sports": "ประเภทกีฬา",
+  "/staff/athletes": "นักกีฬา",
+  "/staff/events": "กิจกรรม",
+  "/staff/venues": "สถานที่",
 };
 
 /**
@@ -37,6 +42,8 @@ const PAGE_TITLES: Record<string, string> = {
  */
 export function staffRedirect(user: { role?: string | null } | undefined, href: string) {
   if (!user) return { to: "/login", search: { to: href } } as const;
+  if (hasRole(user.role, "participant"))
+    return isMember(user.role) ? null : ({ to: "/me" } as const);
   // Guests wait outside until a user manager makes them staff.
   if (!isMember(user.role)) return { to: "/pending" } as const;
   return null;
@@ -47,7 +54,7 @@ export const Route = createFileRoute("/staff")({
   component: AuthLayout,
 
   beforeLoad: async ({ context, location }) => {
-    const session = await authClient.getSession();
+    const session = await getSessionOrThrow();
     clearCacheOnUserChange(context.queryClient, session.data?.user.id ?? null);
     const away = staffRedirect(session.data?.user, location.href);
     if (away) throw redirect(away);
@@ -65,39 +72,41 @@ function AuthLayout() {
   const title = PAGE_TITLES[pathname];
 
   return (
-    <TooltipProvider>
-      <SidebarProvider>
-        <AppSidebar userRole={session.data?.user.role} />
-        {/* A plain border like the boxes on each page, instead of the inset's shadow. */}
-        <SidebarInset className="md:peer-data-[variant=inset]:rounded-2xl md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:shadow-none">
-          {/* Header and page share one centered column, so the breadcrumb lines up
+    <SessionBoundary key={session.data?.user.id} userId={session.data?.user.id ?? ""}>
+      <TooltipProvider>
+        <SidebarProvider>
+          <AppSidebar userRole={session.data?.user.role} />
+          {/* A plain border like the boxes on each page, instead of the inset's shadow. */}
+          <SidebarInset className="md:peer-data-[variant=inset]:rounded-2xl md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:shadow-none">
+            {/* Header and page share one centered column, so the breadcrumb lines up
               with the content whether the sidebar is open or closed. */}
-          <header className="flex h-16 shrink-0 items-center px-4">
-            <div className={cn(COLUMN, "flex items-center gap-2")}>
-              <SidebarTrigger className="-ml-1" />
-              <Separator
-                orientation="vertical"
-                className="mr-2 data-vertical:h-4 data-vertical:self-auto"
-              />
-              {title && (
-                <Breadcrumb>
-                  <BreadcrumbList>
-                    <BreadcrumbItem>
-                      <BreadcrumbPage>{title}</BreadcrumbPage>
-                    </BreadcrumbItem>
-                  </BreadcrumbList>
-                </Breadcrumb>
-              )}
-              <NotificationBell />
+            <header className="flex h-16 shrink-0 items-center px-4">
+              <div className={cn(COLUMN, "flex items-center gap-2")}>
+                <SidebarTrigger className="-ml-1" />
+                <Separator
+                  orientation="vertical"
+                  className="mr-2 data-vertical:h-4 data-vertical:self-auto"
+                />
+                {title && (
+                  <Breadcrumb>
+                    <BreadcrumbList>
+                      <BreadcrumbItem>
+                        <BreadcrumbPage>{title}</BreadcrumbPage>
+                      </BreadcrumbItem>
+                    </BreadcrumbList>
+                  </Breadcrumb>
+                )}
+                <NotificationBell />
+              </div>
+            </header>
+            <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+              <div className={cn(COLUMN, "flex flex-1 flex-col gap-4")}>
+                <Outlet />
+              </div>
             </div>
-          </header>
-          <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-            <div className={cn(COLUMN, "flex flex-1 flex-col gap-4")}>
-              <Outlet />
-            </div>
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
-    </TooltipProvider>
+          </SidebarInset>
+        </SidebarProvider>
+      </TooltipProvider>
+    </SessionBoundary>
   );
 }

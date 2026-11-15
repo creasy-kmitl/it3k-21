@@ -6,6 +6,13 @@ import { type LinksApi, linksApi } from "./links";
 import { type MatchesApi, type PublicScoresApi, matchesApi, publicScoresApi } from "./matches";
 import { type QrPresetsApi, qrPresetsApi } from "./qr-presets";
 import { type UsersApi, usersApi } from "./users";
+import { type ProfileApi, profileApi } from "./profile";
+import { type FilesApi, filesApi } from "./files";
+import { type SportsApi, sportsApi } from "./sports";
+import { type RegistrationsApi, registrationsApi } from "./registrations";
+import { type AthletesApi, athletesApi } from "./athletes";
+import { type EventsApi, eventsApi } from "./events";
+import { type VenuesApi, venuesApi } from "./venues";
 
 /** The API clients route pages call; tests swap in fakes with ApiProvider. */
 export type Apis = {
@@ -16,6 +23,13 @@ export type Apis = {
   qrPresets: QrPresetsApi;
   matches: MatchesApi;
   publicScores: PublicScoresApi;
+  profile: ProfileApi;
+  files: FilesApi;
+  sports: SportsApi;
+  registrations: RegistrationsApi;
+  athletes: AthletesApi;
+  venues: VenuesApi;
+  events: EventsApi;
 };
 
 const ApiContext = createContext<Apis>({
@@ -26,6 +40,13 @@ const ApiContext = createContext<Apis>({
   qrPresets: qrPresetsApi,
   matches: matchesApi,
   publicScores: publicScoresApi,
+  profile: profileApi,
+  files: filesApi,
+  sports: sportsApi,
+  registrations: registrationsApi,
+  athletes: athletesApi,
+  venues: venuesApi,
+  events: eventsApi,
 });
 
 export const ApiProvider = ApiContext.Provider;

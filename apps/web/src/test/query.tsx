@@ -11,6 +11,11 @@ import type { LeadershipApi, LeadershipPage, LeadershipSummary } from "@/lib/lea
 import type { LinksApi, ShortLink } from "@/lib/links";
 import type { Match, MatchesApi, PublicScoresApi } from "@/lib/matches";
 import type { QrPresetsApi } from "@/lib/qr-presets";
+import type { SportsApi } from "@/lib/sports";
+import type { RegistrationsApi } from "@/lib/registrations";
+import type { AthletesApi } from "@/lib/athletes";
+import type { EventsApi } from "@/lib/events";
+import type { VenuesApi } from "@/lib/venues";
 import type { UsersApi } from "@/lib/users";
 
 /** Narrows a value a test expects to exist, failing loudly when it does not. */
@@ -45,6 +50,8 @@ export function fakeUsersApi(overrides: Partial<UsersApi> = {}): UsersApi {
     list: unexpected("list"),
     assign: unexpected("assign"),
     setAdmin: unexpected("setAdmin"),
+    setStorage: unexpected("setStorage"),
+    setInstitution: unexpected("setInstitution"),
     ...overrides,
   };
 }
@@ -59,6 +66,80 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
     qrPresets: apis.qrPresets ?? fakeQrPresetsApi(),
     matches: apis.matches ?? fakeMatchesApi(),
     publicScores: apis.publicScores ?? fakePublicScoresApi(),
+    profile: apis.profile ?? {
+      me: unexpected("profile.me"),
+      saveDraft: unexpected("profile.saveDraft"),
+      submit: unexpected("profile.submit"),
+    },
+    files: apis.files ?? {
+      list: unexpected("files.list"),
+      remove: unexpected("files.remove"),
+      upload: unexpected("files.upload"),
+    },
+    sports: apis.sports ?? fakeSportsApi(),
+    registrations: apis.registrations ?? fakeRegistrationsApi(),
+    athletes: apis.athletes ?? fakeAthletesApi(),
+    venues: apis.venues ?? fakeVenuesApi(),
+    events: apis.events ?? fakeEventsApi(),
+  };
+}
+
+export function fakeRegistrationsApi(overrides: Partial<RegistrationsApi> = {}): RegistrationsApi {
+  return {
+    me: unexpected("registrations.me"),
+    register: unexpected("registrations.register"),
+    update: unexpected("registrations.update"),
+    withdraw: unexpected("registrations.withdraw"),
+    linkDiscord: unexpected("registrations.linkDiscord"),
+    unlinkDiscord: unexpected("registrations.unlinkDiscord"),
+    ...overrides,
+  };
+}
+
+export function fakeAthletesApi(overrides: Partial<AthletesApi> = {}): AthletesApi {
+  return {
+    list: unexpected("athletes.list"),
+    exportAll: unexpected("athletes.exportAll"),
+    review: unexpected("athletes.review"),
+    edit: unexpected("athletes.edit"),
+    ...overrides,
+  };
+}
+
+export function fakeVenuesApi(overrides: Partial<VenuesApi> = {}): VenuesApi {
+  return {
+    list: unexpected("venues.list"),
+    create: unexpected("venues.create"),
+    update: unexpected("venues.update"),
+    remove: unexpected("venues.remove"),
+    ...overrides,
+  };
+}
+
+export function fakeEventsApi(overrides: Partial<EventsApi> = {}): EventsApi {
+  return {
+    list: unexpected("events.list"),
+    get: unexpected("events.get"),
+    create: unexpected("events.create"),
+    update: unexpected("events.update"),
+    remove: unexpected("events.remove"),
+    participants: unexpected("events.participants"),
+    checkIn: unexpected("events.checkIn"),
+    undoCheckIn: unexpected("events.undoCheckIn"),
+    ...overrides,
+  };
+}
+
+export function fakeSportsApi(overrides: Partial<SportsApi> = {}): SportsApi {
+  return {
+    list: unexpected("sports.list"),
+    create: unexpected("sports.create"),
+    update: unexpected("sports.update"),
+    remove: unexpected("sports.remove"),
+    createDivision: unexpected("sports.createDivision"),
+    updateDivision: unexpected("sports.updateDivision"),
+    removeDivision: unexpected("sports.removeDivision"),
+    ...overrides,
   };
 }
 

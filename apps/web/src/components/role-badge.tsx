@@ -27,6 +27,7 @@ export const ROLE_BADGES: Record<
   vicehead: { label: "รองหัวหน้าฝ่าย", icon: StarIcon, variant: "secondary" },
   staff: { label: "Staff", icon: UserIcon, variant: "outline" },
   guest: { label: "Guest", icon: CircleDashedIcon, variant: "outline" },
+  participant: { label: "ผู้เข้าร่วม", icon: UserIcon, variant: "secondary" },
   athlete: { label: "นักกีฬา", icon: MedalIcon, variant: "secondary" },
 };
 

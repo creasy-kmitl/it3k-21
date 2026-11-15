@@ -16,16 +16,18 @@ import { Input } from "@it3k/ui/components/input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@it3k/ui/components/select";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Pencil, Search, UserCog } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, Search, UserCog, UserRoundCogIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { LoadingButton } from "@/components/loading-button";
 import { type FilterControl, useFilters, useSearchText } from "@/hooks/use-filters";
 import type { LeadershipApi, LeadershipDepartment } from "@/lib/leadership";
 import { type Account, type Assignment, type UsersApi, useMe } from "@/lib/users";
@@ -35,6 +37,12 @@ import { PageHeader } from "@/components/page-header";
 import { ROLE_BADGES, RoleBadge } from "@/components/role-badge";
 import { useApis } from "@/lib/api-context";
 import { type ListFilters, listSearchSchema, replacesHistory } from "@/lib/list-search";
+import { GiB, INSTITUTIONS, type Institution } from "@it3k/db/profile";
+import { fileSize } from "@/lib/files";
+import { ErrorState } from "@/components/error-state";
+import { toastError } from "@/lib/errors";
+import { authClient, authError } from "@/lib/auth-client";
+import { reloadAt } from "@/lib/view-as";
 
 export const Route = createFileRoute("/staff/users")({
   validateSearch: (search) => listSearchSchema.parse(search),
@@ -59,9 +67,9 @@ function RouteComponent() {
 }
 
 type Status = Assignment["kind"];
-const STATUSES: Status[] = ["guest", "athlete", "staff", "vicehead", "head"];
+const STATUSES: Status[] = ["guest", "participant", "athlete", "staff", "vicehead", "head"];
 // Statuses that carry no department.
-const UNAFFILIATED = new Set<Status>(["guest", "athlete"]);
+const UNAFFILIATED = new Set<Status>(["guest", "participant", "athlete"]);
 
 function initials(name: string) {
   return name.trim().slice(0, 2).toUpperCase();
@@ -69,7 +77,8 @@ function initials(name: string) {
 
 function statusOf(account: Account): Status {
   if (account.seatRole) return account.seatRole;
-  if (account.role === "athlete" || account.role === "guest") return account.role;
+  if (account.role === "athlete" || account.role === "participant" || account.role === "guest")
+    return account.role;
   // Staff, even without a department, is not a guest; admins read by department.
   if (account.role === "staff") return "staff";
   return account.department ? "staff" : "guest";
@@ -88,11 +97,24 @@ function alreadyIs(account: Account, status: Status, departmentId: string) {
   );
 }
 
+/** Signs the admin in as `userId` (Better Auth admin plugin) and reloads the app as them. */
+async function impersonate(userId: string) {
+  const { error } = await authClient.admin.impersonateUser({ userId });
+  if (error) throw authError(error);
+  reloadAt("/staff/dashboard");
+}
+
 /**
  * Accounts and what each one is: guest, athlete, staff of a department, or a head or
  * vicehead. The flags only decide what to show; the API enforces the rules.
  */
-export function UsersPage({ filters: control }: { filters?: FilterControl<ListFilters> }) {
+export function UsersPage({
+  filters: control,
+  onImpersonate = impersonate,
+}: {
+  filters?: FilterControl<ListFilters>;
+  onImpersonate?: (userId: string) => Promise<void>;
+}) {
   const { users: api, leadership: seats } = useApis();
   // Changing a filter starts from page 1 again.
   const [filters, setFilters] = useFilters(control);
@@ -104,6 +126,7 @@ export function UsersPage({ filters: control }: { filters?: FilterControl<ListFi
     setFilters({ department: id, page: undefined });
   const goTo = (next: number) => setFilters({ page: next > 1 ? next : undefined });
   const [editing, setEditing] = useState<Account | null>(null);
+  const [actingAs, setActingAs] = useState<Account | null>(null);
 
   const departments = useQuery({
     queryKey: ["leadership", "departments"],
@@ -132,7 +155,7 @@ export function UsersPage({ filters: control }: { filters?: FilterControl<ListFi
       <PageHeader
         icon={UserCog}
         title="ผู้ใช้"
-        description="กำหนดว่าแต่ละบัญชีเป็น Guest, นักกีฬา, Staff หรือหัวหน้าฝ่ายใด"
+        description="กำหนดสถานะ Guest, ผู้เข้าร่วม, นักกีฬา, Staff หรือหัวหน้าฝ่าย และพื้นที่จัดเก็บไฟล์"
       />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -177,12 +200,7 @@ export function UsersPage({ filters: control }: { filters?: FilterControl<ListFi
           <Skeleton className="h-12 w-full" />
         </div>
       ) : accounts.isError ? (
-        <div role="alert" className="flex flex-col items-start gap-2 text-destructive">
-          <p>โหลดรายชื่อไม่สำเร็จ: {accounts.error.message}</p>
-          <Button variant="outline" size="sm" onClick={() => void accounts.refetch()}>
-            ลองอีกครั้ง
-          </Button>
-        </div>
+        <ErrorState error={accounts.error} onRetry={accounts.refetch} title="โหลดรายชื่อไม่สำเร็จ" />
       ) : accounts.data.items.length === 0 ? (
         <p className="text-muted-foreground">ไม่พบบัญชี</p>
       ) : (
@@ -196,7 +214,21 @@ export function UsersPage({ filters: control }: { filters?: FilterControl<ListFi
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="truncate font-medium">{account.name}</span>
                 <AccountBadges account={account} />
+                <span className="text-xs text-muted-foreground">
+                  ไฟล์ {fileSize(account.storageUsed)} / {fileSize(account.storageLimit)}
+                </span>
               </div>
+              {account.canImpersonate && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`ดูในฐานะ ${account.name}`}
+                  title="ดูในฐานะผู้ใช้นี้"
+                  onClick={() => setActingAs(account)}
+                >
+                  <UserRoundCogIcon />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -240,7 +272,53 @@ export function UsersPage({ filters: control }: { filters?: FilterControl<ListFi
           onClose={() => setEditing(null)}
         />
       )}
+
+      {actingAs && (
+        <ImpersonateDialog
+          account={actingAs}
+          onConfirm={onImpersonate}
+          onClose={() => setActingAs(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function ImpersonateDialog({
+  account,
+  onConfirm,
+  onClose,
+}: {
+  account: Account;
+  onConfirm: (userId: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const start = useMutation({
+    mutationFn: () => onConfirm(account.id),
+    onError: (error) => toastError(error, "สวมบัญชีไม่สำเร็จ"),
+  });
+  return (
+    <AlertDialog open onOpenChange={(open) => !open && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>ดูในฐานะ {account.name}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            คุณจะใช้ระบบด้วยบัญชีนี้ได้ 1 ชั่วโมง และเห็นข้อมูลส่วนตัวของเจ้าของบัญชี
+            การเปิดดูและการแก้ไขทุกครั้งจะบันทึกว่าคุณเป็นผู้ทำ กลับสู่บัญชีของคุณได้จากแถบด้านล่าง
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+          <LoadingButton
+            icon={UserRoundCogIcon}
+            loading={start.isPending || start.isSuccess}
+            onClick={() => start.mutate()}
+          >
+            ดูในฐานะผู้ใช้นี้
+          </LoadingButton>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -256,9 +334,24 @@ function AccountBadges({ account }: { account: Account }) {
           {account.department && <DepartmentBadge department={account.department} />}
         </>
       )}
+      {account.institution && <InstitutionBadge institution={account.institution} />}
     </span>
   );
 }
+
+export function institutionShort(id: Institution) {
+  return INSTITUTIONS.find((institution) => institution.id === id)?.short ?? id;
+}
+
+function InstitutionBadge({ institution }: { institution: Institution }) {
+  return (
+    <span className="rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground">
+      {institutionShort(institution)}
+    </span>
+  );
+}
+
+const NO_INSTITUTION = "none";
 
 function EditAccountDialog({
   account,
@@ -281,6 +374,12 @@ function EditAccountDialog({
   const [status, setStatus] = useState<Status>(initialStatus);
   const [departmentId, setDepartmentId] = useState(account.department?.id ?? "");
   const [admin, setAdmin] = useState(account.role === "admin");
+  const [institution, setInstitution] = useState<Institution | null>(account.institution);
+  const [savedAccount, setSavedAccount] = useState(account);
+  const [storageGB, setStorageGB] = useState(String(account.storageLimit / GiB));
+  const storageLimit = Math.round(Number(storageGB) * GiB);
+  const validStorage =
+    storageGB.trim() !== "" && Number.isSafeInteger(storageLimit) && storageLimit >= 0;
   const needsDepartment = !UNAFFILIATED.has(status);
   const seatRole = status === "head" || status === "vicehead" ? status : null;
 
@@ -295,18 +394,30 @@ function EditAccountDialog({
 
   const save = useMutation({
     mutationFn: async () => {
+      // Set quota before an assignment that may revoke the caller's own rights.
+      let saved = savedAccount;
+      if (storageLimit !== saved.storageLimit) {
+        saved = await api.setStorage(account.id, storageLimit, saved.storageLimit);
+        setSavedAccount(saved);
+      }
+      // Before the assignment too: it may take away the caller's right to set it.
+      if (account.canSetInstitution && institution !== saved.institution) {
+        saved = await api.setInstitution(account.id, institution);
+        setSavedAccount(saved);
+      }
       // Compared with what the account is, not with the status the dialog opened
       // on, so e.g. a staff account without a department can still be made a guest.
-      if (!alreadyIs(account, status, departmentId)) {
-        await api.assign(
+      if (!alreadyIs(saved, status, departmentId)) {
+        saved = await api.assign(
           account.id,
-          status === "guest" || status === "athlete"
+          status === "guest" || status === "participant" || status === "athlete"
             ? { kind: status }
             : { kind: status, departmentId },
         );
+        setSavedAccount(saved);
       }
-      if (canGrantAdmin && admin !== (account.role === "admin")) {
-        await api.setAdmin(account.id, admin);
+      if (canGrantAdmin && admin !== (saved.role === "admin")) {
+        setSavedAccount(await api.setAdmin(account.id, admin));
       }
     },
     onSuccess: async () => {
@@ -317,9 +428,19 @@ function EditAccountDialog({
         queryClient.invalidateQueries({ queryKey: ["leadership"] }),
       ]);
     },
-    onError: (error) => toast.error(`บันทึกไม่สำเร็จ: ${error.message}`),
+    onError: async (error) => {
+      toastError(error, "บันทึกไม่สำเร็จ");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["users"] }),
+        queryClient.invalidateQueries({ queryKey: ["leadership"] }),
+      ]);
+    },
   });
 
+  const institutionItems = [
+    { value: NO_INSTITUTION, label: "ไม่ระบุ" },
+    ...INSTITUTIONS.map((i) => ({ value: i.id, label: i.short })),
+  ];
   const statusItems = STATUSES.map((value) => ({ value, label: ROLE_BADGES[value].label }));
   const departmentItems = departments.map((d) => ({
     value: d.id,
@@ -347,11 +468,13 @@ function EditAccountDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {statusItems.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>
-                    {s.label}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  {statusItems.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </Field>
@@ -367,11 +490,13 @@ function EditAccountDialog({
                   <SelectValue placeholder="เลือกฝ่าย" />
                 </SelectTrigger>
                 <SelectContent>
-                  {departmentItems.map((d) => (
-                    <SelectItem key={d.value} value={d.value}>
-                      {d.label}
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    {departmentItems.map((d) => (
+                      <SelectItem key={d.value} value={d.value}>
+                        {d.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
               {occupant.data && (
@@ -379,6 +504,32 @@ function EditAccountDialog({
                   จะแทนที่ {occupant.data.displayName} ซึ่งจะกลายเป็น Staff ของฝ่ายนี้
                 </FieldDescription>
               )}
+            </Field>
+          )}
+          {account.canSetInstitution && (
+            <Field>
+              <FieldLabel htmlFor="account-institution">สถาบัน</FieldLabel>
+              <Select
+                items={institutionItems}
+                value={institution ?? NO_INSTITUTION}
+                onValueChange={(value: string | null) =>
+                  setInstitution(!value || value === NO_INSTITUTION ? null : (value as Institution))
+                }
+              >
+                <SelectTrigger id="account-institution" aria-label="สถาบัน">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {institutionItems.map((i) => (
+                      <SelectItem key={i.value} value={i.value}>
+                        {i.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <FieldDescription>ใช้กำหนดว่าฝ่ายทะเบียนเห็นนักกีฬาของสถาบันใด</FieldDescription>
             </Field>
           )}
           {canGrantAdmin && (
@@ -393,15 +544,34 @@ function EditAccountDialog({
               <FieldLabel htmlFor="account-admin">Admin</FieldLabel>
             </Field>
           )}
+          <Field data-invalid={!validStorage}>
+            <FieldLabel htmlFor="account-storage">พื้นที่จัดเก็บสูงสุด (GB)</FieldLabel>
+            <Input
+              id="account-storage"
+              type="number"
+              min="0"
+              step="any"
+              value={storageGB}
+              aria-invalid={!validStorage}
+              onChange={(event) => setStorageGB(event.target.value)}
+            />
+            <FieldDescription>
+              ใช้แล้ว {fileSize(account.storageUsed)} · ค่าเริ่มต้น 1 GB · กำหนด 0 เพื่อหยุดอัปโหลดใหม่
+            </FieldDescription>
+            {validStorage && storageLimit < account.storageUsed && (
+              <FieldDescription>ไฟล์เดิมยังอยู่ จะอัปโหลดเพิ่มได้เมื่อใช้พื้นที่ต่ำกว่าโควตา</FieldDescription>
+            )}
+          </Field>
         </FieldGroup>
         <AlertDialogFooter>
           <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-          <Button
-            disabled={save.isPending || (needsDepartment && departmentId === "")}
+          <LoadingButton
+            loading={save.isPending}
+            disabled={!validStorage || (needsDepartment && departmentId === "")}
             onClick={() => save.mutate()}
           >
             บันทึก
-          </Button>
+          </LoadingButton>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

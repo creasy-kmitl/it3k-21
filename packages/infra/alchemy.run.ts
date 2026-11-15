@@ -1,7 +1,7 @@
 import * as Alchemy from "alchemy";
-import * as Axiom from "alchemy/Axiom";
-import * as Cloudflare from "alchemy/Cloudflare";
-import * as GitHub from "alchemy/GitHub";
+import * as Axiom from "@alchemy.run/axiom";
+import * as Cloudflare from "@alchemy.run/cloudflare";
+import * as GitHub from "@alchemy.run/github";
 import * as Output from "alchemy/Output";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
@@ -9,6 +9,7 @@ import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import "varlock/auto-load";
 import { OWNER, REPOSITORY, ZONE } from "./repo.ts";
+import { disabledAxiomProviders, preserveAxiomResources } from "./stacks/disabled-axiom.ts";
 
 /**
  * Public hostnames, derived from the stage so every environment gets its own
@@ -67,6 +68,11 @@ export const db = Cloudflare.D1.Database("database", {
   migrations: "../../packages/db/src/migrations",
 });
 
+export const uploads = Cloudflare.R2.Bucket("uploads", {
+  // PR previews are disposable; persistent stages never empty a bucket on destroy.
+  forceDestroy: isPreviewStage,
+});
+
 // Local logs stay in the terminal unless Axiom is explicitly enabled.
 // Deployments always provision Axiom, regardless of the dev setting.
 export const axiomEnabled = Effect.gen(function* () {
@@ -75,8 +81,12 @@ export const axiomEnabled = Effect.gen(function* () {
 }).pipe(Effect.orDie);
 
 export const axiomProviders = Layer.unwrap(
-  axiomEnabled.pipe(Effect.map((enabled) => (enabled ? Axiom.providers() : Layer.empty))),
+  axiomEnabled.pipe(
+    Effect.map((enabled) => (enabled ? Axiom.providers() : disabledAxiomProviders)),
+  ),
 );
+
+const stackState = Cloudflare.state();
 
 /**
  * Axiom's Personal plan caps the whole org at three datasets, so a dataset
@@ -94,6 +104,7 @@ export const axiomProviders = Layer.unwrap(
 export const observability = Effect.gen(function* () {
   const { stage } = yield* Alchemy.Stack;
   if (!(yield* axiomEnabled)) {
+    yield* preserveAxiomResources.pipe(Effect.provide(stackState));
     return {
       runtimeEnv: {
         // Keep bindings as strings even when the remote drain is disabled.
@@ -167,6 +178,7 @@ export const server = Cloudflare.Worker("server", {
   },
   env: {
     DB: db,
+    UPLOADS: uploads,
     // The web worker is created after this one, so its URL can't be referenced
     // here without a cycle — deriving both from the stage breaks it. Without a
     // stage there is no public hostname yet, so point at the local dev port.
@@ -175,6 +187,11 @@ export const server = Cloudflare.Worker("server", {
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
     GOOGLE_CLIENT_ID: Config.String("GOOGLE_CLIENT_ID"),
     GOOGLE_SECRET_ID: Config.Redacted("GOOGLE_SECRET_ID"),
+    // Optional on every stage: empty values turn Discord linking off.
+    DISCORD_CLIENT_ID: Config.String("DISCORD_CLIENT_ID").pipe(Config.withDefault("")),
+    DISCORD_CLIENT_SECRET: Config.Redacted("DISCORD_CLIENT_SECRET").pipe(
+      Config.withDefault(Redacted.make("")),
+    ),
     // Equal to BETTER_AUTH_URL unless this is a preview, and the plugin
     // skips proxying entirely when the two match.
     AUTH_PROXY_URL: isPreviewStage ? AUTH_RELAY_URL : Cloudflare.Worker.URL,
@@ -198,6 +215,7 @@ export const server = Cloudflare.Worker("server", {
   dev: {
     port: 3000,
   },
+  crons: ["0 * * * *"],
   // `?? null` matters: alchemy reads `domain: undefined` as "don't manage
   // custom domains" and leaves whatever is attached in place, while `null`
   // explicitly detaches. Without it a stage that once held a hostname keeps
@@ -217,7 +235,7 @@ export default Alchemy.Stack(
   "it3k",
   {
     providers: Layer.mergeAll(Cloudflare.providers(), axiomProviders, GitHub.providers()),
-    state: Cloudflare.state(),
+    state: stackState,
   },
   Effect.gen(function* () {
     const observabilityResources = yield* observability;

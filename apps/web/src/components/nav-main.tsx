@@ -16,6 +16,10 @@ export type NavMainItem = {
     | "/staff/head"
     | "/staff/departments"
     | "/staff/users"
+    | "/staff/sports"
+    | "/staff/athletes"
+    | "/staff/events"
+    | "/staff/venues"
     | "/staff/qr-code"
     | "/staff/links"
     | "/staff/scores";

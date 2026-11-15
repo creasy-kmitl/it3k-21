@@ -5,3 +5,6 @@ export * from "./calendar";
 export * from "./short-link";
 export * from "./qr-preset";
 export * from "./match";
+export * from "./profile";
+export * from "./sport";
+export * from "./event";

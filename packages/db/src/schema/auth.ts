@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
+import type { Institution } from "../profile";
 import { department } from "./department";
 
 export const user = sqliteTable(
@@ -11,11 +12,17 @@ export const user = sqliteTable(
     email: text("email").notNull().unique(),
     emailVerified: integer("email_verified", { mode: "boolean" }).default(false).notNull(),
     image: text("image"),
+    storageLimit: integer("storage_limit").notNull().default(1073741824),
     role: text("role").default("staff").notNull(),
     banned: integer("banned", { mode: "boolean" }).default(false),
     banReason: text("ban_reason"),
     banExpires: integer("ban_expires", { mode: "timestamp_ms" }),
     departmentId: text("department_id").references(() => department.id, { onDelete: "set null" }),
+    // The institution the account belongs to (INSTITUTION_IDS), which scopes
+    // what registration staff may see in the sport system. Set by sport
+    // managers, or from the profile on a first sport registration. No CHECK:
+    // adding one would make drizzle rebuild `user`, cascading its sessions.
+    institution: text("institution").$type<Institution>(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),

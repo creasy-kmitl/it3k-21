@@ -1,6 +1,7 @@
 import { type Role, hasRole } from "@it3k/auth/permissions";
 import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
+import { INSTITUTION_IDS } from "@it3k/db/profile";
 import { department, departmentAppearance } from "@it3k/db/schema/department";
 import { LEADERSHIP_ROLES, leadership, leadershipSocial } from "@it3k/db/schema/leadership";
 import { type SQL, and, eq, notExists, sql } from "drizzle-orm";
@@ -19,13 +20,21 @@ import {
   requireUser,
 } from "../../middleware/current-user";
 import { PAGE_SIZE, containsAny, seatIsAsRead, userQuery } from "../leadership";
-import { canChangeAccount, canGrantAdmin, isManager } from "../../policies/leadership";
+import {
+  canChangeAccount,
+  canGrantAdmin,
+  isManager,
+  managerIsAsRead,
+} from "../../policies/leadership";
 import { validate } from "../../middleware/validation";
+import { canSport, sportAccessIsAsRead, sportAccessJson } from "../../policies/sports";
+import { usedBytes } from "../files";
+import { limitJsonBody } from "../../middleware/json-body-limit";
 
 const idParam = z.strictObject({ id: z.string().min(1) });
 
 const assignmentInput = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.enum(["guest", "athlete"]) }),
+  z.strictObject({ kind: z.enum(["guest", "participant", "athlete"]) }),
   z.strictObject({
     kind: z.enum(["staff", ...LEADERSHIP_ROLES]),
     departmentId: z.string().trim().min(1),
@@ -34,11 +43,14 @@ const assignmentInput = z.discriminatedUnion("kind", [
 
 const adminInput = z.strictObject({ admin: z.boolean() });
 
+const institutionInput = z.strictObject({ institution: z.enum(INSTITUTION_IDS).nullable() });
+
 /** The single account role shown for a stored (possibly comma-separated) role. */
 function accountRole(role: string | null): Role {
   if (hasRole(role, "admin")) return "admin";
   if (hasRole(role, "staff")) return "staff";
   if (hasRole(role, "athlete")) return "athlete";
+  if (hasRole(role, "participant")) return "participant";
   return "guest";
 }
 
@@ -49,6 +61,9 @@ function selectAccounts(db: Database) {
       name: user.name,
       image: user.image,
       role: user.role,
+      institution: user.institution,
+      storageLimit: user.storageLimit,
+      storageUsed: usedBytes(user.id),
       departmentId: department.id,
       departmentName: department.name,
       departmentIcon: department.icon,
@@ -69,6 +84,9 @@ function toAccount(row: AccountRow, actor: CurrentUser) {
     name: row.name,
     image: row.image,
     role,
+    institution: row.institution,
+    storageLimit: row.storageLimit,
+    storageUsed: row.storageUsed,
     department:
       row.departmentId && row.departmentName
         ? departmentAppearance({
@@ -81,7 +99,35 @@ function toAccount(row: AccountRow, actor: CurrentUser) {
     seatRole: row.seatRole,
     // Only admins may change an admin's account.
     canEdit: isManager(actor) && canChangeAccount(actor, row.role),
+    canSetInstitution: canSport(actor, "users.setInstitution") && canChangeAccount(actor, row.role),
+    // An admin acting as themselves may act as any other non-admin account.
+    canImpersonate: canImpersonate(actor, row),
   };
+}
+
+function canImpersonate(actor: CurrentUser, row: Pick<AccountRow, "id" | "role">) {
+  return (
+    hasRole(actor.role, "admin") &&
+    !actor.impersonatedBy &&
+    !actor.simulated &&
+    row.id !== actor.id &&
+    !hasRole(row.role, "admin")
+  );
+}
+
+/** The department a "view as" names, shaped like an account's. */
+async function viewedDepartment(db: Database, id: string | null) {
+  if (!id) return null;
+  const [row] = await db
+    .select({
+      id: department.id,
+      name: department.name,
+      icon: department.icon,
+      color: department.color,
+    })
+    .from(department)
+    .where(eq(department.id, id));
+  return row ? departmentAppearance(row) : null;
 }
 
 async function findAccount(db: Database, id: string, actor: CurrentUser) {
@@ -91,7 +137,7 @@ async function findAccount(db: Database, id: string, actor: CurrentUser) {
 
 const managerOnly = createMiddleware<CurrentUserEnv>(async (c, next) => {
   if (!isManager(c.var.user)) {
-    return c.json({ message: "Forbidden" }, 403);
+    return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
   }
   await next();
 });
@@ -101,19 +147,32 @@ export const createUserRoutes = (deps: RouteDeps) =>
     .use(requireJsonPosts)
     .use(requireUser(deps))
     .use(requireMember)
+    .use(limitJsonBody)
 
     // The caller's own role, department and seat, read fresh for the nav.
     .get("/me", async (c) => {
       const actor = c.var.user;
       const account = await findAccount(c.var.db, actor.id, actor);
-      if (!account) return c.json({ message: "Unauthorized" }, 401);
+      if (!account) return c.json({ message: "กรุณาเข้าสู่ระบบ" }, 401);
+      // While viewing as someone, the nav shows who the admin is viewing as.
+      const view = actor.simulated
+        ? {
+            role: accountRole(actor.role),
+            department: await viewedDepartment(c.var.db, actor.departmentId),
+            seatRole: actor.leadershipRole,
+            institution: actor.institution,
+          }
+        : null;
       return c.json(
         {
           id: account.id,
-          role: account.role,
-          department: account.department,
-          seatRole: account.seatRole,
+          role: view?.role ?? account.role,
+          department: view ? view.department : account.department,
+          seatRole: view ? view.seatRole : account.seatRole,
           canManageUsers: isManager(actor),
+          institution: view ? view.institution : account.institution,
+          sportAccess: sportAccessJson(actor),
+          viewingAs: actor.simulated,
         },
         200,
       );
@@ -160,10 +219,10 @@ export const createUserRoutes = (deps: RouteDeps) =>
           .select({ id: user.id, name: user.name, role: user.role })
           .from(user)
           .where(eq(user.id, id));
-        if (!target) return c.json({ message: "User not found" }, 404);
+        if (!target) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
         const isAdmin = hasRole(target.role, "admin");
         if (!canChangeAccount(actor, target.role)) {
-          return c.json({ message: "Only admins can change an admin's account" }, 403);
+          return c.json({ message: "เฉพาะผู้ดูแลระบบที่แก้ไขบัญชีของผู้ดูแลระบบได้" }, 403);
         }
 
         const departmentId = "departmentId" in input ? input.departmentId : null;
@@ -172,7 +231,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
             .select({ id: department.id })
             .from(department)
             .where(eq(department.id, departmentId));
-          if (!found) return c.json({ message: "Department not found" }, 404);
+          if (!found) return c.json({ message: "ไม่พบฝ่ายนี้" }, 404);
         }
 
         const [current] = await db
@@ -220,6 +279,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
           // anything read above changed. Seats are freed before one is taken so
           // the one-seat-per-account and one-holder-per-seat indexes hold.
           await db.batch([
+            abortUnless(db, actor.id, managerIsAsRead(actor)),
             abortUnless(db, id, unchanged ?? sql`1`),
             db
               .update(user)
@@ -228,7 +288,9 @@ export const createUserRoutes = (deps: RouteDeps) =>
                 // Seats are not account roles: a head or vicehead is staff.
                 role: isAdmin
                   ? target.role
-                  : input.kind === "guest" || input.kind === "athlete"
+                  : input.kind === "guest" ||
+                      input.kind === "participant" ||
+                      input.kind === "athlete"
                     ? input.kind
                     : "staff",
               })
@@ -265,40 +327,131 @@ export const createUserRoutes = (deps: RouteDeps) =>
           ]);
         } catch (error) {
           if (constraintError(error)) {
-            return c.json(
-              { message: "This changed while you were editing; reload and try again" },
-              409,
-            );
+            return c.json({ message: "ข้อมูลถูกแก้ไขระหว่างที่คุณกำลังแก้ กรุณาโหลดใหม่แล้วลองอีกครั้ง" }, 409);
           }
           throw error;
         }
 
         const account = await findAccount(db, id, actor);
-        if (!account) return c.json({ message: "User not found" }, 404);
+        if (!account) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
         return c.json(account, 200);
       },
     )
 
+    .put(
+      "/:id/storage",
+      managerOnly,
+      validate("param", idParam),
+      validate(
+        "json",
+        z.strictObject({
+          storageLimit: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+          expectedLimit: z.number().int().nonnegative(),
+        }),
+      ),
+      async (c) => {
+        const db = c.var.db;
+        const actor = c.var.user;
+        const { id } = c.req.valid("param");
+        const { storageLimit, expectedLimit } = c.req.valid("json");
+        const [target] = await db.select({ role: user.role }).from(user).where(eq(user.id, id));
+        if (!target) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
+        if (!canChangeAccount(actor, target.role))
+          return c.json({ message: "เฉพาะผู้ดูแลระบบที่แก้ไขบัญชีของผู้ดูแลระบบได้" }, 403);
+        try {
+          await db.batch([
+            abortUnless(db, actor.id, managerIsAsRead(actor)),
+            abortUnless(
+              db,
+              id,
+              and(eq(user.role, target.role), eq(user.storageLimit, expectedLimit)) ?? sql`0`,
+            ),
+            db.update(user).set({ storageLimit }).where(eq(user.id, id)),
+          ]);
+        } catch (error) {
+          if (constraintError(error))
+            return c.json({ message: "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่" }, 409);
+          throw error;
+        }
+        const account = await findAccount(db, id, actor);
+        if (!account) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
+        return c.json(account, 200);
+      },
+    )
+    // The institution scopes what registration staff see in the sport system.
+    .put(
+      "/:id/institution",
+      validate("param", idParam),
+      validate("json", institutionInput),
+      async (c) => {
+        const db = c.var.db;
+        const actor = c.var.user;
+        const { id } = c.req.valid("param");
+        const { institution } = c.req.valid("json");
+        if (!canSport(actor, "users.setInstitution")) {
+          return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
+        }
+        const [target] = await db.select({ role: user.role }).from(user).where(eq(user.id, id));
+        if (!target) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
+        if (!canChangeAccount(actor, target.role)) {
+          return c.json({ message: "เฉพาะผู้ดูแลระบบที่แก้ไขบัญชีของผู้ดูแลระบบได้" }, 403);
+        }
+        try {
+          await db.batch([
+            abortUnless(db, actor.id, sportAccessIsAsRead(actor)),
+            abortUnless(db, id, eq(user.role, target.role) ?? sql`0`),
+            db.update(user).set({ institution }).where(eq(user.id, id)),
+          ]);
+        } catch (error) {
+          if (constraintError(error))
+            return c.json({ message: "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่" }, 409);
+          throw error;
+        }
+        const account = await findAccount(db, id, actor);
+        if (!account) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
+        return c.json(account, 200);
+      },
+    )
     .put("/:id/admin", validate("param", idParam), validate("json", adminInput), async (c) => {
       const { id } = c.req.valid("param");
       const { admin } = c.req.valid("json");
       const db = c.var.db;
       const actor = c.var.user;
       if (!canGrantAdmin(actor)) {
-        return c.json({ message: "Only admins can grant or remove admin" }, 403);
+        return c.json({ message: "เฉพาะผู้ดูแลระบบที่ให้หรือถอนสิทธิ์ผู้ดูแลระบบได้" }, 403);
       }
       if (!admin && id === actor.id) {
-        return c.json({ message: "You cannot remove your own admin role" }, 400);
+        return c.json({ message: "คุณถอนสิทธิ์ผู้ดูแลระบบของตัวเองไม่ได้" }, 400);
       }
       const [target] = await db
-        .select({ departmentId: user.departmentId })
+        .select({ departmentId: user.departmentId, role: user.role })
         .from(user)
         .where(eq(user.id, id));
-      if (!target) return c.json({ message: "User not found" }, 404);
+      if (!target) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
       const role = admin ? "admin" : target.departmentId ? "staff" : "guest";
-      await db.update(user).set({ role }).where(eq(user.id, id));
+      try {
+        await db.batch([
+          // canGrantAdmin established that the snapshot role contains admin;
+          // equality inside this guard prevents a revoked admin restoring it.
+          abortUnless(db, actor.id, managerIsAsRead(actor)),
+          abortUnless(
+            db,
+            id,
+            and(
+              eq(user.role, target.role),
+              target.departmentId
+                ? eq(user.departmentId, target.departmentId)
+                : sql`${user.departmentId} is null`,
+            ) ?? sql`0`,
+          ),
+          db.update(user).set({ role }).where(eq(user.id, id)),
+        ]);
+      } catch (error) {
+        if (constraintError(error)) return c.json({ message: "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่" }, 409);
+        throw error;
+      }
       const account = await findAccount(db, id, actor);
-      if (!account) return c.json({ message: "User not found" }, 404);
+      if (!account) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
       return c.json(account, 200);
     });
 

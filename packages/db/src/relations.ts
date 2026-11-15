@@ -78,6 +78,79 @@ export const relations = defineRelations(schema, (r) => ({
       to: r.user.id,
     }),
   },
+  sport: {
+    divisions: r.many.sportDivision(),
+  },
+  sportDivision: {
+    sport: r.one.sport({
+      from: r.sportDivision.sportId,
+      to: r.sport.id,
+      optional: false,
+    }),
+    registrations: r.many.sportRegistration(),
+  },
+  athlete: {
+    user: r.one.user({
+      from: r.athlete.userId,
+      to: r.user.id,
+      optional: false,
+    }),
+  },
+  sportRegistration: {
+    user: r.one.user({
+      from: r.sportRegistration.userId,
+      to: r.user.id,
+      optional: false,
+    }),
+    division: r.one.sportDivision({
+      from: r.sportRegistration.divisionId,
+      to: r.sportDivision.id,
+      optional: false,
+    }),
+  },
+  venue: {
+    events: r.many.event(),
+  },
+  event: {
+    venue: r.one.venue({
+      from: r.event.venueId,
+      to: r.venue.id,
+    }),
+    institutions: r.many.eventInstitution(),
+    divisions: r.many.eventDivision(),
+    checkins: r.many.eventCheckin(),
+  },
+  eventCheckin: {
+    event: r.one.event({
+      from: r.eventCheckin.eventId,
+      to: r.event.id,
+      optional: false,
+    }),
+    user: r.one.user({
+      from: r.eventCheckin.userId,
+      to: r.user.id,
+      optional: false,
+    }),
+  },
+  eventInstitution: {
+    event: r.one.event({
+      from: r.eventInstitution.eventId,
+      to: r.event.id,
+      optional: false,
+    }),
+  },
+  eventDivision: {
+    event: r.one.event({
+      from: r.eventDivision.eventId,
+      to: r.event.id,
+      optional: false,
+    }),
+    division: r.one.sportDivision({
+      from: r.eventDivision.divisionId,
+      to: r.sportDivision.id,
+      optional: false,
+    }),
+  },
   session: {
     user: r.one.user({
       from: r.session.userId,

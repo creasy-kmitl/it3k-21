@@ -27,7 +27,14 @@ import {
   requireMember,
   requireUser,
 } from "../../middleware/current-user";
-import { allowed, canChangeAccount, canGrantAdmin, isManager } from "../../policies/leadership";
+import {
+  allowed,
+  canChangeAccount,
+  canGrantAdmin,
+  isManager,
+  managerIsAsRead,
+} from "../../policies/leadership";
+import { notBanned, roleIncludes } from "../../policies/actor-sql";
 import { validate } from "../../middleware/validation";
 
 export const PAGE_SIZE = 20;
@@ -112,7 +119,7 @@ const searchText = z
   .trim()
   // Count code points, not UTF-16 units, so Thai and emoji are treated alike.
   .refine((q) => [...q].length <= MAX_QUERY_CODE_POINTS, {
-    message: `Search is limited to ${MAX_QUERY_CODE_POINTS} characters`,
+    message: `ค้นหาได้ไม่เกิน ${MAX_QUERY_CODE_POINTS} ตัวอักษร`,
   });
 const page = z.coerce.number().int().min(1).max(1000).default(1);
 
@@ -149,7 +156,7 @@ const socialValue = z
   .max(200)
   .refine(
     (value) => ![...value].some((char) => char.charCodeAt(0) < 0x20 || char === "\x7f"),
-    "Control characters are not allowed",
+    "ห้ามมีอักขระควบคุม",
   )
   // Handles are plain text; anything with a scheme must be an https link so
   // the directory never renders javascript:, data: or plain-http links.
@@ -160,14 +167,14 @@ const socialValue = z
     } catch {
       return false;
     }
-  }, "Links must use https");
+  }, "ลิงก์ต้องขึ้นต้นด้วย https://");
 
 const socials = z
   .array(z.strictObject({ platform: z.enum(SOCIAL_PLATFORMS), value: socialValue }))
   .max(SOCIAL_PLATFORMS.length)
   .refine(
     (items) => new Set(items.map((item) => item.platform)).size === items.length,
-    "Each platform may only be listed once",
+    "ใส่แต่ละแพลตฟอร์มได้ครั้งเดียว",
   );
 
 const seatFields = {
@@ -191,7 +198,7 @@ const updateInput = z
     userId: seatFields.userId,
     socials: socials.optional(),
   })
-  .refine((input) => Object.keys(input).length > 0, "Nothing to update");
+  .refine((input) => Object.keys(input).length > 0, "ไม่มีข้อมูลให้แก้ไข");
 
 // The client shows a warning dialog first; this only proves the caller
 // accepted it. Authentication and the audit are what actually gate access.
@@ -278,7 +285,7 @@ async function checkPlacement(
     .from(department)
     .where(eq(department.id, departmentId));
   if (!target) {
-    return { message: "Department not found", status: 404 };
+    return { message: "ไม่พบฝ่ายนี้", status: 404 };
   }
   if (userId === null) return null;
   const [account] = await db
@@ -286,10 +293,10 @@ async function checkPlacement(
     .from(user)
     .where(eq(user.id, userId));
   if (!account) {
-    return { message: "Account not found", status: 404 };
+    return { message: "ไม่พบบัญชีนี้", status: 404 };
   }
   if (!canChangeAccount(actor, account.role)) {
-    return { message: "Only admins can change an admin's account", status: 403 };
+    return { message: "เฉพาะผู้ดูแลระบบที่แก้ไขบัญชีของผู้ดูแลระบบได้", status: 403 };
   }
   return null;
 }
@@ -339,17 +346,17 @@ function attachGuard(db: Database, actor: CurrentUser, userId: string, extra?: S
 
 function conflictMessage(error: unknown) {
   if (constraintError(error) === "stale") {
-    return "This seat changed while you were editing; reload and try again";
+    return "ตำแหน่งนี้ถูกแก้ไขระหว่างที่คุณกำลังแก้ กรุณาโหลดใหม่แล้วลองอีกครั้ง";
   }
   const message = constraintMessage(error);
   if (!message?.includes("UNIQUE")) return null;
-  if (message.includes("leadership.user_id")) return "This account already holds a seat";
-  return "This department already has someone in that role";
+  if (message.includes("leadership.user_id")) return "บัญชีนี้ดำรงตำแหน่งอยู่แล้ว";
+  return "ฝ่ายนี้มีคนดำรงตำแหน่งนี้อยู่แล้ว";
 }
 
 /**
  * Moves a seat's account into the seat's department, so the account keeps
- * belonging to the department it leads, and makes a guest or athlete staff. Reads the
+ * belonging to the department it leads, and makes a non-member staff. Reads the
  * seat inside the statement, so it follows whatever the same batch just wrote.
  */
 export function syncAccountDepartment(db: Database, leadershipId: string) {
@@ -358,7 +365,7 @@ export function syncAccountDepartment(db: Database, leadershipId: string) {
     .update(user)
     .set({
       departmentId: sql`(select ${leadership.departmentId} from ${leadership} where ${seat})`,
-      role: sql`case when ${user.role} in ('guest', 'athlete') then 'staff' else ${user.role} end`,
+      role: sql`case when ${user.role} in ('guest', 'participant', 'athlete') then 'staff' else ${user.role} end`,
     })
     .where(inArray(user.id, db.select({ id: leadership.userId }).from(leadership).where(seat)));
 }
@@ -371,7 +378,7 @@ function insertSocials(db: Database, leadershipId: string, items: z.infer<typeof
 
 const managerOnly = createMiddleware<LeadershipEnv>(async (c, next) => {
   if (!isManager(c.var.user)) {
-    return c.json({ message: "Forbidden" }, 403);
+    return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
   }
   await next();
 });
@@ -444,7 +451,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       const { id } = c.req.valid("param");
       const summary = await findSummary(c.var.db, id, c.var.user);
       if (!summary) {
-        return c.json({ message: "Leader not found" }, 404);
+        return c.json({ message: "ไม่พบหัวหน้าฝ่ายนี้" }, 404);
       }
       return c.json(summary, 200);
     })
@@ -464,6 +471,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       const id = crypto.randomUUID();
       try {
         await db.batch([
+          abortUnless(db, c.var.user.id, managerIsAsRead(c.var.user)),
           db.insert(leadership).values({ id, ...fields }),
           ...(fields.userId ? [attachGuard(db, c.var.user, fields.userId)] : []),
           ...(fields.userId ? [syncAccountDepartment(db, id)] : []),
@@ -489,13 +497,13 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
         .from(leadership)
         .where(eq(leadership.id, id));
       if (!current) {
-        return c.json({ message: "Leader not found" }, 404);
+        return c.json({ message: "ไม่พบหัวหน้าฝ่ายนี้" }, 404);
       }
       if (!allowed(actor, "update", current)) {
-        return c.json({ message: "Forbidden" }, 403);
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       if (!isManager(actor) && Object.keys(input).some((key) => !SELF_EDITABLE.has(key))) {
-        return c.json({ message: "You can only change your nickname, phone and socials" }, 403);
+        return c.json({ message: "คุณแก้ไขได้เฉพาะชื่อเล่น เบอร์โทร และโซเชียลของตัวเอง" }, 403);
       }
       if (input.departmentId !== undefined || input.userId !== undefined) {
         const problem = await checkPlacement(
@@ -531,10 +539,18 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       // Always present, so the batch has a fixed first statement. notAdmin()
       // reads the row the guard updates, hence the holder's.
       const guard = abortUnless(db, holder ?? actor.id, and(...checks) ?? sql`1`);
+      const actorGuard = abortUnless(
+        db,
+        actor.id,
+        isManager(actor)
+          ? managerIsAsRead(actor)
+          : sql`(${notBanned()} and (${roleIncludes("staff")} or ${roleIncludes("admin")}) and exists (select 1 from ${leadership} where ${leadership.id} = ${id} and ${leadership.userId} = ${actor.id}))`,
+      );
       let updated: { id: string }[];
       try {
         // One batch: D1 applies the update and the social replacement together or not at all.
         const results = await db.batch([
+          actorGuard,
           guard,
           db
             .update(leadership)
@@ -577,7 +593,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
               ]
             : []),
         ]);
-        updated = results[1] as { id: string }[];
+        updated = results[2] as { id: string }[];
       } catch (error) {
         const conflict = conflictMessage(error);
         if (conflict) return c.json({ message: conflict }, 409);
@@ -585,15 +601,12 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       }
       if (updated.length === 0) {
         return isManager(actor)
-          ? c.json({ message: "Leader not found" }, 404)
-          : c.json(
-              { message: "This seat changed while you were editing; reload and try again" },
-              409,
-            );
+          ? c.json({ message: "ไม่พบหัวหน้าฝ่ายนี้" }, 404)
+          : c.json({ message: "ตำแหน่งนี้ถูกแก้ไขระหว่างที่คุณกำลังแก้ กรุณาโหลดใหม่แล้วลองอีกครั้ง" }, 409);
       }
       const summary = await findSummary(db, id, actor);
       if (!summary) {
-        return c.json({ message: "Leader not found" }, 404);
+        return c.json({ message: "ไม่พบหัวหน้าฝ่ายนี้" }, 404);
       }
       return c.json(summary, 200);
     })
@@ -607,10 +620,10 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
         .from(leadership)
         .where(eq(leadership.id, id));
       if (!seat) {
-        return c.json({ message: "Leader not found" }, 404);
+        return c.json({ message: "ไม่พบหัวหน้าฝ่ายนี้" }, 404);
       }
       if (!allowed(actor, "reveal", { userId: null })) {
-        return c.json({ message: "Forbidden" }, 403);
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const event: ContactRevealAudit = {
         actorUserId: actor.id,
@@ -630,7 +643,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
         });
       } catch {
         c.var.log?.set({ leadership: { revealAuditFailed: true } });
-        return c.json({ message: "Contact details are unavailable right now" }, 503);
+        return c.json({ message: "ยังดูข้อมูลติดต่อไม่ได้ในขณะนี้ กรุณาลองใหม่ภายหลัง" }, 503);
       }
       try {
         await deps.audit(c, event);
@@ -648,12 +661,21 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
 
     .delete("/:id", managerOnly, validate("param", idParam), async (c) => {
       const { id } = c.req.valid("param");
-      const deleted = await c.var.db
-        .delete(leadership)
-        .where(eq(leadership.id, id))
-        .returning({ id: leadership.id });
+      const db = c.var.db;
+      let deleted: { id: string }[];
+      try {
+        const results = await db.batch([
+          abortUnless(db, c.var.user.id, managerIsAsRead(c.var.user)),
+          db.delete(leadership).where(eq(leadership.id, id)).returning({ id: leadership.id }),
+        ]);
+        deleted = results[1];
+      } catch (error) {
+        const conflict = conflictMessage(error);
+        if (conflict) return c.json({ message: conflict }, 409);
+        throw error;
+      }
       if (deleted.length === 0) {
-        return c.json({ message: "Leader not found" }, 404);
+        return c.json({ message: "ไม่พบหัวหน้าฝ่ายนี้" }, 404);
       }
       return c.body(null, 204);
     });

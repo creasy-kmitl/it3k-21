@@ -11,10 +11,13 @@ import {
 import { Link } from "@tanstack/react-router";
 import {
   Building2Icon,
+  CalendarCheckIcon,
   CalendarDaysIcon,
   LayoutDashboardIcon,
   MedalIcon,
   Link2Icon,
+  MapPinnedIcon,
+  MedalIcon,
   QrCodeIcon,
   TrophyIcon,
   UserCogIcon,
@@ -31,6 +34,8 @@ export function AppSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar> & { userRole: string | null | undefined }) {
   const { data: me } = useMe();
+  // Shown to anyone with a right in the sport system; the API enforces each one.
+  const inSports = (me?.sportAccess.permissions.length ?? 0) > 0;
   const groups: NavMainGroup[] = [
     {
       label: "ภาพรวม",
@@ -49,6 +54,23 @@ export function AppSidebar({
           : []),
         ...(can(userRole, { department: ["read"] })
           ? [{ title: "ฝ่าย", to: "/staff/departments", icon: <Building2Icon /> } as const]
+          : []),
+      ],
+    },
+    {
+      label: "กีฬา",
+      items: [
+        ...(inSports
+          ? ([
+              { title: "กิจกรรม", to: "/staff/events", icon: <CalendarCheckIcon /> },
+              { title: "ประเภทกีฬา", to: "/staff/sports", icon: <MedalIcon /> },
+            ] as const)
+          : []),
+        ...(me?.sportAccess.permissions.includes("athletes.read")
+          ? [{ title: "นักกีฬา", to: "/staff/athletes", icon: <TrophyIcon /> } as const]
+          : []),
+        ...(inSports
+          ? [{ title: "สถานที่", to: "/staff/venues", icon: <MapPinnedIcon /> } as const]
           : []),
       ],
     },

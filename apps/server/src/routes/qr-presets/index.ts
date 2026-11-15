@@ -31,7 +31,7 @@ const name = z.string().trim().min(1).max(PRESET_NAME_MAX);
 const createInput = z.strictObject({ name, design: presetDesign });
 const updateInput = z
   .strictObject({ name: name.optional(), design: presetDesign.optional() })
-  .refine((input) => input.name !== undefined || input.design !== undefined, "Nothing to update");
+  .refine((input) => input.name !== undefined || input.design !== undefined, "ไม่มีข้อมูลให้แก้ไข");
 
 function selectPresets(db: Database) {
   return db
@@ -93,7 +93,7 @@ export const createQrPresetRoutes = (deps: RouteDeps) =>
       const input = c.req.valid("json");
       const db = c.var.db;
       const actor = c.var.user;
-      if (!canCreatePresets(actor)) return c.json({ message: "Forbidden" }, 403);
+      if (!canCreatePresets(actor)) return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       const presetId = crypto.randomUUID();
       const saved = await guarded(() =>
         db.batch([
@@ -101,7 +101,7 @@ export const createQrPresetRoutes = (deps: RouteDeps) =>
           db.insert(qrPreset).values({ id: presetId, ...input, ownerId: actor.id }),
         ]),
       );
-      if (!saved) return c.json({ message: "Forbidden" }, 403);
+      if (!saved) return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       const preset = await findPreset(db, presetId, actor);
       if (!preset) throw new Error("Created preset is missing");
       return c.json(preset, 201);
@@ -113,8 +113,9 @@ export const createQrPresetRoutes = (deps: RouteDeps) =>
       const db = c.var.db;
       const actor = c.var.user;
       const [current] = await db.select().from(qrPreset).where(eq(qrPreset.id, presetId));
-      if (!current) return c.json({ message: "Preset not found" }, 404);
-      if (!canEditPreset(actor, current.ownerId)) return c.json({ message: "Forbidden" }, 403);
+      if (!current) return c.json({ message: "ไม่พบ preset นี้" }, 404);
+      if (!canEditPreset(actor, current.ownerId))
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       const saved = await guarded(() =>
         db.batch([
           abortUnless(db, actor.id, stillPresetEditor(current.ownerId)),
@@ -124,9 +125,9 @@ export const createQrPresetRoutes = (deps: RouteDeps) =>
             .where(eq(qrPreset.id, presetId)),
         ]),
       );
-      if (!saved) return c.json({ message: "Forbidden" }, 403);
+      if (!saved) return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       const preset = await findPreset(db, presetId, actor);
-      if (!preset) return c.json({ message: "Preset not found" }, 404);
+      if (!preset) return c.json({ message: "ไม่พบ preset นี้" }, 404);
       return c.json(preset, 200);
     })
 
@@ -135,15 +136,16 @@ export const createQrPresetRoutes = (deps: RouteDeps) =>
       const db = c.var.db;
       const actor = c.var.user;
       const [current] = await db.select().from(qrPreset).where(eq(qrPreset.id, presetId));
-      if (!current) return c.json({ message: "Preset not found" }, 404);
-      if (!canEditPreset(actor, current.ownerId)) return c.json({ message: "Forbidden" }, 403);
+      if (!current) return c.json({ message: "ไม่พบ preset นี้" }, 404);
+      if (!canEditPreset(actor, current.ownerId))
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       const deleted = await guarded(() =>
         db.batch([
           abortUnless(db, actor.id, stillPresetEditor(current.ownerId)),
           db.delete(qrPreset).where(eq(qrPreset.id, presetId)),
         ]),
       );
-      if (!deleted) return c.json({ message: "Forbidden" }, 403);
+      if (!deleted) return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       return c.json({ ok: true }, 200);
     });
 

@@ -28,6 +28,7 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { LoadingButton } from "@/components/loading-button";
 import { DepartmentBadge, DepartmentIcon } from "@/components/department-icon";
 import { useApis } from "@/lib/api-context";
 import { formatBangkok, formatRange } from "@/lib/bangkok-time";
@@ -43,6 +44,8 @@ import { Hint } from "./hint";
 import { IconLabel } from "./icon-label";
 import { type CalendarViewer, ItemForm, type ItemFormMode } from "./item-form";
 import { SideDrawer } from "./side-drawer";
+import { ErrorState } from "@/components/error-state";
+import { toastError } from "@/lib/errors";
 
 const TIME_FIELDS = new Set(["startAt", "endAt"]);
 const LABELLED: Record<string, Record<string, string>> = {
@@ -270,12 +273,9 @@ function Actions({
   const [reason, setReason] = useState("");
 
   const onError = (error: Error) =>
-    toast.error(
-      error instanceof ApiError && error.status === 409
-        ? "มีคนแก้ไขรายการนี้ก่อนคุณ ข้อมูลล่าสุดโหลดให้แล้ว"
-        : `บันทึกไม่สำเร็จ: ${error.message}`,
-      { id: "calendar-update" },
-    );
+    error instanceof ApiError && error.status === 409
+      ? toast.error("มีคนแก้ไขรายการนี้ก่อนคุณ ข้อมูลล่าสุดโหลดให้แล้ว", { id: "calendar-update" })
+      : toastError(error, "บันทึกไม่สำเร็จ");
   const refreshOnConflict = (error: Error | null) => {
     if (error instanceof ApiError && error.status === 409) {
       void queryClient.invalidateQueries({ queryKey: ["calendar"] });
@@ -343,15 +343,16 @@ function Actions({
           <Button type="button" variant="ghost" size="sm" onClick={() => setAsking(undefined)}>
             ไม่ยกเลิก
           </Button>
-          <Button
+          <LoadingButton
             type="submit"
             variant="destructive"
             size="sm"
+            icon={CalendarX}
+            loading={update.isPending}
             disabled={(cancelNeedsReason && !reason.trim()) || pending}
           >
-            <CalendarX data-icon="inline-start" />
             ยืนยันยกเลิกรายการ
-          </Button>
+          </LoadingButton>
         </div>
       </form>
     );
@@ -367,16 +368,17 @@ function Actions({
           <Button type="button" variant="ghost" size="sm" onClick={() => setAsking(undefined)}>
             ไม่ลบ
           </Button>
-          <Button
+          <LoadingButton
             type="button"
             variant="destructive"
             size="sm"
+            icon={Trash2}
+            loading={remove.isPending}
             disabled={pending}
             onClick={() => remove.mutate()}
           >
-            <Trash2 data-icon="inline-start" />
             ยืนยันลบรายการ
-          </Button>
+          </LoadingButton>
         </div>
       </div>
     );
@@ -389,15 +391,16 @@ function Actions({
         แก้ไข
       </Button>
       {item.status === "draft" && (
-        <Button
+        <LoadingButton
           size="sm"
           variant="outline"
+          icon={CircleCheck}
+          loading={update.isPending}
           disabled={pending}
           onClick={() => update.mutate({ status: "confirmed" })}
         >
-          <CircleCheck data-icon="inline-start" />
           ยืนยันรายการ
-        </Button>
+        </LoadingButton>
       )}
       {item.status !== "cancelled" && (
         <Button size="sm" variant="outline" disabled={pending} onClick={() => setAsking("cancel")}>
@@ -507,16 +510,16 @@ export function ItemSheet({
             <Skeleton className="h-4 w-3/4" />
           </div>
         ) : detail.isError ? (
-          <div role="alert" className="flex flex-col gap-2 text-sm text-destructive">
-            <p>
-              {detail.error instanceof ApiError && detail.error.status === 404
+          <ErrorState
+            error={detail.error}
+            onRetry={detail.refetch}
+            title={
+              detail.error instanceof ApiError && detail.error.status === 404
                 ? "ไม่พบรายการนี้"
-                : `โหลดรายการไม่สำเร็จ: ${detail.error.message}`}
-            </p>
-            <Button variant="outline" size="sm" onClick={() => void detail.refetch()}>
-              ลองอีกครั้ง
-            </Button>
-          </div>
+                : "โหลดรายการไม่สำเร็จ"
+            }
+            size="sm"
+          />
         ) : detail.data ? (
           <>
             <Actions

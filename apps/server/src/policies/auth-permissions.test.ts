@@ -46,3 +46,25 @@ describe("Better Auth user directory", () => {
     }
   });
 });
+
+describe("impersonation grants", () => {
+  // Better Auth's /admin/impersonate-user checks these two; an admin target
+  // needs `impersonate-admins`, which no role may hold.
+  async function may(userId: string, permission: "impersonate" | "impersonate-admins") {
+    const result = await auth.api.userHasPermission({
+      body: { userId, permissions: { user: [permission] } },
+    });
+    return result.success;
+  }
+
+  test("admins may impersonate, but never other admins", async () => {
+    expect(await may("admin", "impersonate")).toBe(true);
+    expect(await may("admin", "impersonate-admins")).toBe(false);
+  });
+
+  test("no other role may impersonate at all", async () => {
+    for (const id of ["guest", "staff", "head", "vicehead"]) {
+      expect(await may(id, "impersonate")).toBe(false);
+    }
+  });
+});

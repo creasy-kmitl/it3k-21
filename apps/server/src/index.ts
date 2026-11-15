@@ -4,6 +4,7 @@ import { createAuthMiddleware, type BetterAuthInstance } from "evlog/better-auth
 import { evlog, type EvlogVariables } from "evlog/hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { waitUntil } from "cloudflare:workers";
 
 import { env } from "./env.server";
 import type { RouteDeps } from "./middleware/current-user";
@@ -13,9 +14,21 @@ import { createLinkRoutes } from "./routes/links";
 import { createMatchRoutes, createPublicScoreRoutes } from "./routes/matches";
 import { createShortLinkRedirect } from "./routes/links/redirect";
 import { createQrPresetRoutes } from "./routes/qr-presets";
+import { createSportRoutes } from "./routes/sports";
+import { createRegistrationRoutes } from "./routes/registrations";
+import { createAthleteRoutes } from "./routes/athletes";
+import { createEventRoutes } from "./routes/events";
+import { createVenueRoutes } from "./routes/venues";
+import type { DiscordDeps } from "./routes/registrations/shared";
+import { discordEnabled } from "@it3k/auth";
 import { createUserRoutes } from "./routes/users";
 import { createLeadershipRoutes, recordContactReveal } from "./routes/leadership";
 import { createAuth, getDb } from "./services";
+import { createProfileRoutes } from "./routes/profile";
+import { createViewAsRoutes } from "./routes/view-as";
+import { cleanupImpersonationSessions, handleAuthRequest } from "./routes/auth-audit";
+import { cleanupFiles, createFileRoutes, createPublicFileRoutes } from "./routes/files";
+import { createFileStore } from "./routes/files/storage";
 
 initLogger({
   // Stages share a dataset per tier, so the stage name is what separates
@@ -25,7 +38,7 @@ initLogger({
 
 const identifyUser = createAuthMiddleware((await createAuth()) as BetterAuthInstance, {
   // Short links are public and carry no session; skip the lookup on every visit.
-  exclude: ["/api/auth/**", "/l/**"],
+  exclude: ["/api/auth/**", "/l/**", "/api/files/public/**"],
   maskEmail: true,
 });
 
@@ -41,29 +54,43 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-app.use(
-  "/*",
-  cors({
-    origin: env.CORS_ORIGIN,
-    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  }),
+const privateCors = cors({
+  origin: env.CORS_ORIGIN,
+  allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+});
+const publicCors = cors({ origin: "*", allowMethods: ["GET", "HEAD", "OPTIONS"] });
+app.use("/*", (c, next) =>
+  (c.req.path.startsWith("/api/files/public/") ? publicCors : privateCors)(c, next),
 );
 
-app.on(["POST", "GET"], "/api/auth/*", async (c) => (await createAuth()).handler(c.req.raw));
+app.on(["POST", "GET"], "/api/auth/*", async (c) =>
+  handleAuthRequest(c.req.raw, await createAuth(), c.get("log")),
+);
 
 const deps: RouteDeps = {
   getSession: async (headers) => {
     const session = await (await createAuth()).api.getSession({ headers });
     if (!session) return null;
-    return { userId: session.user.id, impersonatedBy: session.session.impersonatedBy ?? null };
+    return {
+      userId: session.user.id,
+      impersonatedBy: session.session.impersonatedBy ?? null,
+      createdAt: new Date(session.session.createdAt),
+    };
   },
   getDb,
+  // A key of its own, so a view-as cookie can never pass for an auth cookie.
+  viewAsSecret: `${env.BETTER_AUTH_SECRET}:view-as`,
 };
 
 app.route("/api/departments", createDepartmentRoutes(deps));
 app.route("/api/users", createUserRoutes(deps));
+app.route("/api/view-as", createViewAsRoutes(deps));
+const fileDeps = { ...deps, getStore: () => createFileStore(env.UPLOADS), waitUntil };
+app.route("/api/files/public", createPublicFileRoutes(fileDeps));
+app.route("/api/files", createFileRoutes(fileDeps));
+app.route("/api/profile", createProfileRoutes(deps));
 app.route(
   "/api/leadership",
   createLeadershipRoutes({
@@ -79,6 +106,20 @@ app.route("/api/matches", createMatchRoutes(deps));
 
 // Public: the scoreboard anyone can see without signing in.
 app.route("/api/public/scores", createPublicScoreRoutes(deps));
+app.route("/api/sports", createSportRoutes(deps));
+const discordDeps: DiscordDeps = {
+  discordEnabled: discordEnabled(env),
+  // Asks Discord with the athlete's stored token; best effort.
+  discordProfile: async (headers, accountId) => {
+    const info = await (await createAuth()).api.accountInfo({ headers, query: { accountId } });
+    const data = info?.data as { username?: unknown } | undefined;
+    return typeof data?.username === "string" ? { username: data.username } : null;
+  },
+};
+app.route("/api/registrations", createRegistrationRoutes({ ...deps, ...discordDeps }));
+app.route("/api/athletes", createAthleteRoutes(deps));
+app.route("/api/venues", createVenueRoutes(deps));
+app.route("/api/events", createEventRoutes(deps));
 
 // Public: the web worker forwards its `/l/<slug>` paths here.
 app.route("/l", createShortLinkRedirect(deps));
@@ -87,4 +128,10 @@ app.get("/", (c) => {
   return c.text("OK");
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled() {
+    await cleanupFiles(getDb(), createFileStore(env.UPLOADS));
+    await cleanupImpersonationSessions(getDb());
+  },
+};

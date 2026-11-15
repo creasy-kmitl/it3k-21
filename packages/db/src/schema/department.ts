@@ -1,8 +1,7 @@
 import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, uniqueIndex } from "drizzle-orm/sqlite-core";
 
-export const DEPARTMENT_CODES = ["tech-live", "registration"] as const;
-export type DepartmentCode = (typeof DEPARTMENT_CODES)[number];
+export * from "../department-codes";
 
 // Keys the web app maps to lucide icons and palette classes.
 export const DEPARTMENT_ICONS = [
@@ -98,9 +97,9 @@ export const department = sqliteTable(
       .$defaultFn(() => crypto.randomUUID()),
     name: text("name").notNull().unique(),
     description: text("description"),
-    // Stable identity for departments the app treats specially; names can be
-    // renamed by admins, codes cannot drift with them.
-    code: text("code", { enum: DEPARTMENT_CODES }),
+    // Stable identity: names can be renamed by admins, codes cannot drift with
+    // them. Set once, at creation or by a migration; triggers refuse changes.
+    code: text("code"),
     // Null means "not chosen"; see departmentAppearance for what is shown then.
     icon: text("icon", { enum: DEPARTMENT_ICONS }),
     color: text("color", { enum: DEPARTMENT_COLORS }),

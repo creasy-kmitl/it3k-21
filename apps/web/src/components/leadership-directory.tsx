@@ -42,6 +42,7 @@ import {
 import { DepartmentIcon, DepartmentLabel } from "./department-icon";
 import LeadershipList from "./leadership-list";
 import { PageHeader } from "./page-header";
+import { ErrorState } from "@/components/error-state";
 
 type Group = { departmentId: string; departmentName: string; seats: LeadershipSummary[] };
 
@@ -74,13 +75,6 @@ const ALL_DEPARTMENTS = (
     ทุกฝ่าย
   </span>
 );
-
-function errorMessage(error: Error) {
-  if (error instanceof ApiError && error.status === 403) {
-    return "คุณไม่มีสิทธิ์เข้าถึงรายชื่อนี้";
-  }
-  return `โหลดรายชื่อไม่สำเร็จ: ${error.message}`;
-}
 
 type Props = {
   api?: LeadershipApi;
@@ -203,12 +197,15 @@ export default function LeadershipDirectory({
           <Skeleton className="h-10 w-full" />
         </div>
       ) : roster.isError ? (
-        <div role="alert" className="flex flex-col items-start gap-2 text-destructive">
-          <p>{errorMessage(roster.error)}</p>
-          <Button variant="outline" size="sm" onClick={() => void roster.refetch()}>
-            ลองอีกครั้ง
-          </Button>
-        </div>
+        <ErrorState
+          error={roster.error}
+          onRetry={roster.refetch}
+          title={
+            roster.error instanceof ApiError && roster.error.status === 403
+              ? "คุณไม่มีสิทธิ์เข้าถึงรายชื่อนี้"
+              : "โหลดรายชื่อไม่สำเร็จ"
+          }
+        />
       ) : roster.data.items.length === 0 ? (
         <EmptyRoster
           query={q}

@@ -13,6 +13,7 @@ import { NOTIFICATION_ICONS } from "@/lib/calendar-icons";
 import { describeNotification } from "@/lib/calendar-labels";
 
 import { SideDrawer } from "./side-drawer";
+import { ErrorState } from "@/components/error-state";
 
 function NoticeIcon({ kind }: { kind: CalendarNotification["kind"] }) {
   const Icon = NOTIFICATION_ICONS[kind];
@@ -182,9 +183,12 @@ export function NotificationBell() {
               }}
             />
           ) : inbox.isError ? (
-            <p role="alert" className="text-sm text-destructive">
-              โหลดการแจ้งเตือนไม่สำเร็จ
-            </p>
+            <ErrorState
+              error={inbox.error}
+              onRetry={inbox.refetch}
+              title="โหลดการแจ้งเตือนไม่สำเร็จ"
+              size="sm"
+            />
           ) : (
             <p className="text-sm text-muted-foreground">กำลังโหลด</p>
           )}

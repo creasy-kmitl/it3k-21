@@ -9,9 +9,11 @@ import { BookmarkPlus, Palette, PencilLine, Save, Sparkles, Trash2 } from "lucid
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
+import { LoadingButton } from "@/components/loading-button";
 import { FormSection, type Option, OptionSelect } from "@/components/qr-design-form";
 import { useApis } from "@/lib/api-context";
 import { type QrPreset, samePresetDesign } from "@/lib/qr-presets";
+import { toastError } from "@/lib/errors";
 
 const CUSTOM = "__custom__";
 
@@ -83,7 +85,7 @@ export function QrPresetBar({
   const base = presets.find((preset) => preset.id === baseId) ?? null;
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["qr-presets"] });
-  const failed = (error: Error) => toast.error(`บันทึก preset ไม่สำเร็จ: ${error.message}`);
+  const failed = (error: Error) => toastError(error, "บันทึก preset ไม่สำเร็จ");
 
   const create = useMutation({
     mutationFn: (name: string) => qrPresets.create({ name, design: current }),
@@ -110,7 +112,7 @@ export function QrPresetBar({
       toast.success(`ลบ “${preset.name}” แล้ว`);
       await refresh();
     },
-    onError: (error) => toast.error(`ลบ preset ไม่สำเร็จ: ${error.message}`),
+    onError: (error) => toastError(error, "ลบ preset ไม่สำเร็จ"),
   });
 
   const options: Option<string>[] = [
@@ -162,18 +164,18 @@ export function QrPresetBar({
             </Button>
           )}
           {matching?.canEdit && (
-            <Button
+            <LoadingButton
               variant={confirmingDelete ? "destructive" : "ghost"}
               size="sm"
-              disabled={remove.isPending}
+              icon={Trash2}
+              loading={remove.isPending}
               onClick={() =>
                 confirmingDelete ? remove.mutate(matching) : setConfirmingDelete(true)
               }
               onBlur={() => setConfirmingDelete(false)}
             >
-              <Trash2 data-icon="inline-start" />
               {confirmingDelete ? `กดอีกครั้งเพื่อลบ “${matching.name}”` : "ลบ preset"}
-            </Button>
+            </LoadingButton>
           )}
         </div>
       )}

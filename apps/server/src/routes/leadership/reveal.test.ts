@@ -24,6 +24,8 @@ beforeEach(async () => {
   await t.seedUser("staff", { department: "Art" });
   await t.seedUser("tech-head", { department: "Tech/Live" });
   await t.seedUser("banned", { banned: true });
+  // Impersonation is honoured only while the admin behind it is still one.
+  await t.seedUser("admin-1", { role: "admin" });
   const [row] = await t.db
     .insert(leadership)
     .values({
@@ -59,7 +61,7 @@ describe("POST /:id/reveal", () => {
     expect(events).toEqual([
       {
         actorUserId: "staff",
-        actorDepartmentCode: null,
+        actorDepartmentCode: "art",
         impersonatedBy: null,
         targetLeadershipId: seatId,
         targetDepartmentId: await t.departmentId("Tech/Live"),
@@ -111,7 +113,7 @@ describe("POST /:id/reveal", () => {
       {
         id: expect.any(String),
         actorUserId: "staff",
-        actorDepartmentCode: null,
+        actorDepartmentCode: "art",
         impersonatedBy: null,
         leadershipId: seatId,
         departmentId: await t.departmentId("Tech/Live"),

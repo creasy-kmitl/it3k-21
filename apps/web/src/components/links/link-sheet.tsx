@@ -27,6 +27,7 @@ import {
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
+import { LoadingButton } from "@/components/loading-button";
 import { SideDrawer } from "@/components/calendar/side-drawer";
 import { SegmentedControl } from "@/components/segmented-control";
 import { useApis } from "@/lib/api-context";
@@ -41,6 +42,8 @@ import {
 
 import { LinkForm } from "./link-form";
 import { CopyButton, LinkStateBadge, displayUrl } from "./link-parts";
+import { ErrorState } from "@/components/error-state";
+import { toastError } from "@/lib/errors";
 
 const ACTION_LABELS: Record<ShortLinkChange["action"], { label: string; icon: LucideIcon }> = {
   create: { label: "สร้างลิงก์", icon: Plus },
@@ -279,7 +282,7 @@ function LinkBody({
         toast.error(STALE);
         void queryClient.invalidateQueries({ queryKey: ["links"] });
       } else if (!linkError(error)) {
-        toast.error(`บันทึกไม่สำเร็จ: ${error.message}`);
+        toastError(error, "บันทึกไม่สำเร็จ");
       }
     },
   });
@@ -399,15 +402,15 @@ function LinkBody({
               <Button variant="outline" size="sm" onClick={() => setConfirmingOff(false)}>
                 ยกเลิก
               </Button>
-              <Button
+              <LoadingButton
                 variant="destructive"
                 size="sm"
-                disabled={update.isPending}
+                icon={CirclePause}
+                loading={update.isPending}
                 onClick={() => update.mutate({ enabled: false })}
               >
-                <CirclePause data-icon="inline-start" />
                 ปิดลิงก์
-              </Button>
+              </LoadingButton>
             </div>
           </div>
         ) : (
@@ -422,14 +425,14 @@ function LinkBody({
                 ปิดลิงก์
               </Button>
             ) : (
-              <Button
+              <LoadingButton
                 variant="outline"
-                disabled={update.isPending}
+                icon={CirclePlay}
+                loading={update.isPending}
                 onClick={() => update.mutate({ enabled: true })}
               >
-                <CirclePlay data-icon="inline-start" />
                 เปิดลิงก์
-              </Button>
+              </LoadingButton>
             )}
           </div>
         ))}
@@ -483,11 +486,16 @@ export function LinkSheet({
           knownTags={knownTags}
         />
       ) : detail.isError ? (
-        <p role="alert" className="text-sm text-destructive">
-          {detail.error instanceof ApiError && detail.error.status === 404
-            ? "ไม่พบลิงก์นี้"
-            : `โหลดลิงก์ไม่สำเร็จ: ${detail.error.message}`}
-        </p>
+        <ErrorState
+          error={detail.error}
+          onRetry={detail.refetch}
+          title={
+            detail.error instanceof ApiError && detail.error.status === 404
+              ? "ไม่พบลิงก์นี้"
+              : "โหลดลิงก์ไม่สำเร็จ"
+          }
+          size="sm"
+        />
       ) : (
         <div role="status" className="flex flex-col gap-3">
           <span className="sr-only">กำลังโหลด</span>

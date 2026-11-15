@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { leadership, leadershipSocial, user } from "@it3k/db/schema/index";
 import { eq } from "drizzle-orm";
+import { unlockDepartmentCodes } from "@it3k/db/testing";
 
 import { createTestContext, defined, readJson } from "../../testing";
 import { createLeadershipRoutes } from "../leadership";
@@ -166,6 +167,38 @@ describe("PUT /:id/assignment", () => {
 });
 
 describe("PUT /:id/assignment under concurrent changes", () => {
+  for (const change of ["role", "department", "code", "ban", "removal"] as const) {
+    test(`manager ${change} revocation rolls back assignment and contact deletion`, async () => {
+      const seat = defined(await seatOf("reg-vice"));
+      await t.db
+        .insert(leadershipSocial)
+        .values({ leadershipId: seat.id, platform: "line", value: "private" });
+      t.hooks.beforeBatch = () => {
+        t.hooks.beforeBatch = undefined;
+        if (change === "role")
+          t.sqlite.run("update user set role = 'guest' where id = 'tech-staff'");
+        if (change === "department")
+          t.sqlite.run("update user set department_id = null where id = 'tech-staff'");
+        if (change === "code") {
+          unlockDepartmentCodes(t.sqlite);
+          t.sqlite.run(
+            "update department set code = null where id = (select department_id from user where id = 'tech-staff')",
+          );
+        }
+        if (change === "ban") t.sqlite.run("update user set banned = 1 where id = 'tech-staff'");
+        if (change === "removal") t.sqlite.run("delete from user where id = 'tech-staff'");
+      };
+      expect((await assign("tech-staff", "reg-vice", { kind: "guest" })).res.status).toBe(409);
+      expect(await seatOf("reg-vice")).toMatchObject({ id: seat.id });
+      expect(await stored("reg-vice")).toMatchObject({ role: "staff" });
+      expect(
+        await t.db
+          .select()
+          .from(leadershipSocial)
+          .where(eq(leadershipSocial.leadershipId, seat.id)),
+      ).toHaveLength(1);
+    });
+  }
   test("a target made admin meanwhile is not demoted by a non-admin", async () => {
     // tech-staff passes the admin check, then an admin promotes the target.
     t.hooks.beforeBatch = () => {
@@ -248,6 +281,35 @@ describe("PUT /:id/assignment when a seat moves meanwhile", () => {
 });
 
 describe("PUT /:id/admin", () => {
+  for (const change of ["role", "ban", "removal"] as const) {
+    test(`admin ${change} revocation prevents granting admin`, async () => {
+      t.hooks.beforeBatch = () => {
+        t.hooks.beforeBatch = undefined;
+        if (change === "role") t.sqlite.run("update user set role = 'guest' where id = 'admin'");
+        if (change === "ban") t.sqlite.run("update user set banned = 1 where id = 'admin'");
+        if (change === "removal") t.sqlite.run("delete from user where id = 'admin'");
+      };
+      expect((await send("admin", "PUT", "/guest/admin", { admin: true })).res.status).toBe(409);
+      expect(await stored("guest")).toMatchObject({ role: "guest" });
+    });
+  }
+  test("an in-flight request cannot restore its caller's revoked admin role", async () => {
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("update user set role = 'guest' where id = 'admin'");
+    };
+    expect((await send("admin", "PUT", "/admin/admin", { admin: true })).res.status).toBe(409);
+    expect(await stored("admin")).toMatchObject({ role: "guest" });
+  });
+  test("a changed target department cannot choose a stale fallback role", async () => {
+    await t.db.update(user).set({ role: "admin" }).where(eq(user.id, "art-staff"));
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run("update user set department_id = null where id = 'art-staff'");
+    };
+    expect((await send("admin", "PUT", "/art-staff/admin", { admin: false })).res.status).toBe(409);
+    expect(await stored("art-staff")).toMatchObject({ role: "admin", departmentId: null });
+  });
   test("only admins grant or remove admin", async () => {
     let { res } = await send("tech-staff", "PUT", "/guest/admin", { admin: true });
     expect(res.status).toBe(403);
@@ -264,5 +326,48 @@ describe("PUT /:id/admin", () => {
     const { res } = await send("admin", "PUT", "/admin/admin", { admin: false });
     expect(res.status).toBe(400);
     expect((await stored("admin"))?.role).toBe("admin");
+  });
+});
+
+describe("institution", () => {
+  const setInstitution = (who: string, id: string, institution: string | null) =>
+    send<Record<string, unknown>>(who, "PUT", `/${id}/institution`, { institution });
+
+  test("admins, Tech/Live and host registration leaders set it", async () => {
+    await t.seedUser("reg-head", { seat: "head", department: "ทะเบียน", institution: "kmitl" });
+    for (const who of ["admin", "tech-staff", "reg-head"]) {
+      const { res, body } = await setInstitution(who, "art-staff", "kmutt");
+      expect(res.status).toBe(200);
+      expect(body).toMatchObject({ institution: "kmutt", canSetInstitution: true });
+    }
+    expect((await stored("art-staff"))?.institution).toBe("kmutt");
+    expect((await setInstitution("admin", "art-staff", null)).body.institution).toBeNull();
+  });
+
+  test("registration without a seat or from another institution cannot", async () => {
+    await t.seedUser("reg-staff", { department: "ทะเบียน", institution: "kmitl" });
+    await t.seedUser("reg-kmutt", { seat: "head", department: "ทะเบียน", institution: "kmutt" });
+    // reg-vice has no institution yet, so it has no sport rights at all.
+    for (const who of ["reg-staff", "reg-kmutt", "reg-vice", "art-staff"]) {
+      expect((await setInstitution(who, "guest", "kmitl")).res.status).toBe(403);
+    }
+    expect((await stored("guest"))?.institution).toBeNull();
+  });
+
+  test("only admins change an admin's institution", async () => {
+    expect((await setInstitution("tech-staff", "admin", "kmitl")).res.status).toBe(403);
+    expect((await setInstitution("admin", "admin", "kmitl")).res.status).toBe(200);
+  });
+
+  test("rejects unknown institutions", async () => {
+    expect((await setInstitution("admin", "guest", "harvard")).res.status).toBe(400);
+  });
+
+  test("/me reports the caller's sport rights", async () => {
+    await t.seedUser("reg-staff", { department: "ทะเบียน", institution: "kmitl" });
+    expect((await send("reg-staff", "GET", "/me")).body).toMatchObject({
+      institution: "kmitl",
+      sportAccess: { permissions: ["athletes.read", "kiosk.operate"], scope: { kind: "all" } },
+    });
   });
 });

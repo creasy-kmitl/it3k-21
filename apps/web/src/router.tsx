@@ -4,6 +4,7 @@ import { createRouter as createTanStackRouter } from "@tanstack/react-router";
 import Loader from "./components/loader";
 import NotFound from "./components/not-found";
 import RouteError from "./components/route-error";
+import { isRetryable } from "./lib/errors";
 import { isSignedOut } from "./lib/leadership";
 import { routeTree } from "./routeTree.gen";
 
@@ -14,12 +15,19 @@ export const getRouter = () => {
   const onError = (error: Error) => {
     if (!isSignedOut(error)) return;
     const { pathname, href } = router.state.location;
-    if (!pathname.startsWith("/staff")) return;
-    void router.navigate({ to: "/login", search: { to: href } });
+    if (!pathname.startsWith("/staff") && pathname !== "/me" && pathname !== "/signup") return;
+    queryClient.clear();
+    void router.navigate({ to: "/login", search: { to: href }, ignoreBlocker: true });
   };
   const queryClient = new QueryClient({
     queryCache: new QueryCache({ onError }),
     mutationCache: new MutationCache({ onError }),
+    defaultOptions: {
+      // Retry what may pass on its own (network, 5xx), but show a 403 or 404 at once.
+      queries: { retry: (failures, error) => failures < 2 && isRetryable(error) },
+      // A failed write is reported to the person, who decides whether to send it again.
+      mutations: { retry: false },
+    },
   });
 
   const router = createTanStackRouter({

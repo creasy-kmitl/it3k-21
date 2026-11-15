@@ -15,12 +15,15 @@ import {
   useSidebar,
 } from "@it3k/ui/components/sidebar";
 import { Skeleton } from "@it3k/ui/components/skeleton";
+import { hasRole } from "@it3k/auth/permissions";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { ChevronsUpDownIcon, LogOutIcon } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ChevronsUpDownIcon, EyeIcon, LogOutIcon } from "lucide-react";
+import { useState } from "react";
 
 import { DepartmentBadge } from "@/components/department-icon";
 import { RoleBadge, standingText } from "@/components/role-badge";
+import { ViewAsDialog } from "@/components/view-as-dialog";
 import { authClient } from "@/lib/auth-client";
 import { useMe } from "@/lib/users";
 
@@ -34,12 +37,16 @@ export function NavUser() {
   const queryClient = useQueryClient();
   const { data: session, isPending } = authClient.useSession();
   const { data: me } = useMe();
+  const [viewing, setViewing] = useState(false);
 
   if (isPending || !session) {
     return <Skeleton className="h-12 w-full" />;
   }
 
   const { user } = session;
+  // The session's role is the real one; `me` already reflects any view-as.
+  const canViewAs =
+    hasRole(user.role, "admin") && !session.session.impersonatedBy && me?.viewingAs === false;
   const avatar = (
     <Avatar>
       <AvatarImage src={user.image ?? undefined} alt={user.name} />
@@ -99,6 +106,13 @@ export function NavUser() {
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
+            <DropdownMenuItem render={<Link to="/me" />}>โปรไฟล์ของฉัน</DropdownMenuItem>
+            {canViewAs && (
+              <DropdownMenuItem onClick={() => setViewing(true)}>
+                <EyeIcon />
+                จำลองมุมมอง…
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               variant="destructive"
               onClick={() => {
@@ -118,6 +132,7 @@ export function NavUser() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        {viewing && <ViewAsDialog onClose={() => setViewing(false)} />}
       </SidebarMenuItem>
     </SidebarMenu>
   );

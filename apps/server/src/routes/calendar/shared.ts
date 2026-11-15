@@ -9,7 +9,7 @@ import { type CurrentUser, constraintError } from "../../middleware/current-user
 
 const MAX_QUERY_CODE_POINTS = 64;
 
-export const STALE_MESSAGE = "This item changed while you were editing; reload and try again";
+export const STALE_MESSAGE = "รายการนี้ถูกแก้ไขระหว่างที่คุณกำลังแก้ กรุณาโหลดใหม่แล้วลองอีกครั้ง";
 
 export const epochMs = z
   .number()
@@ -27,7 +27,7 @@ export const searchText = z
   .trim()
   // Count code points, not UTF-16 units, so Thai and emoji are treated alike.
   .refine((q) => [...q].length <= MAX_QUERY_CODE_POINTS, {
-    message: `Search is limited to ${MAX_QUERY_CODE_POINTS} characters`,
+    message: `ค้นหาได้ไม่เกิน ${MAX_QUERY_CODE_POINTS} ตัวอักษร`,
   });
 
 /** Trimmed optional text where blank means "none". */
@@ -45,9 +45,9 @@ export const ms = (date: Date | null) => (date ? date.getTime() : null);
 /** Owners and assignees must be staff members or admins. */
 export async function ownerProblem(db: Database, ownerId: string): Promise<string | null> {
   const [owner] = await db.select({ role: user.role }).from(user).where(eq(user.id, ownerId));
-  if (!owner) return "Owner not found";
+  if (!owner) return "ไม่พบผู้รับผิดชอบนี้";
   const roles = (owner.role ?? "").split(",").map((role) => role.trim());
-  if (!roles.includes("staff") && !roles.includes("admin")) return "The owner must be a member";
+  if (!roles.includes("staff") && !roles.includes("admin")) return "ผู้รับผิดชอบต้องเป็นทีมงาน";
   return null;
 }
 
@@ -96,7 +96,7 @@ export function conflictResponse(error: unknown) {
   const kind = constraintError(error);
   if (kind === "stale") return { message: STALE_MESSAGE, status: 409 as const };
   if (kind === "foreign-key") {
-    return { message: "Someone or something it refers to no longer exists", status: 409 as const };
+    return { message: "ข้อมูลที่อ้างถึงถูกลบไปแล้ว กรุณาโหลดใหม่", status: 409 as const };
   }
   return null;
 }
