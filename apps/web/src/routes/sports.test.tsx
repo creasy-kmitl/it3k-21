@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 
 import type { MyRegistration, MyRegistrations, RegistrationsApi } from "@/lib/registrations";
 import type { Division, Sport } from "@/lib/sports";
@@ -8,7 +8,7 @@ import { ApiProvider } from "@/lib/api-context";
 import { fakeApis, fakeRegistrationsApi, fakeSportsApi } from "@/test/query";
 import { renderAtRoot } from "@/test/router";
 
-import { SportsRegistrationPage } from "./sports";
+import { SportsRegistrationPage, divisionSummary, filterSports } from "./sports";
 
 afterEach(cleanup);
 
@@ -126,11 +126,28 @@ function setup(data: MyRegistrations, overrides: Partial<RegistrationsApi> = {})
 }
 
 describe("/sports", () => {
+  /** The sports to enroll in live in a drawer behind the header button. */
+  async function openCatalog(view: Awaited<ReturnType<typeof setup>>, name = "สมัครกีฬา") {
+    fireEvent.click(await view.findByRole("button", { name }));
+    return view.findByRole("searchbox", { name: "ค้นหากีฬา" });
+  }
+
   test("asks for the participant profile before registering", async () => {
     const view = await setup(mine({ profileSubmitted: false }));
     expect(await view.findByText("ลงทะเบียนผู้เข้าร่วมก่อน")).toBeTruthy();
+    await openCatalog(view, "ดูประเภทกีฬา");
     const button = view.getByRole("button", { name: "สมัคร ฟุตบอลชาย" }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
+    // Nor a Discord bar, which is only useful once registering is possible.
+    expect(view.queryByRole("button", { name: "เชื่อม Discord" })).toBeNull();
+  });
+
+  test("with nothing registered, the page points to the sports", async () => {
+    const view = await setup(mine());
+    expect(await view.findByText("ยังไม่ได้สมัครกีฬา")).toBeTruthy();
+    expect(view.queryByRole("searchbox", { name: "ค้นหากีฬา" })).toBeNull();
+    await openCatalog(view, "เลือกกีฬาที่จะสมัคร");
+    expect(view.getByText("กีฬาฟุตบอล")).toBeTruthy();
   });
 
   test("the first registration asks for the student id and the shirt number", async () => {
@@ -141,8 +158,9 @@ describe("/sports", () => {
         return registration();
       },
     });
-    fireEvent.click(await view.findByRole("button", { name: "สมัคร ฟุตบอลชาย" }));
-    fireEvent.click(view.getByRole("button", { name: "สมัคร" }));
+    await openCatalog(view);
+    fireEvent.click(view.getByRole("button", { name: "สมัคร ฟุตบอลชาย" }));
+    fireEvent.click(await view.findByRole("button", { name: "สมัคร" }));
     expect(await view.findByText("กรอกเบอร์เสื้อ")).toBeTruthy();
     expect(registered).toEqual([]);
 
@@ -164,7 +182,7 @@ describe("/sports", () => {
     );
   });
 
-  test("esports needs a linked Discord account first", async () => {
+  test("esports needs a linked Discord account first, and only esports shows Discord", async () => {
     let linked = 0;
     const view = await setup(mine({ studentId: "65070001" }), {
       linkDiscord: async () => {
@@ -172,15 +190,19 @@ describe("/sports", () => {
         return undefined as never;
       },
     });
-    expect(await view.findByText(/ต้องเชื่อม Discord ก่อนสมัครกีฬา Esports/)).toBeTruthy();
-    fireEvent.click(view.getByRole("button", { name: "สมัคร ROV" }));
-    expect(view.queryByLabelText("รหัสนักศึกษา")).toBeNull();
-    expect(view.getByLabelText("ชื่อภายในเกม (IGN)")).toBeTruthy();
-    const submit = view.getByRole("button", { name: "สมัคร" }) as HTMLButtonElement;
-    expect(submit.disabled).toBe(true);
-    fireEvent.click(view.getByRole("button", { name: "ยกเลิก" }));
+    await openCatalog(view);
+    expect(view.getByText("ต้องเชื่อม Discord ก่อนสมัคร")).toBeTruthy();
+    // One bar, on the esports card; football has none.
+    expect(view.getAllByRole("button", { name: "เชื่อม Discord" })).toHaveLength(1);
 
-    fireEvent.click(view.getByRole("button", { name: "เชื่อม Discord" }));
+    fireEvent.click(view.getByRole("button", { name: "สมัคร ROV" }));
+    const dialog = await view.findByRole("dialog", { name: "สมัคร ROV" });
+    expect(within(dialog).queryByLabelText("รหัสนักศึกษา")).toBeNull();
+    expect(within(dialog).getByLabelText("ชื่อภายในเกม (IGN)")).toBeTruthy();
+    const submit = within(dialog).getByRole("button", { name: "สมัคร" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    // The dialog links Discord itself.
+    fireEvent.click(within(dialog).getByRole("button", { name: "เชื่อม Discord" }));
     await waitFor(() => expect(linked).toBe(1));
   });
 
@@ -197,12 +219,24 @@ describe("/sports", () => {
         },
       },
     );
-    expect(await view.findByText("เชื่อมแล้ว: jett")).toBeTruthy();
+    await openCatalog(view);
+    expect(view.getByText("เชื่อมแล้ว: jett")).toBeTruthy();
     fireEvent.click(view.getByRole("button", { name: "ยกเลิกการเชื่อม" }));
     await waitFor(() => expect(unlinked).toEqual(["a-1"]));
   });
 
-  test("lists registrations: unreviewed ones can be edited or withdrawn, rejected ones show why", async () => {
+  test("search narrows the sports and says when nothing matches", async () => {
+    const view = await setup(mine());
+    const search = await openCatalog(view, "เลือกกีฬาที่จะสมัคร");
+    fireEvent.change(search, { target: { value: "rov" } });
+    expect(view.getByText("Esports")).toBeTruthy();
+    expect(view.queryByText("กีฬาฟุตบอล")).toBeNull();
+
+    fireEvent.change(search, { target: { value: "ปิงปอง" } });
+    expect(view.getByText("ไม่พบกีฬาที่ตรงกับ “ปิงปอง”")).toBeTruthy();
+  });
+
+  test("the page lists registrations: unreviewed ones can be edited or withdrawn, rejected ones show why", async () => {
     const withdrawn: [string, number][] = [];
     const view = await setup(
       mine({
@@ -226,8 +260,9 @@ describe("/sports", () => {
       },
     );
     expect(await view.findByText("เหตุผล: ไม่ใช่นักศึกษา")).toBeTruthy();
+    expect(view.getByText("การสมัครของฉัน (2)")).toBeTruthy();
     expect(view.getAllByText("เบอร์ 10")).toHaveLength(2);
-    expect(view.getAllByText("สมัครแล้ว")).toHaveLength(2);
+    expect(view.getByText("รอตรวจสอบ")).toBeTruthy();
     expect(view.queryByRole("button", { name: "แก้ไข ROV" })).toBeNull();
     expect(view.getByRole("button", { name: "แก้ไข ฟุตบอลชาย" })).toBeTruthy();
 
@@ -235,4 +270,38 @@ describe("/sports", () => {
     fireEvent.click(await view.findByRole("button", { name: "ถอน" }));
     await waitFor(() => expect(withdrawn).toEqual([["r-1", 1]]));
   });
+
+  test("in the drawer, registered divisions show their status instead of a button", async () => {
+    const view = await setup(mine({ studentId: "65070001", registrations: [registration()] }));
+    await openCatalog(view);
+    expect(view.queryByRole("button", { name: "สมัคร ฟุตบอลชาย" })).toBeNull();
+    expect(view.getAllByText("รอตรวจสอบ")).toHaveLength(2);
+  });
+});
+
+describe("filterSports", () => {
+  const two = [
+    sport({ divisions: [division(), division({ id: "d-f", name: "ฟุตบอลหญิง", gender: "female" })] }),
+    SPORTS[1] as Sport,
+  ];
+
+  test("a matching sport keeps every division", () => {
+    expect(filterSports(two, " ฟุตบอล ")[0]?.divisions).toHaveLength(2);
+  });
+
+  test("otherwise only the matching divisions stay", () => {
+    const result = filterSports(two, "หญิง");
+    expect(result.map((s) => s.id)).toEqual(["s-football"]);
+    expect(result[0]?.divisions.map((d) => d.id)).toEqual(["d-f"]);
+  });
+
+  test("an empty query changes nothing", () => {
+    expect(filterSports(two, "  ")).toBe(two);
+  });
+});
+
+test("divisionSummary reads as one line", () => {
+  expect(divisionSummary(division({ maxPerInstitution: 12 }))).toBe(
+    "ชาย · ทีม · เบอร์เสื้อ · สูงสุด 12 คน/สถาบัน",
+  );
 });
