@@ -5,6 +5,9 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* Big landscape screens, such as a check-in kiosk on a desk monitor or TV. */
+@custom-variant wide (@media (width >= 64rem) and (orientation: landscape));
+
 @theme {
   --animate-navigation-progress: navigation-progress 1.2s ease-in-out infinite;
 
