@@ -34,6 +34,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  GraduationCap,
+  IdCard,
   Pencil,
   RotateCcw,
   Search,
@@ -45,6 +47,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import {
+  IconLabel,
   type FieldIssues,
   RegistrationFieldsEditor,
   parseDraft,
@@ -560,7 +563,9 @@ function EditDialog({ item, onClose }: { item: AthleteItem; onClose: () => void 
           </DialogHeader>
           <FieldGroup>
             <Field data-invalid={!!issues.studentId}>
-              <FieldLabel htmlFor="athlete-student-id">รหัสนักศึกษา</FieldLabel>
+              <IconLabel htmlFor="athlete-student-id" icon={IdCard}>
+                รหัสนักศึกษา
+              </IconLabel>
               <Input
                 id="athlete-student-id"
                 value={studentId}
@@ -570,7 +575,9 @@ function EditDialog({ item, onClose }: { item: AthleteItem; onClose: () => void 
               {issues.studentId && <FieldDescription>{issues.studentId}</FieldDescription>}
             </Field>
             <Field>
-              <FieldLabel htmlFor="athlete-institution">สถาบัน</FieldLabel>
+              <IconLabel htmlFor="athlete-institution" icon={GraduationCap}>
+                สถาบัน
+              </IconLabel>
               <Select
                 items={institutionItems}
                 value={institution}

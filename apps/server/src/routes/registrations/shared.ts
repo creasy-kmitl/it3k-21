@@ -1,4 +1,5 @@
 import type { Database } from "@it3k/db";
+import type { Institution } from "@it3k/db/profile";
 import { account, user } from "@it3k/db/schema/auth";
 import { userProfile } from "@it3k/db/schema/profile";
 import {
@@ -9,7 +10,8 @@ import {
   sportRegistration,
   sportRegistrationChange,
 } from "@it3k/db/schema/sport";
-import { and, eq } from "drizzle-orm";
+import { type AnyColumn, type SQL, and, eq, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 
 import { type CurrentUser, constraintMessage } from "../../middleware/current-user";
 
@@ -104,3 +106,47 @@ export function registrationConflict(error: unknown): string | null {
 }
 
 export const STALE = "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่";
+
+// The per-institution limit counts approved registrations only: anyone may
+// apply, and registration staff choose who fills the places when approving.
+
+export const TEAM_FULL = "สถาบันนี้อนุมัติครบจำนวนของประเภทนี้แล้ว";
+export const MOVE_FULL = "ย้ายสถาบันไม่ได้ สถาบันใหม่อนุมัติครบจำนวนในประเภทที่นักกีฬาคนนี้ได้รับอนุมัติแล้ว";
+
+/**
+ * SQL: approving `userId` in `divisionId` for `institution` stays within the
+ * division's limit, counting everyone else already approved there.
+ */
+export function approvedRoom(
+  divisionId: string | AnyColumn,
+  institution: Institution,
+  userId: string,
+): SQL {
+  const others = alias(sportRegistration, "others");
+  const limit = alias(sportDivision, "limit_division");
+  return sql`(select count(*) from ${sportRegistration} as "others" where ${others.divisionId} = ${divisionId} and ${others.institution} = ${institution} and ${others.status} = 'approved' and ${others.userId} <> ${userId}) < coalesce((select ${limit.maxPerInstitution} from ${sportDivision} as "limit_division" where ${limit.id} = ${divisionId}), 1000000)`;
+}
+
+/** SQL: every approved registration of `userId` still fits after moving to `institution`. */
+export function roomAfterMove(userId: string, institution: Institution): SQL {
+  const mine = alias(sportRegistration, "mine");
+  return sql`not exists (select 1 from ${sportRegistration} as "mine" where ${mine.userId} = ${userId} and ${mine.status} = 'approved' and not (${approvedRoom(mine.divisionId, institution, userId)}))`;
+}
+
+/** Evaluates a condition on its own, for a friendly answer before the guarded batch. */
+export async function holds(db: Database, condition: SQL) {
+  const row = await db.get<{ ok: number }>(sql`select (${condition}) as ok`);
+  return !!row?.ok;
+}
+
+/** Approved registrations per division for one institution, for the athlete's page. */
+export async function approvedCounts(db: Database, institution: Institution) {
+  const rows = await db
+    .select({ divisionId: sportRegistration.divisionId, approved: sql<number>`count(*)` })
+    .from(sportRegistration)
+    .where(
+      and(eq(sportRegistration.institution, institution), eq(sportRegistration.status, "approved")),
+    )
+    .groupBy(sportRegistration.divisionId);
+  return Object.fromEntries(rows.map((row) => [row.divisionId, Number(row.approved)]));
+}

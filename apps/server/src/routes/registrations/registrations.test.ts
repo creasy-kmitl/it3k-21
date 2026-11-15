@@ -136,7 +136,7 @@ describe("registering", () => {
     expect((await register("a2", "football", { shirtNumber: 7 })).res.status).toBe(201);
   });
 
-  test("closed divisions and full quotas refuse, also when they close mid-request", async () => {
+  test("closed divisions refuse, also when they close mid-request", async () => {
     const football = await t.divisionId("football");
     await t.db
       .update(sportDivision)
@@ -146,21 +146,29 @@ describe("registering", () => {
       "ประเภทนี้ปิดรับสมัครแล้ว",
     );
 
-    const sprint = await t.divisionId("athletics-100m-male");
-    await t.db
-      .update(sportDivision)
-      .set({ maxPerInstitution: 1 })
-      .where(eq(sportDivision.id, sprint));
-    expect((await register("a1", "athletics-100m-male")).res.status).toBe(201);
-    const full = await register("a2", "athletics-100m-male");
-    expect(full.res.status).toBe(409);
-
     const relay = await t.divisionId("athletics-4x100m-male");
     t.hooks.beforeBatch = () => {
       t.sqlite.run(`update sport_division set registration_open = 0 where id = '${relay}'`);
     };
     expect((await register("a2", "athletics-4x100m-male")).res.status).toBe(409);
     expect(await t.db.select().from(athlete).where(eq(athlete.userId, "a2"))).toEqual([]);
+  });
+
+  test("the per-institution limit counts approvals, so it never stops anyone applying", async () => {
+    const sprint = await t.divisionId("athletics-100m-male");
+    await t.db
+      .update(sportDivision)
+      .set({ maxPerInstitution: 1 })
+      .where(eq(sportDivision.id, sprint));
+    expect((await register("a1", "athletics-100m-male")).res.status).toBe(201);
+    expect((await register("a2", "athletics-100m-male")).res.status).toBe(201);
+    expect((await send("a2", "GET", "/me")).body.approvedCounts).toEqual({});
+
+    await t.db
+      .update(sportRegistration)
+      .set({ status: "approved" })
+      .where(eq(sportRegistration.userId, "a1"));
+    expect((await send("a2", "GET", "/me")).body.approvedCounts).toEqual({ [sprint]: 1 });
   });
 
   test("esports needs the game profile and a linked Discord account", async () => {

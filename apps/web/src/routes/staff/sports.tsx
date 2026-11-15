@@ -468,7 +468,7 @@ function DivisionForm({
           value={maxPerInstitution}
           onChange={setMax}
           error={issues.maxPerInstitution}
-          hint="เว้นว่างถ้าไม่จำกัด"
+          hint="นับเฉพาะคนที่อนุมัติแล้ว เว้นว่างถ้าไม่จำกัด"
         />
         <TextField
           id="division-order"
