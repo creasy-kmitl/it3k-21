@@ -17,11 +17,12 @@ type DivisionSummary = Pick<
   "gender" | "format" | "requiresShirtNumber" | "requiresBadmintonRank" | "requiresGameProfile"
 > & { maxPerInstitution?: number | null };
 
+/** The division's tags as athletes see them, then what staff set on it. */
 export function DivisionBadges({ division }: { division: DivisionSummary }) {
   return (
-    <span className="flex flex-wrap gap-1">
-      <Badge variant="secondary">{GENDER_LABELS[division.gender]}</Badge>
-      <Badge variant="secondary">{FORMAT_LABELS[division.format]}</Badge>
+    <span className="flex flex-wrap items-center gap-1.5">
+      <GenderTag gender={division.gender} />
+      <FormatTag format={division.format} />
       {division.requiresShirtNumber && <Badge variant="outline">เบอร์เสื้อ</Badge>}
       {division.requiresBadmintonRank && <Badge variant="outline">มือ 1/2</Badge>}
       {division.requiresGameProfile && <Badge variant="outline">IGN · Discord</Badge>}
@@ -52,6 +53,37 @@ const GENDER_STYLES: Record<DivisionGender, { className: string; icon: typeof Ma
 /** One figure per player for individual and pair, three for a team. */
 const FORMAT_PEOPLE: Record<DivisionFormat, number> = { individual: 1, pair: 2, team: 3 };
 
+/** The gender as a tinted chip with its symbol: sky for men, pink for women. */
+export function GenderTag({ gender }: { gender: DivisionGender }) {
+  const style = GENDER_STYLES[gender];
+  const Icon = style.icon;
+  return (
+    <span
+      className={cn(
+        "inline-flex h-5 items-center gap-1 rounded-full px-2 text-xs font-medium",
+        style.className,
+      )}
+    >
+      {Icon && <Icon className="size-3" aria-hidden />}
+      {GENDER_LABELS[gender]}
+    </span>
+  );
+}
+
+/** The format with one, two or three figures. */
+export function FormatTag({ format }: { format: DivisionFormat }) {
+  return (
+    <span className="inline-flex h-5 items-center gap-1 rounded-full border px-2 text-xs text-muted-foreground">
+      <span className="flex -space-x-1" aria-hidden>
+        {Array.from({ length: FORMAT_PEOPLE[format] }, (_, i) => (
+          <User key={i} className="size-3" />
+        ))}
+      </span>
+      {FORMAT_LABELS[format]}
+    </span>
+  );
+}
+
 /**
  * Gender and format at a glance: a tinted chip with the gender symbol, then
  * the format with one, two or three figures.
@@ -63,27 +95,10 @@ export function DivisionTags({
   division: Pick<Division, "gender" | "format">;
   className?: string;
 }) {
-  const gender = GENDER_STYLES[division.gender];
-  const GenderIcon = gender.icon;
   return (
     <span className={cn("flex flex-wrap items-center gap-1.5 text-xs", className)}>
-      <span
-        className={cn(
-          "inline-flex h-5 items-center gap-1 rounded-full px-2 font-medium",
-          gender.className,
-        )}
-      >
-        {GenderIcon && <GenderIcon className="size-3" aria-hidden />}
-        {GENDER_LABELS[division.gender]}
-      </span>
-      <span className="inline-flex h-5 items-center gap-1 rounded-full border px-2 text-muted-foreground">
-        <span className="flex -space-x-1" aria-hidden>
-          {Array.from({ length: FORMAT_PEOPLE[division.format] }, (_, i) => (
-            <User key={i} className="size-3" />
-          ))}
-        </span>
-        {FORMAT_LABELS[division.format]}
-      </span>
+      <GenderTag gender={division.gender} />
+      <FormatTag format={division.format} />
     </span>
   );
 }

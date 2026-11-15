@@ -22,11 +22,12 @@ import { Progress } from "@it3k/ui/components/progress";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@it3k/ui/components/tabs";
 import { cn } from "@it3k/ui/lib/utils";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, FileIcon, ImagePlus, Trash2, Upload } from "lucide-react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Copy, FileIcon, ImagePlus, Loader2Icon, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { LoadingButton } from "@/components/loading-button";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useApis } from "@/lib/api-context";
 import { fileSize, type LibraryFile } from "@/lib/files";
 import { isAccountChanged, isSignedOut } from "@/lib/leadership";
@@ -64,10 +65,16 @@ export function FileLibrary({
       abort.current?.abort();
     };
   }, []);
+  // Search once typing pauses, not on every key.
+  const search = useDebouncedValue(q);
   const library = useQuery({
-    queryKey: ["files", userId, { q, page, images: !!onSelect }],
-    queryFn: () => files.list({ userId, q, page, images: !!onSelect }),
+    queryKey: ["files", userId, { q: search, page, images: !!onSelect }],
+    queryFn: () => files.list({ userId, q: search, page, images: !!onSelect }),
+    // Keep the last page on screen while the next one loads, instead of a skeleton.
+    placeholderData: keepPreviousData,
   });
+  // A new page or search is on its way: the files shown are the previous ones.
+  const switching = library.isPlaceholderData || q !== search;
   useEffect(() => {
     if (isAccountChanged(library.error) || isSignedOut(library.error)) endSession?.();
   }, [library.error, endSession]);
@@ -147,11 +154,15 @@ export function FileLibrary({
           <TabsContent value="upload">
             <section
               aria-label="พื้นที่วางไฟล์"
-              className="flex min-h-64 flex-col items-center justify-center gap-4 rounded-2xl border border-dashed p-8"
+              aria-busy={uploading}
+              className={cn(
+                "flex min-h-64 flex-col items-center justify-center gap-4 rounded-2xl border border-dashed p-8 transition-opacity",
+                uploading && "opacity-60",
+              )}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
                 event.preventDefault();
-                void upload(event.dataTransfer.files);
+                if (!uploading) void upload(event.dataTransfer.files);
               }}
             >
               <Upload className="size-10 text-muted-foreground" aria-hidden />
@@ -169,10 +180,13 @@ export function FileLibrary({
                   event.target.value = "";
                 }}
               />
-              <Button disabled={uploading} onClick={() => picker.current?.click()}>
-                <ImagePlus data-icon="inline-start" />
-                เลือกไฟล์
-              </Button>
+              <LoadingButton
+                icon={ImagePlus}
+                loading={uploading}
+                onClick={() => picker.current?.click()}
+              >
+                {uploading ? "กำลังอัปโหลด" : "เลือกไฟล์"}
+              </LoadingButton>
               <p className="text-muted-foreground">
                 ขนาดสูงสุด {onSelect ? "10 MB · JPEG, PNG, WebP" : "50 MB ต่อไฟล์"}
               </p>
@@ -222,7 +236,13 @@ export function FileLibrary({
                 }}
               />
               <div className="grid gap-4 md:grid-cols-[1fr_15rem]">
-                <div className="flex min-h-64 flex-col gap-4">
+                <div
+                  className={cn(
+                    "flex min-h-64 flex-col gap-4 transition-opacity",
+                    switching && "opacity-60",
+                  )}
+                  aria-busy={switching || library.isPending}
+                >
                   {library.isPending ? (
                     <Skeleton className="h-64 w-full" />
                   ) : library.isError ? (
@@ -235,8 +255,10 @@ export function FileLibrary({
                   ) : !library.data.items.length ? (
                     <Empty>
                       <EmptyHeader>
-                        <EmptyTitle>ยังไม่มีไฟล์</EmptyTitle>
-                        <EmptyDescription>อัปโหลดไฟล์เพื่อเริ่มต้นใช้งาน</EmptyDescription>
+                        <EmptyTitle>{search ? "ไม่พบไฟล์" : "ยังไม่มีไฟล์"}</EmptyTitle>
+                        <EmptyDescription>
+                          {search ? `ไม่มีไฟล์ที่ตรงกับ “${search}”` : "อัปโหลดไฟล์เพื่อเริ่มต้นใช้งาน"}
+                        </EmptyDescription>
                       </EmptyHeader>
                     </Empty>
                   ) : (
@@ -258,7 +280,7 @@ export function FileLibrary({
                               src={file.url}
                               alt=""
                               loading="lazy"
-                              className="aspect-square w-full rounded-lg object-cover"
+                              className="aspect-square w-full rounded-lg bg-muted object-cover"
                             />
                           ) : (
                             <div className="flex aspect-square items-center justify-center rounded-lg bg-muted">
@@ -280,15 +302,23 @@ export function FileLibrary({
                     <div className="flex items-center justify-between">
                       <Button
                         variant="outline"
-                        disabled={page === 1}
+                        disabled={page === 1 || switching}
                         onClick={() => setPage(page - 1)}
                       >
                         ก่อนหน้า
                       </Button>
-                      <span>หน้า {page}</span>
+                      <span className="flex items-center gap-2">
+                        {switching && (
+                          <Loader2Icon
+                            className="size-4 animate-spin text-muted-foreground"
+                            aria-hidden
+                          />
+                        )}
+                        หน้า {page}
+                      </span>
                       <Button
                         variant="outline"
-                        disabled={!library.data?.hasMore}
+                        disabled={!library.data?.hasMore || switching}
                         onClick={() => setPage(page + 1)}
                       >
                         ถัดไป
@@ -361,9 +391,13 @@ export function FileLibrary({
           </Alert>
         )}
         <DialogFooter>
-          <span className="mr-auto self-center text-xs text-muted-foreground">
-            ใช้พื้นที่ {fileSize(library.data?.used ?? 0)} / {fileSize(library.data?.limit ?? 0)}
-          </span>
+          {library.data ? (
+            <span className="mr-auto self-center text-xs text-muted-foreground">
+              ใช้พื้นที่ {fileSize(library.data.used)} / {fileSize(library.data.limit)}
+            </span>
+          ) : (
+            <Skeleton className="mr-auto h-4 w-40 self-center" aria-hidden />
+          )}
           <DialogClose render={<Button variant="outline" />}>ปิด</DialogClose>
           {onSelect && (
             <Button

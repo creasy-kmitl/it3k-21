@@ -66,6 +66,7 @@ import {
 } from "@/components/form-dialog";
 import { PageHeader } from "@/components/page-header";
 import { SportThumbnail } from "@/components/sport-art";
+import { DivisionTags } from "@/components/sport-badges";
 import { useApis } from "@/lib/api-context";
 import {
   HOUR_MS,
@@ -528,11 +529,26 @@ function DivisionPicker({
                       )
                     }
                   />
-                  <FieldLabel htmlFor={`event-sport-${sport.id}`} className="font-medium">
-                    {sport.name}
+                  <FieldLabel
+                    htmlFor={`event-sport-${sport.id}`}
+                    className="min-w-0 flex-1 items-center gap-2 font-medium"
+                  >
+                    <span aria-hidden className="shrink-0">
+                      <SportThumbnail
+                        src={sport.thumbnailUrl}
+                        icon={sport.icon}
+                        seed={sport.id}
+                        label={sport.name}
+                        className="aspect-square size-8 w-8 rounded-lg"
+                      />
+                    </span>
+                    <span className="truncate">{sport.name}</span>
                   </FieldLabel>
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    {count}/{ids.length}
+                  </span>
                 </Field>
-                <div className="grid gap-2 pl-6 sm:grid-cols-2">
+                <div className="flex flex-col gap-2 pl-6">
                   {sport.divisions.map((division) => (
                     <Field key={division.id} orientation="horizontal">
                       <Checkbox
@@ -546,8 +562,12 @@ function DivisionPicker({
                           )
                         }
                       />
-                      <FieldLabel htmlFor={`event-division-${division.id}`} className="font-normal">
-                        {division.name}
+                      <FieldLabel
+                        htmlFor={`event-division-${division.id}`}
+                        className="flex-1 flex-wrap items-center gap-x-2 gap-y-1 font-normal"
+                      >
+                        <span>{division.name}</span>
+                        <DivisionTags division={division} />
                       </FieldLabel>
                     </Field>
                   ))}

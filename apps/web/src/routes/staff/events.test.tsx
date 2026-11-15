@@ -50,8 +50,20 @@ const BASKETBALL: Sport = {
   createdAt: NOW,
   updatedAt: NOW,
   divisions: [
-    division({ id: "d-b5", sportId: "s-basketball", code: "b5", name: "ทีมชาย 5x5" }),
-    division({ id: "d-b3", sportId: "s-basketball", code: "b3", name: "ทีมหญิง 3x3" }),
+    division({
+      id: "d-b5",
+      sportId: "s-basketball",
+      code: "b5",
+      name: "ทีมชาย 5x5",
+      gender: "male",
+    }),
+    division({
+      id: "d-b3",
+      sportId: "s-basketball",
+      code: "b3",
+      name: "ทีมหญิง 3x3",
+      gender: "female",
+    }),
   ],
 };
 
@@ -172,6 +184,20 @@ describe("/staff/events", () => {
       divisionIds: ["d-b5", "d-b3"],
     });
     expect((created[0]?.endAt ?? 0) - (created[0]?.startAt ?? 0)).toBe(2 * 60 * 60 * 1000);
+  });
+
+  test("the sport picker shows each sport's picture and its divisions' gender chips", async () => {
+    const view = await setup([], true);
+    fireEvent.click(await view.findByRole("button", { name: "เพิ่มกิจกรรม" }));
+    const sport = await view.findByRole("checkbox", { name: "กีฬาบาสเกตบอล" });
+    const box = sport.closest(".rounded-xl") as HTMLElement;
+    expect(box.querySelector('svg[role="img"]')).toBeTruthy();
+    const male = view.getByRole("checkbox", { name: /ทีมชาย 5x5/ });
+    expect(view.getByText("0/2")).toBeTruthy();
+    expect(male.parentElement?.textContent).toContain("ชาย");
+    expect(view.getAllByText("หญิง").length).toBeGreaterThan(0);
+    fireEvent.click(male);
+    expect(view.getByText("1/2")).toBeTruthy();
   });
 
   test("editing sends the version; a general event drops sport picks", async () => {
