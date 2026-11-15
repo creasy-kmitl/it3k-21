@@ -1,15 +1,31 @@
 import { type VenueInput, venueInput } from "@it3k/db/event-rules";
 import { Button } from "@it3k/ui/components/button";
-import { Field, FieldDescription, FieldLabel } from "@it3k/ui/components/field";
 import { Skeleton } from "@it3k/ui/components/skeleton";
-import { Textarea } from "@it3k/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { ExternalLink, MapPin, MapPinned, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  ExternalLink,
+  Link2,
+  MapPin,
+  MapPinned,
+  MoveHorizontal,
+  MoveVertical,
+  Pencil,
+  Plus,
+  TextAlignStart,
+  Trash2,
+  Type,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { ConfirmDelete, FormDialog, TextField, issuesOf } from "@/components/form-dialog";
+import {
+  ConfirmDelete,
+  FormDialog,
+  TextAreaField,
+  TextField,
+  issuesOf,
+} from "@/components/form-dialog";
 import { PageHeader } from "@/components/page-header";
 import { useApis } from "@/lib/api-context";
 import type { Venue } from "@/lib/venues";
@@ -168,6 +184,7 @@ function VenueForm({
   return (
     <FormDialog
       title={initial ? `แก้ไข ${initial.name}` : "เพิ่มสถานที่"}
+      icon={initial ? MapPin : Plus}
       pending={pending}
       onClose={onClose}
       onSubmit={() => {
@@ -189,24 +206,24 @@ function VenueForm({
       <TextField
         id="venue-name"
         label="ชื่อสถานที่"
+        icon={Type}
         value={name}
         onChange={setName}
         error={issues.name}
       />
-      <Field data-invalid={!!issues.description}>
-        <FieldLabel htmlFor="venue-description">รายละเอียด</FieldLabel>
-        <Textarea
-          id="venue-description"
-          value={description}
-          aria-invalid={!!issues.description}
-          onChange={(event) => setDescription(event.target.value)}
-        />
-        {issues.description && <FieldDescription>{issues.description}</FieldDescription>}
-      </Field>
+      <TextAreaField
+        id="venue-description"
+        label="รายละเอียด"
+        icon={TextAlignStart}
+        value={description}
+        onChange={setDescription}
+        error={issues.description}
+      />
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           id="venue-latitude"
           label="ละติจูด"
+          icon={MoveVertical}
           inputMode="decimal"
           placeholder="13.7299"
           value={latitude}
@@ -216,6 +233,7 @@ function VenueForm({
         <TextField
           id="venue-longitude"
           label="ลองจิจูด"
+          icon={MoveHorizontal}
           inputMode="decimal"
           placeholder="100.7782"
           value={longitude}
@@ -226,6 +244,7 @@ function VenueForm({
       <TextField
         id="venue-url"
         label="ลิงก์แผนที่"
+        icon={Link2}
         inputMode="url"
         placeholder="https://maps.app.goo.gl/..."
         value={externalUrl}
