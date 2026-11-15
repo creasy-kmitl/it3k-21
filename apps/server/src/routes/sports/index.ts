@@ -20,8 +20,8 @@ import { canSport, sportAccessIsAsRead } from "../../policies/sports";
 const idParam = z.strictObject({ id: z.string().min(1) });
 
 const nonEmpty = <T extends object>(input: T) => Object.keys(input).length > 0;
-const sportPatch = sportInput.partial().refine(nonEmpty, "Nothing to update");
-const divisionPatch = divisionInput.partial().refine(nonEmpty, "Nothing to update");
+const sportPatch = sportInput.partial().refine(nonEmpty, "ไม่มีข้อมูลให้แก้ไข");
+const divisionPatch = divisionInput.partial().refine(nonEmpty, "ไม่มีข้อมูลให้แก้ไข");
 
 export const STALE = "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่";
 const SPORT_CODE_TAKEN = "มีกีฬาที่ใช้รหัสนี้แล้ว";
@@ -43,10 +43,7 @@ function sportValues<T extends Partial<z.infer<typeof sportInput>>>(input: T) {
 export async function listSports(db: Database) {
   const [sports, divisions] = await Promise.all([
     db.select().from(sport).orderBy(asc(sport.sortOrder), asc(sport.name)),
-    db
-      .select()
-      .from(sportDivision)
-      .orderBy(asc(sportDivision.sortOrder), asc(sportDivision.name)),
+    db.select().from(sportDivision).orderBy(asc(sportDivision.sortOrder), asc(sportDivision.name)),
   ]);
   return sports.map((row) => ({
     ...row,
@@ -56,7 +53,7 @@ export async function listSports(db: Database) {
 
 const catalogManager = createMiddleware<CurrentUserEnv>(async (c, next) => {
   if (!canSport(c.var.user, "catalog.manage")) {
-    return c.json({ message: "Forbidden" }, 403);
+    return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
   }
   await next();
 });
@@ -78,7 +75,10 @@ export const createSportRoutes = (deps: RouteDeps) =>
       try {
         const [, [created]] = await db.batch([
           abortUnless(db, c.var.user.id, sportAccessIsAsRead(c.var.user)),
-          db.insert(sport).values(sportValues(c.req.valid("json"))).returning(),
+          db
+            .insert(sport)
+            .values(sportValues(c.req.valid("json")))
+            .returning(),
         ]);
         if (!created) throw new Error("Insert returned no row");
         return c.json({ ...created, divisions: [] }, 201);
@@ -106,7 +106,7 @@ export const createSportRoutes = (deps: RouteDeps) =>
               .where(eq(sport.id, id))
               .returning(),
           ]);
-          if (!rows[0]) return c.json({ message: "Sport not found" }, 404);
+          if (!rows[0]) return c.json({ message: "ไม่พบกีฬานี้" }, 404);
           return c.json(rows[0], 200);
         } catch (error) {
           if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
@@ -126,7 +126,7 @@ export const createSportRoutes = (deps: RouteDeps) =>
           abortUnless(db, c.var.user.id, sportAccessIsAsRead(c.var.user)),
           db.delete(sport).where(eq(sport.id, id)).returning({ id: sport.id }),
         ]);
-        if (!rows[0]) return c.json({ message: "Sport not found" }, 404);
+        if (!rows[0]) return c.json({ message: "ไม่พบกีฬานี้" }, 404);
         return c.json({ id }, 200);
       } catch (error) {
         if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
@@ -161,7 +161,7 @@ export const createSportRoutes = (deps: RouteDeps) =>
             return c.json({ message: DIVISION_CODE_TAKEN }, 409);
           }
           if (constraintError(error) === "foreign-key") {
-            return c.json({ message: "Sport not found" }, 404);
+            return c.json({ message: "ไม่พบกีฬานี้" }, 404);
           }
           throw error;
         }
@@ -185,7 +185,7 @@ export const createSportRoutes = (deps: RouteDeps) =>
               .where(eq(sportDivision.id, id))
               .returning(),
           ]);
-          if (!rows[0]) return c.json({ message: "Division not found" }, 404);
+          if (!rows[0]) return c.json({ message: "ไม่พบประเภทนี้" }, 404);
           return c.json(rows[0], 200);
         } catch (error) {
           if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
@@ -208,7 +208,7 @@ export const createSportRoutes = (deps: RouteDeps) =>
             .where(eq(sportDivision.id, id))
             .returning({ id: sportDivision.id }),
         ]);
-        if (!rows[0]) return c.json({ message: "Division not found" }, 404);
+        if (!rows[0]) return c.json({ message: "ไม่พบประเภทนี้" }, 404);
         return c.json({ id }, 200);
       } catch (error) {
         if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);

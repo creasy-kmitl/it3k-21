@@ -44,17 +44,17 @@ const createInput = departmentInput.extend({
       .string()
       .trim()
       .max(DEPARTMENT_CODE_MAX_LENGTH)
-      .regex(DEPARTMENT_CODE_PATTERN, "Use lowercase letters, digits and single hyphens")
+      .regex(DEPARTMENT_CODE_PATTERN, "ใช้ได้เฉพาะตัวพิมพ์เล็ก ตัวเลข และขีดกลางทีละตัว")
       .refine(
         (code) => !(RESERVED_DEPARTMENT_CODES as readonly string[]).includes(code),
-        "This code is reserved",
+        "รหัสนี้สงวนไว้ใช้ในระบบ",
       )
       .nullish(),
   ),
 });
 
-const HAS_CODE = "A department with a code cannot be deleted";
-const HOLDS_SEAT = "This account holds a head/vicehead seat; detach it from the seat first";
+const HAS_CODE = "ฝ่ายที่มีรหัสแล้วลบไม่ได้";
+const HOLDS_SEAT = "บัญชีนี้ดำรงตำแหน่งหัวหน้าหรือรองหัวหน้าฝ่าย ถอดออกจากตำแหน่งก่อน";
 
 function isUniqueViolation(error: unknown) {
   return constraintError(error) === "unique";
@@ -66,7 +66,7 @@ function stillAuthorized(actor: CurrentUser) {
   return and(activeAccount(), eq(user.role, actor.role ?? "")) ?? sql`0`;
 }
 
-const STALE = "Permissions or data changed; reload and try again";
+const STALE = "สิทธิ์หรือข้อมูลเปลี่ยนไปแล้ว กรุณาโหลดใหม่แล้วลองอีกครั้ง";
 
 export const createDepartmentRoutes = (deps: RouteDeps) =>
   new Hono<CurrentUserEnv>()
@@ -76,7 +76,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
 
     .get("/", async (c) => {
       if (!can(c.var.user.role, { department: ["read"] })) {
-        return c.json({ message: "Forbidden" }, 403);
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const db = c.var.db;
       const rows = await db
@@ -100,7 +100,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
 
     .get("/:id", async (c) => {
       if (!can(c.var.user.role, { department: ["read"] })) {
-        return c.json({ message: "Forbidden" }, 403);
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const db = c.var.db;
       const row = await db.query.department.findFirst({
@@ -113,18 +113,18 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
         },
       });
       if (!row) {
-        return c.json({ message: "Department not found" }, 404);
+        return c.json({ message: "ไม่พบฝ่ายนี้" }, 404);
       }
       return c.json(departmentAppearance(row));
     })
 
     .post("/", async (c) => {
       if (!can(c.var.user.role, { department: ["create"] })) {
-        return c.json({ message: "Forbidden" }, 403);
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const parsed = createInput.safeParse(await c.req.json().catch(() => null));
       if (!parsed.success) {
-        return c.json({ message: "Invalid input", issues: parsed.error.issues }, 400);
+        return c.json({ message: "ข้อมูลไม่ถูกต้อง", issues: parsed.error.issues }, 400);
       }
       const db = c.var.db;
       try {
@@ -142,8 +142,8 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
         if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
         if (isUniqueViolation(error)) {
           return constraintMessage(error)?.includes("department.code")
-            ? c.json({ message: "Another department already has this code" }, 409)
-            : c.json({ message: "Department name already exists" }, 409);
+            ? c.json({ message: "มีฝ่ายอื่นใช้รหัสนี้แล้ว" }, 409)
+            : c.json({ message: "มีฝ่ายชื่อนี้แล้ว" }, 409);
         }
         throw error;
       }
@@ -151,12 +151,12 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
 
     .patch("/:id", async (c) => {
       if (!can(c.var.user.role, { department: ["update"] })) {
-        return c.json({ message: "Forbidden" }, 403);
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const id = c.req.param("id");
       const parsed = departmentInput.partial().safeParse(await c.req.json().catch(() => null));
       if (!parsed.success) {
-        return c.json({ message: "Invalid input", issues: parsed.error.issues }, 400);
+        return c.json({ message: "ข้อมูลไม่ถูกต้อง", issues: parsed.error.issues }, 400);
       }
       const db = c.var.db;
       try {
@@ -170,13 +170,13 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
         ]);
         const [row] = rows;
         if (!row) {
-          return c.json({ message: "Department not found" }, 404);
+          return c.json({ message: "ไม่พบฝ่ายนี้" }, 404);
         }
         return c.json(departmentAppearance(row));
       } catch (error) {
         if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
         if (isUniqueViolation(error)) {
-          return c.json({ message: "Department name already exists" }, 409);
+          return c.json({ message: "มีฝ่ายชื่อนี้แล้ว" }, 409);
         }
         throw error;
       }
@@ -184,11 +184,11 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
 
     .delete("/:id", async (c) => {
       if (!can(c.var.user.role, { department: ["delete"] })) {
-        return c.json({ message: "Forbidden" }, 403);
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const id = c.req.param("id");
       const db = c.var.db;
-      const hasLeaders = "Remove this department's head and vicehead before deleting it";
+      const hasLeaders = "ถอดหัวหน้าและรองหัวหน้าฝ่ายออกก่อนลบฝ่ายนี้";
       // Codes are permanent ids, and some carry rights; the
       // lock_department_codes trigger refuses the delete too.
       const [target] = await db
@@ -213,7 +213,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
           db.delete(department).where(eq(department.id, id)).returning({ id: department.id }),
         ]);
         if (deleted.length === 0) {
-          return c.json({ message: "Department not found" }, 404);
+          return c.json({ message: "ไม่พบฝ่ายนี้" }, 404);
         }
       } catch (error) {
         if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
@@ -231,12 +231,12 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
 
     .put("/:id/members/:userId", async (c) => {
       if (!can(c.var.user.role, { department: ["assign"] })) {
-        return c.json({ message: "Forbidden" }, 403);
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const db = c.var.db;
       const target = await db.query.department.findFirst({ where: { id: c.req.param("id") } });
       if (!target) {
-        return c.json({ message: "Department not found" }, 404);
+        return c.json({ message: "ไม่พบฝ่ายนี้" }, 404);
       }
       const userId = c.req.param("userId");
       // A seat's account must stay in the seat's department. Checked in the
@@ -259,7 +259,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
           const [found] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId));
           return found
             ? c.json({ message: HOLDS_SEAT }, 409)
-            : c.json({ message: "User not found" }, 404);
+            : c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
         }
         return c.json(row);
       } catch (error) {
@@ -270,7 +270,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
 
     .delete("/:id/members/:userId", async (c) => {
       if (!can(c.var.user.role, { department: ["assign"] })) {
-        return c.json({ message: "Forbidden" }, 403);
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const db = c.var.db;
       const userId = c.req.param("userId");
@@ -293,7 +293,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
           const [found] = await db.select({ id: user.id }).from(user).where(member);
           return found
             ? c.json({ message: HOLDS_SEAT }, 409)
-            : c.json({ message: "Member not found" }, 404);
+            : c.json({ message: "ไม่พบสมาชิกนี้" }, 404);
         }
         return c.body(null, 204);
       } catch (error) {

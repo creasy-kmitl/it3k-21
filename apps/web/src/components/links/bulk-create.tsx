@@ -27,6 +27,7 @@ import { type QrBrowser, qrBrowser } from "@/lib/qr-export";
 
 import { displayUrl } from "./link-parts";
 import { QrZipPanel } from "./qr-zip-panel";
+import { toastError } from "@/lib/errors";
 
 /** The links as an Excel sheet, short URLs included. */
 export function linksSheet(links: ShortLink[]) {
@@ -128,7 +129,7 @@ export function BulkCreate({
       await queryClient.invalidateQueries({ queryKey: ["links"] });
     },
     onError: (error) => {
-      if (!bulkRowErrors(error)) toast.error(`สร้างลิงก์ไม่สำเร็จ: ${error.message}`);
+      if (!bulkRowErrors(error)) toastError(error, "สร้างลิงก์ไม่สำเร็จ");
     },
   });
 

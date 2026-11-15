@@ -84,9 +84,9 @@ const listQuery = z
     ownerId: id.optional(),
     q: searchText.optional(),
   })
-  .refine((query) => query.to > query.from, { message: "`to` must be after `from`" })
+  .refine((query) => query.to > query.from, { message: "วันสิ้นสุดต้องอยู่หลังวันเริ่มต้น" })
   .refine((query) => query.to - query.from <= MAX_RANGE_MS, {
-    message: "The range is limited to 62 days",
+    message: "เลือกช่วงเวลาได้ไม่เกิน 62 วัน",
   });
 
 const peopleQuery = z.strictObject({ q: searchText.optional() });
@@ -129,14 +129,14 @@ const updateInput = z
   })
   .refine(
     (input) => Object.keys(input).some((key) => key !== "version" && key !== "reason"),
-    "Nothing to update",
+    "ไม่มีข้อมูลให้แก้ไข",
   );
 
 const deleteQuery = z.strictObject({ version: z.coerce.number().int().min(1) });
 
 function timeProblem(item: { startAt: number; endAt: number }): string | null {
-  if (item.endAt <= item.startAt) return "The end must be after the start";
-  if (item.endAt - item.startAt > MAX_ITEM_MS) return "An item may last at most 31 days";
+  if (item.endAt <= item.startAt) return "เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม";
+  if (item.endAt - item.startAt > MAX_ITEM_MS) return "รายการหนึ่งยาวได้ไม่เกิน 31 วัน";
   return null;
 }
 
@@ -271,7 +271,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       const { id: itemId } = c.req.valid("param");
       const db = c.var.db;
       const item = await findItem(db, itemId, c.var.user);
-      if (!item) return c.json({ message: "Item not found" }, 404);
+      if (!item) return c.json({ message: "ไม่พบรายการนี้" }, 404);
       const changes = await db
         .select({
           id: calendarChange.id,
@@ -302,7 +302,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
 
     // Owner picker. Never selects email.
     .get("/people", validate("query", peopleQuery), async (c) => {
-      if (!canCreateItems(c.var.user)) return c.json({ message: "Forbidden" }, 403);
+      if (!canCreateItems(c.var.user)) return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       const { q } = c.req.valid("query");
       const filters: SQL[] = [
         sql`(',' || replace(${user.role}, ' ', '') || ',' like '%,staff,%' or ',' || replace(${user.role}, ' ', '') || ',' like '%,admin,%')`,
@@ -323,14 +323,14 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       const db = c.var.db;
       const actor = c.var.user;
       const departmentId = input.departmentId ?? actor.departmentId;
-      if (!departmentId) return c.json({ message: "Choose a department" }, 400);
+      if (!departmentId) return c.json({ message: "เลือกฝ่าย" }, 400);
       if (!canEditDepartment(actor, departmentId)) {
-        return c.json({ message: "You can only add items to your own department" }, 403);
+        return c.json({ message: "เพิ่มรายการได้เฉพาะในฝ่ายของคุณ" }, 403);
       }
       const problem = timeProblem(input);
       if (problem) return c.json({ message: problem }, 400);
       if (!(await departmentExists(db, departmentId))) {
-        return c.json({ message: "Department not found" }, 400);
+        return c.json({ message: "ไม่พบฝ่ายนี้" }, 400);
       }
       const invalid =
         (input.ownerId ? await ownerProblem(db, input.ownerId) : null) ??
@@ -393,9 +393,9 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       const db = c.var.db;
       const actor = c.var.user;
       const [current] = await db.select().from(calendarItem).where(eq(calendarItem.id, itemId));
-      if (!current) return c.json({ message: "Item not found" }, 404);
+      if (!current) return c.json({ message: "ไม่พบรายการนี้" }, 404);
       if (!canEditDepartment(actor, current.departmentId)) {
-        return c.json({ message: "Forbidden" }, 403);
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       if (current.version !== version) return c.json({ message: STALE_MESSAGE }, 409);
 
@@ -431,10 +431,10 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
 
       const moving = "departmentId" in changes;
       if (moving && !hasRole(actor.role, "admin")) {
-        return c.json({ message: "Only admins can move an item to another department" }, 403);
+        return c.json({ message: "เฉพาะผู้ดูแลระบบที่ย้ายรายการไปฝ่ายอื่นได้" }, 403);
       }
       if (moving && !(await departmentExists(db, next.departmentId))) {
-        return c.json({ message: "Department not found" }, 400);
+        return c.json({ message: "ไม่พบฝ่ายนี้" }, 400);
       }
 
       const before = await currentCollaborators(db, itemId);
@@ -452,7 +452,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
 
       if (Object.keys(changes).length === 0) {
         const item = await findItem(db, itemId, actor);
-        if (!item) return c.json({ message: "Item not found" }, 404);
+        if (!item) return c.json({ message: "ไม่พบรายการนี้" }, 404);
         return c.json(item, 200);
       }
 
@@ -460,7 +460,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       const moved = action === "reschedule" || action === "cancel";
       // A confirmed plan that moves or is called off needs a reason for the people on it.
       if (moved && current.status === "confirmed" && !reason) {
-        return c.json({ message: "Say why the item is being rescheduled or cancelled" }, 400);
+        return c.json({ message: "ระบุเหตุผลที่เลื่อนหรือยกเลิกรายการ" }, 400);
       }
       if (set.ownerId) {
         const invalid = await ownerProblem(db, set.ownerId);
@@ -527,7 +527,7 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       }
       if (updated.length === 0) return c.json({ message: STALE_MESSAGE }, 409);
       const item = await findItem(db, itemId, actor);
-      if (!item) return c.json({ message: "Item not found" }, 404);
+      if (!item) return c.json({ message: "ไม่พบรายการนี้" }, 404);
       return c.json(item, 200);
     })
 
@@ -538,9 +538,9 @@ export const createCalendarRoutes = (deps: RouteDeps) =>
       const db = c.var.db;
       const actor = c.var.user;
       const [current] = await db.select().from(calendarItem).where(eq(calendarItem.id, itemId));
-      if (!current) return c.json({ message: "Item not found" }, 404);
+      if (!current) return c.json({ message: "ไม่พบรายการนี้" }, 404);
       if (!canEditDepartment(actor, current.departmentId)) {
-        return c.json({ message: "Forbidden" }, 403);
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       if (current.version !== version) return c.json({ message: STALE_MESSAGE }, 409);
       try {

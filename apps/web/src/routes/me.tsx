@@ -24,7 +24,6 @@ import {
   Pencil,
   Phone,
   Pill,
-  RefreshCw,
   Smile,
   Stethoscope,
   Trophy,
@@ -42,6 +41,7 @@ import { UserBarcode } from "@/components/user-barcode";
 import { useApis } from "@/lib/api-context";
 import { publicFileUrl } from "@/lib/files";
 import { requireParticipantSession } from "@/lib/participant-auth";
+import { ErrorState } from "@/components/error-state";
 
 export const Route = createFileRoute("/me")({
   ssr: false,
@@ -70,13 +70,7 @@ function MePage() {
   if (me.isError)
     return (
       <ParticipantShell userId={session.user.id} role={session.user.role ?? "guest"}>
-        <div role="alert">
-          <p>{me.error.message}</p>
-          <Button onClick={() => void me.refetch()}>
-            <RefreshCw data-icon="inline-start" aria-hidden />
-            ลองอีกครั้ง
-          </Button>
-        </div>
+        <ErrorState error={me.error} onRetry={me.refetch} title="โหลดโปรไฟล์ไม่สำเร็จ" />
       </ParticipantShell>
     );
   const { account, profile: values } = me.data;

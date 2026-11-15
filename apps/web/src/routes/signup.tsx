@@ -1,8 +1,7 @@
-import { Button } from "@it3k/ui/components/button";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { RefreshCw, UserRoundPlus } from "lucide-react";
+import { UserRoundPlus } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { ParticipantForm } from "@/components/participant-form";
@@ -11,6 +10,7 @@ import { useApis } from "@/lib/api-context";
 import { authClient } from "@/lib/auth-client";
 import { requireParticipantSession } from "@/lib/participant-auth";
 import { useState } from "react";
+import { ErrorState } from "@/components/error-state";
 
 export const Route = createFileRoute("/signup")({
   ssr: false,
@@ -72,13 +72,7 @@ export function SignupEditor({
       {me.data ? (
         <ParticipantForm key={me.data.account.id} data={me.data} onComplete={onComplete} />
       ) : me.isError ? (
-        <div role="alert">
-          <p>{me.error.message}</p>
-          <Button onClick={() => void me.refetch()}>
-            <RefreshCw data-icon="inline-start" aria-hidden />
-            ลองอีกครั้ง
-          </Button>
-        </div>
+        <ErrorState error={me.error} onRetry={me.refetch} title="โหลดข้อมูลโปรไฟล์ไม่สำเร็จ" />
       ) : (
         <Skeleton className="h-96 w-full" />
       )}

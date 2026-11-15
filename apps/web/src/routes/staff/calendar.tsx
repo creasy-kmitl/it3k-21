@@ -42,6 +42,8 @@ import {
 } from "@/lib/bangkok-time";
 import type { CalendarItem, CalendarQuery } from "@/lib/calendar";
 import { ApiError } from "@/lib/leadership";
+import { describeError } from "@/lib/errors";
+import { toastError } from "@/lib/errors";
 
 const AGENDA_DAYS = 14;
 /** Remembers the last department scope, so the calendar reopens on it. */
@@ -245,11 +247,9 @@ export function CalendarPage({
       calendar.update(item.id, { status: "confirmed", version: item.version }),
     onSuccess: () => toast.success("ยืนยันรายการแล้ว"),
     onError: (error) =>
-      toast.error(
-        error instanceof ApiError && error.status === 409
-          ? "มีคนแก้ไขรายการนี้ก่อนคุณ ข้อมูลล่าสุดโหลดให้แล้ว"
-          : `บันทึกไม่สำเร็จ: ${error.message}`,
-      ),
+      error instanceof ApiError && error.status === 409
+        ? toast.error("มีคนแก้ไขรายการนี้ก่อนคุณ ข้อมูลล่าสุดโหลดให้แล้ว")
+        : toastError(error, "บันทึกไม่สำเร็จ"),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["calendar"] }),
   });
   const shortcuts: CalendarShortcuts = {
@@ -335,7 +335,7 @@ export function CalendarPage({
           <CloudAlert aria-hidden className="size-4 shrink-0" />
           {items.data
             ? `โหลดข้อมูลล่าสุดไม่สำเร็จ กำลังแสดงข้อมูลเมื่อ ${formatBangkok(items.dataUpdatedAt, "time")} น.`
-            : `โหลดปฏิทินไม่สำเร็จ: ${items.error.message}`}
+            : `โหลดปฏิทินไม่สำเร็จ: ${describeError(items.error).description}`}
           <Button variant="outline" size="sm" onClick={() => void items.refetch()}>
             <RefreshCw data-icon="inline-start" />
             ลองอีกครั้ง

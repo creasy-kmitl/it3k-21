@@ -62,6 +62,8 @@ import type { AthleteFilters, AthleteItem } from "@/lib/athletes";
 import { csvBlob } from "@/lib/csv";
 import { optional, replacesHistory } from "@/lib/list-search";
 import { downloadBlob } from "@/lib/qr-export";
+import { ErrorState } from "@/components/error-state";
+import { toastError } from "@/lib/errors";
 
 const searchSchema = z.object({
   q: optional(z.string().max(64)),
@@ -187,7 +189,7 @@ export function AthletesPage({ filters: control }: { filters?: FilterControl<Ath
     mutationFn: ({ item, status }: { item: AthleteItem; status: RegistrationStatus }) =>
       api.review(item.id, { status, note: "", version: item.version }),
     onSuccess: (_, { status }) => toast.success(`เปลี่ยนเป็น "${STATUS_LABELS[status]}" แล้ว`),
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toastError(error, "เปลี่ยนสถานะไม่สำเร็จ"),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["athletes"] }),
   });
   // Every row's buttons wait on the one review, but only the clicked button spins.
@@ -203,7 +205,7 @@ export function AthletesPage({ filters: control }: { filters?: FilterControl<Ath
       return items.length;
     },
     onSuccess: (count) => toast.success(`ส่งออก ${count} รายการ`),
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toastError(error, "ส่งออกไม่สำเร็จ"),
   });
 
   const sportItems = [
@@ -290,12 +292,7 @@ export function AthletesPage({ filters: control }: { filters?: FilterControl<Ath
           <Skeleton className="h-16 w-full" />
         </div>
       ) : list.isError ? (
-        <div role="alert" className="flex flex-col items-start gap-2 text-destructive">
-          <p>โหลดรายชื่อไม่สำเร็จ: {list.error.message}</p>
-          <Button variant="outline" size="sm" onClick={() => void list.refetch()}>
-            ลองอีกครั้ง
-          </Button>
-        </div>
+        <ErrorState error={list.error} onRetry={list.refetch} title="โหลดรายชื่อไม่สำเร็จ" />
       ) : list.data.items.length === 0 ? (
         <p className="text-muted-foreground">ไม่พบการสมัคร</p>
       ) : (
@@ -466,7 +463,7 @@ function RejectDialog({ item, onClose }: { item: AthleteItem; onClose: () => voi
       toast.success("ไม่อนุมัติแล้ว");
       onClose();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toastError(error, "ไม่อนุมัติไม่สำเร็จ"),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["athletes"] }),
   });
   return (
@@ -545,7 +542,7 @@ function EditDialog({ item, onClose }: { item: AthleteItem; onClose: () => void 
       toast.success("บันทึกแล้ว");
       onClose();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toastError(error, "บันทึกไม่สำเร็จ"),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["athletes"] }),
   });
 

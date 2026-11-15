@@ -79,6 +79,7 @@ import {
   loadQrSettings,
   saveQrSettings,
 } from "@/lib/qr-settings";
+import { toastError } from "@/lib/errors";
 
 const FAILURES: Record<EncodeFailure, string> = {
   empty: "กรอก URL หรือข้อความเพื่อสร้าง QR",
@@ -472,7 +473,7 @@ export function QrStudio({
           : await browser.rasterize(svg, format === "png" ? "image/png" : "image/jpeg", exportSize);
       browser.download(blob, name);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "สร้างไฟล์ไม่สำเร็จ");
+      toastError(error, "สร้างไฟล์ไม่สำเร็จ");
     } finally {
       setExporting(null);
     }
@@ -501,7 +502,7 @@ export function QrStudio({
       );
       toast.info(`เบราว์เซอร์นี้คัดลอก ${format.toUpperCase()} ไม่ได้ จึงดาวน์โหลดไฟล์ให้แทน`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "สร้างไฟล์ไม่สำเร็จ");
+      toastError(error, "สร้างไฟล์ไม่สำเร็จ");
     } finally {
       setExporting(null);
     }

@@ -19,7 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LoadingButton } from "@/components/loading-button";
 import { SessionBoundary } from "@/components/session-boundary";
 import { useApis } from "@/lib/api-context";
-import { authClient } from "@/lib/auth-client";
+import { getSessionOrThrow } from "@/lib/auth-client";
 import { formatBangkok } from "@/lib/bangkok-time";
 import type { CheckinOutcome, Person } from "@/lib/events";
 import {
@@ -36,11 +36,12 @@ import {
 import { clearCacheOnUserChange } from "@/lib/query-cache";
 import { staffRedirect } from "./staff/route";
 import { eventTime } from "./staff/events";
+import { ErrorState } from "@/components/error-state";
 
 export const Route = createFileRoute("/kiosk/$eventId")({
   ssr: false,
   beforeLoad: async ({ context, location }) => {
-    const session = await authClient.getSession();
+    const session = await getSessionOrThrow();
     clearCacheOnUserChange(context.queryClient, session.data?.user.id ?? null);
     const away = staffRedirect(session.data?.user, location.href);
     if (away) throw redirect(away);
@@ -189,6 +190,16 @@ export function KioskPage({
           <LogOut data-icon="inline-start" aria-hidden /> ออก
         </Button>
       </header>
+
+      {(participants.isError && !participants.data) || (event.isError && !event.data) ? (
+        <ErrorState
+          error={participants.error ?? event.error}
+          onRetry={() => Promise.all([participants.refetch(), event.refetch()])}
+          title="โหลดข้อมูลกิจกรรมไม่สำเร็จ"
+          size="sm"
+          className="mx-auto w-full max-w-xl flex-none"
+        />
+      ) : null}
 
       <Camera decoderFactory={decoderFactory} onCode={handleCode} />
 

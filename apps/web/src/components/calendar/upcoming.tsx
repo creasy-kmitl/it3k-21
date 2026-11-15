@@ -1,5 +1,4 @@
 import type { CalendarStatus } from "@it3k/db/calendar-rules";
-import { Button } from "@it3k/ui/components/button";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -10,6 +9,7 @@ import { useApis } from "@/lib/api-context";
 import { DAY_MS, dateKey, formatBangkok, formatRange } from "@/lib/bangkok-time";
 import type { CalendarItem } from "@/lib/calendar";
 import { STATUS_LABELS } from "@/lib/calendar-labels";
+import { ErrorState } from "@/components/error-state";
 
 const LOOK_AHEAD_MS = 7 * DAY_MS;
 const LIMIT = 5;
@@ -57,12 +57,12 @@ export function Upcoming({ now, departmentId }: { now: number; departmentId: str
           <Skeleton className="h-10" />
         </div>
       ) : items.isError && !items.data ? (
-        <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
-          โหลดกำหนดการไม่สำเร็จ
-          <Button variant="outline" size="sm" onClick={() => void items.refetch()}>
-            ลองอีกครั้ง
-          </Button>
-        </div>
+        <ErrorState
+          error={items.error}
+          onRetry={items.refetch}
+          title="โหลดกำหนดการไม่สำเร็จ"
+          size="sm"
+        />
       ) : next.length === 0 ? (
         <p className="text-sm text-muted-foreground">ยังไม่มีรายการ</p>
       ) : (

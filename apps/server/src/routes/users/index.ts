@@ -110,7 +110,7 @@ async function findAccount(db: Database, id: string, actor: CurrentUser) {
 
 const managerOnly = createMiddleware<CurrentUserEnv>(async (c, next) => {
   if (!isManager(c.var.user)) {
-    return c.json({ message: "Forbidden" }, 403);
+    return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
   }
   await next();
 });
@@ -126,7 +126,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
     .get("/me", async (c) => {
       const actor = c.var.user;
       const account = await findAccount(c.var.db, actor.id, actor);
-      if (!account) return c.json({ message: "Unauthorized" }, 401);
+      if (!account) return c.json({ message: "กรุณาเข้าสู่ระบบ" }, 401);
       return c.json(
         {
           id: account.id,
@@ -182,10 +182,10 @@ export const createUserRoutes = (deps: RouteDeps) =>
           .select({ id: user.id, name: user.name, role: user.role })
           .from(user)
           .where(eq(user.id, id));
-        if (!target) return c.json({ message: "User not found" }, 404);
+        if (!target) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
         const isAdmin = hasRole(target.role, "admin");
         if (!canChangeAccount(actor, target.role)) {
-          return c.json({ message: "Only admins can change an admin's account" }, 403);
+          return c.json({ message: "เฉพาะผู้ดูแลระบบที่แก้ไขบัญชีของผู้ดูแลระบบได้" }, 403);
         }
 
         const departmentId = "departmentId" in input ? input.departmentId : null;
@@ -194,7 +194,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
             .select({ id: department.id })
             .from(department)
             .where(eq(department.id, departmentId));
-          if (!found) return c.json({ message: "Department not found" }, 404);
+          if (!found) return c.json({ message: "ไม่พบฝ่ายนี้" }, 404);
         }
 
         const [current] = await db
@@ -290,16 +290,13 @@ export const createUserRoutes = (deps: RouteDeps) =>
           ]);
         } catch (error) {
           if (constraintError(error)) {
-            return c.json(
-              { message: "This changed while you were editing; reload and try again" },
-              409,
-            );
+            return c.json({ message: "ข้อมูลถูกแก้ไขระหว่างที่คุณกำลังแก้ กรุณาโหลดใหม่แล้วลองอีกครั้ง" }, 409);
           }
           throw error;
         }
 
         const account = await findAccount(db, id, actor);
-        if (!account) return c.json({ message: "User not found" }, 404);
+        if (!account) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
         return c.json(account, 200);
       },
     )
@@ -321,9 +318,9 @@ export const createUserRoutes = (deps: RouteDeps) =>
         const { id } = c.req.valid("param");
         const { storageLimit, expectedLimit } = c.req.valid("json");
         const [target] = await db.select({ role: user.role }).from(user).where(eq(user.id, id));
-        if (!target) return c.json({ message: "User not found" }, 404);
+        if (!target) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
         if (!canChangeAccount(actor, target.role))
-          return c.json({ message: "Only admins can change an admin's account" }, 403);
+          return c.json({ message: "เฉพาะผู้ดูแลระบบที่แก้ไขบัญชีของผู้ดูแลระบบได้" }, 403);
         try {
           await db.batch([
             abortUnless(db, actor.id, managerIsAsRead(actor)),
@@ -340,7 +337,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
           throw error;
         }
         const account = await findAccount(db, id, actor);
-        if (!account) return c.json({ message: "User not found" }, 404);
+        if (!account) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
         return c.json(account, 200);
       },
     )
@@ -355,12 +352,12 @@ export const createUserRoutes = (deps: RouteDeps) =>
         const { id } = c.req.valid("param");
         const { institution } = c.req.valid("json");
         if (!canSport(actor, "users.setInstitution")) {
-          return c.json({ message: "Forbidden" }, 403);
+          return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
         }
         const [target] = await db.select({ role: user.role }).from(user).where(eq(user.id, id));
-        if (!target) return c.json({ message: "User not found" }, 404);
+        if (!target) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
         if (!canChangeAccount(actor, target.role)) {
-          return c.json({ message: "Only admins can change an admin's account" }, 403);
+          return c.json({ message: "เฉพาะผู้ดูแลระบบที่แก้ไขบัญชีของผู้ดูแลระบบได้" }, 403);
         }
         try {
           await db.batch([
@@ -369,11 +366,12 @@ export const createUserRoutes = (deps: RouteDeps) =>
             db.update(user).set({ institution }).where(eq(user.id, id)),
           ]);
         } catch (error) {
-          if (constraintError(error)) return c.json({ message: "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่" }, 409);
+          if (constraintError(error))
+            return c.json({ message: "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่" }, 409);
           throw error;
         }
         const account = await findAccount(db, id, actor);
-        if (!account) return c.json({ message: "User not found" }, 404);
+        if (!account) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
         return c.json(account, 200);
       },
     )
@@ -383,16 +381,16 @@ export const createUserRoutes = (deps: RouteDeps) =>
       const db = c.var.db;
       const actor = c.var.user;
       if (!canGrantAdmin(actor)) {
-        return c.json({ message: "Only admins can grant or remove admin" }, 403);
+        return c.json({ message: "เฉพาะผู้ดูแลระบบที่ให้หรือถอนสิทธิ์ผู้ดูแลระบบได้" }, 403);
       }
       if (!admin && id === actor.id) {
-        return c.json({ message: "You cannot remove your own admin role" }, 400);
+        return c.json({ message: "คุณถอนสิทธิ์ผู้ดูแลระบบของตัวเองไม่ได้" }, 400);
       }
       const [target] = await db
         .select({ departmentId: user.departmentId, role: user.role })
         .from(user)
         .where(eq(user.id, id));
-      if (!target) return c.json({ message: "User not found" }, 404);
+      if (!target) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
       const role = admin ? "admin" : target.departmentId ? "staff" : "guest";
       try {
         await db.batch([
@@ -416,7 +414,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
         throw error;
       }
       const account = await findAccount(db, id, actor);
-      if (!account) return c.json({ message: "User not found" }, 404);
+      if (!account) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
       return c.json(account, 200);
     });
 

@@ -31,7 +31,7 @@ describe("department codes are locked", () => {
     const res = await app.request(`/${reg}`, t.as("admin", { method: "DELETE" }));
     expect(res.status).toBe(409);
     expect(await readJson(res)).toEqual({
-      message: "A department with a code cannot be deleted",
+      message: "ฝ่ายที่มีรหัสแล้วลบไม่ได้",
     });
     const [kept] = await t.db.select().from(department).where(eq(department.id, reg));
     expect(kept?.code).toBe("registration");
@@ -127,7 +127,7 @@ describe("POST / with a code", () => {
   test("a code already in use is a 409 naming the code", async () => {
     const res = await create({ name: "Art 2", code: "art" });
     expect(res.status).toBe(409);
-    expect(await readJson(res)).toEqual({ message: "Another department already has this code" });
+    expect(await readJson(res)).toEqual({ message: "มีฝ่ายอื่นใช้รหัสนี้แล้ว" });
   });
 
   test("PATCH cannot set or change a code", async () => {

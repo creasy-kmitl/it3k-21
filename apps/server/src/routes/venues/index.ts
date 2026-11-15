@@ -82,7 +82,7 @@ export const createVenueRoutes = (deps: RouteDeps) =>
               .where(eq(venue.id, id))
               .returning(),
           ]);
-          if (!rows[0]) return c.json({ message: "Venue not found" }, 404);
+          if (!rows[0]) return c.json({ message: "ไม่พบสถานที่นี้" }, 404);
           return c.json(rows[0], 200);
         } catch (error) {
           if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
@@ -100,7 +100,7 @@ export const createVenueRoutes = (deps: RouteDeps) =>
           abortUnless(db, c.var.user.id, sportAccessIsAsRead(c.var.user)),
           db.delete(venue).where(eq(venue.id, id)).returning({ id: venue.id }),
         ]);
-        if (!rows[0]) return c.json({ message: "Venue not found" }, 404);
+        if (!rows[0]) return c.json({ message: "ไม่พบสถานที่นี้" }, 404);
         return c.json({ id }, 200);
       } catch (error) {
         if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);

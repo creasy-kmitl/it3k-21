@@ -28,6 +28,8 @@ import { csvBlob } from "@/lib/csv";
 import type { Participant } from "@/lib/events";
 import { downloadBlob } from "@/lib/qr-export";
 import { eventTime } from "./events";
+import { ErrorState } from "@/components/error-state";
+import { toastError } from "@/lib/errors";
 
 export const Route = createFileRoute("/staff/events_/$eventId")({
   head: () => ({ meta: [{ title: "ผู้เข้าร่วมกิจกรรม · IT3Kings" }] }),
@@ -101,13 +103,13 @@ export function EventParticipantsPage({ eventId }: { eventId: string }) {
       if (outcome.code === "checked-in") toast.success(`เช็คอิน ${fullName(outcome.person)} แล้ว`);
       else toast.error(outcome.message);
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toastError(error, "เช็คอินไม่สำเร็จ"),
     onSettled: refresh,
   });
   const undo = useMutation({
     mutationFn: (userId: string) => api.undoCheckIn(eventId, userId),
     onSuccess: () => toast.success("ยกเลิกการเช็คอินแล้ว"),
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toastError(error, "ยกเลิกการเช็คอินไม่สำเร็จ"),
     onSettled: refresh,
   });
 
@@ -183,12 +185,11 @@ export function EventParticipantsPage({ eventId }: { eventId: string }) {
           <Skeleton className="h-16 w-full" />
         </div>
       ) : participants.isError ? (
-        <div role="alert" className="flex flex-col items-start gap-2 text-destructive">
-          <p>โหลดรายชื่อไม่สำเร็จ: {participants.error.message}</p>
-          <Button variant="outline" size="sm" onClick={() => void participants.refetch()}>
-            ลองอีกครั้ง
-          </Button>
-        </div>
+        <ErrorState
+          error={participants.error}
+          onRetry={participants.refetch}
+          title="โหลดรายชื่อไม่สำเร็จ"
+        />
       ) : (
         <>
           <p className="text-sm text-muted-foreground" aria-live="polite">

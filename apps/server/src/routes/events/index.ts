@@ -152,7 +152,7 @@ export const createEventRoutes = (deps: RouteDeps) =>
 
     .get("/:id", validate("param", idParam), async (c) => {
       const [item] = await loadEvents(c.var.db, eq(event.id, c.req.valid("param").id));
-      if (!item) return c.json({ message: "Event not found" }, 404);
+      if (!item) return c.json({ message: "ไม่พบกิจกรรมนี้" }, 404);
       return c.json({ ...item, canManage: canSport(c.var.user, "catalog.manage") }, 200);
     })
 
@@ -190,7 +190,7 @@ export const createEventRoutes = (deps: RouteDeps) =>
           .select({ version: event.version })
           .from(event)
           .where(eq(event.id, id));
-        if (!current) return c.json({ message: "Event not found" }, 404);
+        if (!current) return c.json({ message: "ไม่พบกิจกรรมนี้" }, 404);
         if (current.version !== version) return c.json({ message: STALE }, 409);
         try {
           await db.batch([
@@ -218,7 +218,7 @@ export const createEventRoutes = (deps: RouteDeps) =>
           throw error;
         }
         const [updated] = await loadEvents(db, eq(event.id, id));
-        if (!updated) return c.json({ message: "Event not found" }, 404);
+        if (!updated) return c.json({ message: "ไม่พบกิจกรรมนี้" }, 404);
         return c.json(updated, 200);
       },
     )
@@ -231,7 +231,7 @@ export const createEventRoutes = (deps: RouteDeps) =>
           abortUnless(db, c.var.user.id, sportAccessIsAsRead(c.var.user)),
           db.delete(event).where(eq(event.id, id)).returning({ id: event.id }),
         ]);
-        if (!rows[0]) return c.json({ message: "Event not found" }, 404);
+        if (!rows[0]) return c.json({ message: "ไม่พบกิจกรรมนี้" }, 404);
         return c.json({ id }, 200);
       } catch (error) {
         if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
@@ -243,13 +243,13 @@ export const createEventRoutes = (deps: RouteDeps) =>
     .get("/:id/participants", validate("param", idParam), async (c) => {
       const actor = c.var.user;
       if (!canSport(actor, "athletes.read") && !canSport(actor, "kiosk.operate")) {
-        return c.json({ message: "Forbidden" }, 403);
+        return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const [item] = await c.var.db
         .select({ id: event.id, type: event.type })
         .from(event)
         .where(eq(event.id, c.req.valid("param").id));
-      if (!item) return c.json({ message: "Event not found" }, 404);
+      if (!item) return c.json({ message: "ไม่พบกิจกรรมนี้" }, 404);
       const items = await listParticipants(c.var.db, item, sportAccess(actor).scope);
       return c.json(
         {
@@ -276,7 +276,7 @@ export const createEventRoutes = (deps: RouteDeps) =>
           .select({ id: event.id, type: event.type })
           .from(event)
           .where(eq(event.id, id));
-        if (!item) return c.json({ message: "Event not found" }, 404);
+        if (!item) return c.json({ message: "ไม่พบกิจกรรมนี้" }, 404);
         const person = await findPerson(db, id, userId);
         if (!person) return c.json({ code: "unknown" as const, message: UNKNOWN_PERSON }, 404);
 
@@ -338,7 +338,7 @@ export const createEventRoutes = (deps: RouteDeps) =>
           }
           if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
           if (constraintError(error) === "foreign-key") {
-            return c.json({ message: "Event not found" }, 404);
+            return c.json({ message: "ไม่พบกิจกรรมนี้" }, 404);
           }
           throw error;
         }
@@ -366,7 +366,7 @@ export const createEventRoutes = (deps: RouteDeps) =>
               .where(and(eq(eventCheckin.eventId, id), eq(eventCheckin.userId, userId)))
               .returning({ id: eventCheckin.id }),
           ]);
-          if (!rows[0]) return c.json({ message: "Check-in not found" }, 404);
+          if (!rows[0]) return c.json({ message: "ไม่พบการเช็คอินนี้" }, 404);
           return c.json({ userId }, 200);
         } catch (error) {
           if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);

@@ -13,6 +13,8 @@ import { ConfirmDelete, FormDialog, TextField, issuesOf } from "@/components/for
 import { PageHeader } from "@/components/page-header";
 import { useApis } from "@/lib/api-context";
 import type { Venue } from "@/lib/venues";
+import { ErrorState } from "@/components/error-state";
+import { toastError } from "@/lib/errors";
 
 export const Route = createFileRoute("/staff/venues")({
   component: VenuesPage,
@@ -41,7 +43,7 @@ export function VenuesPage() {
       toast.success("บันทึกแล้ว");
       setEditing(null);
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toastError(error, "บันทึกไม่สำเร็จ"),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["venues"] }),
   });
 
@@ -63,12 +65,7 @@ export function VenuesPage() {
           <Skeleton className="h-16 w-full" />
         </div>
       ) : venues.isError ? (
-        <div role="alert" className="flex flex-col items-start gap-2 text-destructive">
-          <p>โหลดสถานที่ไม่สำเร็จ: {venues.error.message}</p>
-          <Button variant="outline" size="sm" onClick={() => void venues.refetch()}>
-            ลองอีกครั้ง
-          </Button>
-        </div>
+        <ErrorState error={venues.error} onRetry={venues.refetch} title="โหลดสถานที่ไม่สำเร็จ" />
       ) : venues.data.items.length === 0 ? (
         <p className="text-muted-foreground">ยังไม่มีสถานที่</p>
       ) : (

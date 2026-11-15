@@ -45,6 +45,7 @@ import { PageHeader } from "@/components/page-header";
 import { type Department, type DepartmentInput, departmentsApi } from "@/lib/departments";
 import { DEPARTMENT_CODE_MAX_LENGTH, DEPARTMENT_CODE_PATTERN } from "@it3k/db/department-codes";
 import { isSignedOut } from "@/lib/leadership";
+import { toastError } from "@/lib/errors";
 
 export const Route = createFileRoute("/staff/departments")({
   component: RouteComponent,
@@ -85,7 +86,7 @@ function RouteComponent() {
         void router.navigate({ to: "/login", search: { to: router.state.location.href } });
         return false;
       }
-      toast.error(error instanceof Error ? error.message : "เกิดข้อผิดพลาด กรุณาลองอีกครั้ง");
+      toastError(error, "บันทึกไม่สำเร็จ");
       return false;
     }
   }

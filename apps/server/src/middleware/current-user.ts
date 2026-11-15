@@ -49,7 +49,7 @@ export type CurrentUserEnv = {
 export const requireJsonPosts = createMiddleware(async (c, next) => {
   const type = c.req.header("content-type") ?? "";
   if (c.req.method === "POST" && !/^application\/json\b/i.test(type)) {
-    return c.json({ message: "Content-Type must be application/json" }, 415);
+    return c.json({ message: "คำขอต้องส่งเป็น JSON (Content-Type: application/json)" }, 415);
   }
   await next();
 });
@@ -68,7 +68,7 @@ export function requireUser(deps: RouteDeps) {
   return createMiddleware<CurrentUserEnv>(async (c, next) => {
     const session = await deps.getSession(c.req.raw.headers);
     if (!session) {
-      return c.json({ message: "Unauthorized" }, 401);
+      return c.json({ message: "กรุณาเข้าสู่ระบบ" }, 401);
     }
     const db = deps.getDb();
     const [row] = await db
@@ -88,10 +88,10 @@ export function requireUser(deps: RouteDeps) {
       .leftJoin(leadership, eq(leadership.userId, user.id))
       .where(eq(user.id, session.userId));
     if (!row) {
-      return c.json({ message: "Unauthorized" }, 401);
+      return c.json({ message: "กรุณาเข้าสู่ระบบ" }, 401);
     }
     if (isBanned(row)) {
-      return c.json({ message: "Forbidden" }, 403);
+      return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
     }
     c.set("db", db);
     c.set("user", {
@@ -112,7 +112,7 @@ export function requireUser(deps: RouteDeps) {
 /** Staff resources require membership; profile and files use requireUser alone. */
 export const requireMember = createMiddleware<CurrentUserEnv>(async (c, next) => {
   if (!isMember(c.var.user.role)) {
-    return c.json({ message: "Forbidden" }, 403);
+    return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
   }
   await next();
 });

@@ -6,7 +6,7 @@ import type { CurrentUserEnv } from "./current-user";
 /** 403 unless the signed-in account holds this sport permission. */
 export function allowSport(permission: SportPermission) {
   return createMiddleware<CurrentUserEnv>(async (c, next) => {
-    if (!canSport(c.var.user, permission)) return c.json({ message: "Forbidden" }, 403);
+    if (!canSport(c.var.user, permission)) return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
     await next();
   });
 }

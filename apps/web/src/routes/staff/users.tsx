@@ -39,6 +39,8 @@ import { useApis } from "@/lib/api-context";
 import { type ListFilters, listSearchSchema, replacesHistory } from "@/lib/list-search";
 import { GiB, INSTITUTIONS, type Institution } from "@it3k/db/profile";
 import { fileSize } from "@/lib/files";
+import { ErrorState } from "@/components/error-state";
+import { toastError } from "@/lib/errors";
 
 export const Route = createFileRoute("/staff/users")({
   validateSearch: (search) => listSearchSchema.parse(search),
@@ -182,12 +184,7 @@ export function UsersPage({ filters: control }: { filters?: FilterControl<ListFi
           <Skeleton className="h-12 w-full" />
         </div>
       ) : accounts.isError ? (
-        <div role="alert" className="flex flex-col items-start gap-2 text-destructive">
-          <p>โหลดรายชื่อไม่สำเร็จ: {accounts.error.message}</p>
-          <Button variant="outline" size="sm" onClick={() => void accounts.refetch()}>
-            ลองอีกครั้ง
-          </Button>
-        </div>
+        <ErrorState error={accounts.error} onRetry={accounts.refetch} title="โหลดรายชื่อไม่สำเร็จ" />
       ) : accounts.data.items.length === 0 ? (
         <p className="text-muted-foreground">ไม่พบบัญชี</p>
       ) : (
@@ -359,7 +356,7 @@ function EditAccountDialog({
       ]);
     },
     onError: async (error) => {
-      toast.error(`บันทึกไม่สำเร็จ: ${error.message}`);
+      toastError(error, "บันทึกไม่สำเร็จ");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["users"] }),
         queryClient.invalidateQueries({ queryKey: ["leadership"] }),
@@ -443,9 +440,7 @@ function EditAccountDialog({
                 items={institutionItems}
                 value={institution ?? NO_INSTITUTION}
                 onValueChange={(value: string | null) =>
-                  setInstitution(
-                    !value || value === NO_INSTITUTION ? null : (value as Institution),
-                  )
+                  setInstitution(!value || value === NO_INSTITUTION ? null : (value as Institution))
                 }
               >
                 <SelectTrigger id="account-institution" aria-label="สถาบัน">
