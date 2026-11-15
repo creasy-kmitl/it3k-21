@@ -1,7 +1,14 @@
 // Test-only helpers: an in-memory database plus a header-based stand-in for
 // the Better Auth session so routes can be exercised with Hono#request.
-import { type LeadershipRole, department, leadership, user } from "@it3k/db/schema/index";
-import type { Institution } from "@it3k/db/profile";
+import {
+  type LeadershipRole,
+  department,
+  leadership,
+  sportDivision,
+  user,
+  userProfile,
+} from "@it3k/db/schema/index";
+import { EMPTY_PROFILE, type Institution } from "@it3k/db/profile";
 import { createTestDb } from "@it3k/db/testing";
 
 export { defined } from "@it3k/db/testing";
@@ -67,6 +74,29 @@ export function createTestContext() {
     return id;
   }
 
+  /** A participant who submitted a profile naming `institution`. */
+  async function seedParticipant(id: string, institution: Institution | "" = "kmutt") {
+    await seedUser(id, { role: "participant", name: `Athlete ${id}` });
+    await db.insert(userProfile).values({
+      userId: id,
+      draft: EMPTY_PROFILE,
+      values: { ...EMPTY_PROFILE, firstName: "สมชาย", lastName: id, phone: "0812345678", institution },
+      submittedAt: new Date(),
+      dirty: false,
+    });
+    return id;
+  }
+
+  /** The id of a seeded sport division, by code. */
+  async function divisionId(code: string) {
+    const [row] = await db
+      .select({ id: sportDivision.id })
+      .from(sportDivision)
+      .where(eq(sportDivision.code, code));
+    if (!row) throw new Error(`No seeded division with code ${code}`);
+    return row.id;
+  }
+
   /** Request init for a signed-in user, with an optional JSON body. */
   function as(userId: string | null, init: { method?: string; json?: unknown } = {}): RequestInit {
     const headers = new Headers();
@@ -79,7 +109,7 @@ export function createTestContext() {
     };
   }
 
-  return { db, sqlite, hooks, deps, departmentId, seedUser, as };
+  return { db, sqlite, hooks, deps, departmentId, seedUser, seedParticipant, divisionId, as };
 }
 
 /** Parsed JSON body, typed loosely enough for `toEqual` assertions. */

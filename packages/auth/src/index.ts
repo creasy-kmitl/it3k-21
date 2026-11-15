@@ -1,6 +1,7 @@
 import type { Database } from "@it3k/db";
 import * as schema from "@it3k/db/schema/auth";
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin } from "better-auth/plugins/admin";
 import { oAuthProxy } from "better-auth/plugins/oauth-proxy";
@@ -32,7 +33,20 @@ export type AuthConfig = {
   OAUTH_PROXY_SECRET?: string;
   /** Comma-separated origin patterns; set only on the relay stage. */
   AUTH_PREVIEW_ORIGINS?: string;
+  /**
+   * Discord OAuth app. Athletes link Discord for esports; it never signs
+   * anyone in. Leaving either value empty turns Discord linking off.
+   */
+  DISCORD_CLIENT_ID?: string;
+  DISCORD_CLIENT_SECRET?: string;
 };
+
+/** Discord is only ever linked to an account that signed in with Google. */
+export const DISCORD = "discord";
+
+export function discordEnabled(env: Pick<AuthConfig, "DISCORD_CLIENT_ID" | "DISCORD_CLIENT_SECRET">) {
+  return !!env.DISCORD_CLIENT_ID && !!env.DISCORD_CLIENT_SECRET;
+}
 
 export function createAuth(
   env: AuthConfig,
@@ -63,8 +77,49 @@ export function createAuth(
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_SECRET_ID,
       },
+      ...(discordEnabled(env)
+        ? {
+            discord: {
+              clientId: env.DISCORD_CLIENT_ID ?? "",
+              clientSecret: env.DISCORD_CLIENT_SECRET ?? "",
+            },
+          }
+        : {}),
+    },
+    account: {
+      accountLinking: {
+        // A Discord account rarely uses the same address as the Google one.
+        allowDifferentEmails: true,
+      },
+    },
+    databaseHooks: {
+      account: {
+        create: {
+          // One Discord account per user: relinking means unlinking first.
+          // (One user per Discord account is the (provider, account) index.)
+          before: async (account, ctx) => {
+            if (account.providerId !== DISCORD || !ctx) return;
+            const accounts = await ctx.context.internalAdapter.findAccounts(account.userId);
+            if (accounts.some((linked) => linked.providerId === DISCORD)) {
+              throw new APIError("BAD_REQUEST", {
+                code: "DISCORD_ALREADY_LINKED",
+                message: "บัญชีนี้เชื่อม Discord ไว้แล้ว ยกเลิกการเชื่อมก่อนเชื่อมบัญชีใหม่",
+              });
+            }
+          },
+        },
+      },
     },
     user: {
+      // Discord only links to an account; signing up or in with it is refused.
+      validateUserInfo: ({ source }) => {
+        if (source.oauth?.providerId === DISCORD && source.action !== "link-account") {
+          return {
+            error: "discord_sign_in_disabled",
+            errorDescription: "เข้าสู่ระบบด้วย Google แล้วเชื่อม Discord จากหน้าสมัครกีฬา",
+          };
+        }
+      },
       additionalFields: {
         departmentId: {
           type: "string",

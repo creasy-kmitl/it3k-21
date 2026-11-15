@@ -19,7 +19,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@it3k/ui/components/alert-dialog";
-import { Badge } from "@it3k/ui/components/badge";
 import { Button } from "@it3k/ui/components/button";
 import { Checkbox } from "@it3k/ui/components/checkbox";
 import {
@@ -49,6 +48,7 @@ import { toast } from "sonner";
 import type { z } from "zod";
 
 import { PageHeader } from "@/components/page-header";
+import { DivisionBadges } from "@/components/sport-badges";
 import { SportArt, SportThumbnail } from "@/components/sport-art";
 import { useApis } from "@/lib/api-context";
 import type { Division, Sport } from "@/lib/sports";
@@ -221,21 +221,6 @@ function SportCard({
         </div>
       )}
     </li>
-  );
-}
-
-export function DivisionBadges({ division }: { division: Division }) {
-  return (
-    <span className="flex flex-wrap gap-1">
-      <Badge variant="secondary">{GENDER_LABELS[division.gender]}</Badge>
-      <Badge variant="secondary">{FORMAT_LABELS[division.format]}</Badge>
-      {division.requiresShirtNumber && <Badge variant="outline">เบอร์เสื้อ</Badge>}
-      {division.requiresBadmintonRank && <Badge variant="outline">มือ 1/2</Badge>}
-      {division.requiresGameProfile && <Badge variant="outline">IGN · Discord</Badge>}
-      {division.maxPerInstitution !== null && (
-        <Badge variant="outline">สูงสุด {division.maxPerInstitution} คน/สถาบัน</Badge>
-      )}
-    </span>
   );
 }
 

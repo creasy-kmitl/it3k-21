@@ -187,6 +187,11 @@ export const server = Cloudflare.Worker("server", {
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
     GOOGLE_CLIENT_ID: Config.String("GOOGLE_CLIENT_ID"),
     GOOGLE_SECRET_ID: Config.Redacted("GOOGLE_SECRET_ID"),
+    // Optional on every stage: empty values turn Discord linking off.
+    DISCORD_CLIENT_ID: Config.String("DISCORD_CLIENT_ID").pipe(Config.withDefault("")),
+    DISCORD_CLIENT_SECRET: Config.Redacted("DISCORD_CLIENT_SECRET").pipe(
+      Config.withDefault(Redacted.make("")),
+    ),
     // Equal to BETTER_AUTH_URL unless this is a preview, and the plugin
     // skips proxying entirely when the two match.
     AUTH_PROXY_URL: isPreviewStage ? AUTH_RELAY_URL : Cloudflare.Worker.URL,

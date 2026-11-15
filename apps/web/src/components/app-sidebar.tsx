@@ -55,7 +55,12 @@ export function AppSidebar({
     },
     {
       label: "กีฬา",
-      items: inSports ? [{ title: "กีฬา", to: "/staff/sports", icon: <MedalIcon /> } as const] : [],
+      items: [
+        ...(inSports ? [{ title: "ประเภทกีฬา", to: "/staff/sports", icon: <MedalIcon /> } as const] : []),
+        ...(me?.sportAccess.permissions.includes("athletes.read")
+          ? [{ title: "นักกีฬา", to: "/staff/athletes", icon: <TrophyIcon /> } as const]
+          : []),
+      ],
     },
     {
       label: "เครื่องมือ",

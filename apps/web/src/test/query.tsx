@@ -11,6 +11,8 @@ import type { LeadershipApi, LeadershipPage, LeadershipSummary } from "@/lib/lea
 import type { LinksApi, ShortLink } from "@/lib/links";
 import type { QrPresetsApi } from "@/lib/qr-presets";
 import type { SportsApi } from "@/lib/sports";
+import type { RegistrationsApi } from "@/lib/registrations";
+import type { AthletesApi } from "@/lib/athletes";
 import type { UsersApi } from "@/lib/users";
 
 /** Narrows a value a test expects to exist, failing loudly when it does not. */
@@ -62,6 +64,30 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
     profile: apis.profile ?? { me: unexpected("profile.me"), saveDraft: unexpected("profile.saveDraft"), submit: unexpected("profile.submit") },
     files: apis.files ?? { list: unexpected("files.list"), remove: unexpected("files.remove"), upload: unexpected("files.upload") },
     sports: apis.sports ?? fakeSportsApi(),
+    registrations: apis.registrations ?? fakeRegistrationsApi(),
+    athletes: apis.athletes ?? fakeAthletesApi(),
+  };
+}
+
+export function fakeRegistrationsApi(overrides: Partial<RegistrationsApi> = {}): RegistrationsApi {
+  return {
+    me: unexpected("registrations.me"),
+    register: unexpected("registrations.register"),
+    update: unexpected("registrations.update"),
+    withdraw: unexpected("registrations.withdraw"),
+    linkDiscord: unexpected("registrations.linkDiscord"),
+    unlinkDiscord: unexpected("registrations.unlinkDiscord"),
+    ...overrides,
+  };
+}
+
+export function fakeAthletesApi(overrides: Partial<AthletesApi> = {}): AthletesApi {
+  return {
+    list: unexpected("athletes.list"),
+    exportAll: unexpected("athletes.exportAll"),
+    review: unexpected("athletes.review"),
+    edit: unexpected("athletes.edit"),
+    ...overrides,
   };
 }
 
