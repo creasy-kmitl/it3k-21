@@ -21,6 +21,9 @@ import { clearCacheOnUserChange } from "@/lib/query-cache";
 // when moving between pages. Pages that read better narrow cap their own content.
 const COLUMN = "mx-auto w-full max-w-7xl";
 
+// Pages that fill the whole area under the header, edge to edge (the venue map).
+const FULL_BLEED = new Set(["/staff/venues"]);
+
 const PAGE_TITLES: Record<string, string> = {
   "/staff/dashboard": "หน้าหลัก",
   "/staff/calendar": "ปฏิทิน",
@@ -97,11 +100,17 @@ function AuthLayout() {
                 <NotificationBell />
               </div>
             </header>
-            <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-              <div className={cn(COLUMN, "flex flex-1 flex-col gap-4")}>
+            {FULL_BLEED.has(pathname) ? (
+              <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden md:rounded-b-2xl">
                 <Outlet />
               </div>
-            </div>
+            ) : (
+              <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+                <div className={cn(COLUMN, "flex flex-1 flex-col gap-4")}>
+                  <Outlet />
+                </div>
+              </div>
+            )}
           </SidebarInset>
         </SidebarProvider>
       </TooltipProvider>
