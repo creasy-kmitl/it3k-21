@@ -88,9 +88,12 @@ export function EventParticipantsPage({ eventId }: { eventId: string }) {
   const { events: api } = useApis();
   const queryClient = useQueryClient();
   const event = useQuery({ queryKey: ["events", eventId], queryFn: () => api.get(eventId) });
+  // `eventId` may be a slug; once the event is loaded, its id keeps working
+  // even if someone renames the slug while this page is open.
+  const id = event.data?.id ?? eventId;
   const participants = useQuery({
     queryKey: ["events", eventId, "participants"],
-    queryFn: () => api.participants(eventId),
+    queryFn: () => api.participants(id),
   });
   const [show, setShow] = useState<Show>("all");
   const [search, setSearch] = useState("");
@@ -98,7 +101,7 @@ export function EventParticipantsPage({ eventId }: { eventId: string }) {
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["events", eventId, "participants"] });
   const checkIn = useMutation({
-    mutationFn: (userId: string) => api.checkIn(eventId, { userId, method: "manual" }),
+    mutationFn: (userId: string) => api.checkIn(id, { userId, method: "manual" }),
     onSuccess: (outcome) => {
       if (outcome.code === "checked-in") toast.success(`เช็คอิน ${fullName(outcome.person)} แล้ว`);
       else toast.error(outcome.message);
@@ -107,7 +110,7 @@ export function EventParticipantsPage({ eventId }: { eventId: string }) {
     onSettled: refresh,
   });
   const undo = useMutation({
-    mutationFn: (userId: string) => api.undoCheckIn(eventId, userId),
+    mutationFn: (userId: string) => api.undoCheckIn(id, userId),
     onSuccess: () => toast.success("ยกเลิกการเช็คอินแล้ว"),
     onError: (error) => toastError(error, "ยกเลิกการเช็คอินไม่สำเร็จ"),
     onSettled: refresh,
@@ -159,7 +162,10 @@ export function EventParticipantsPage({ eventId }: { eventId: string }) {
             <Button
               variant="outline"
               onClick={() =>
-                downloadBlob(participantsCsv(items), `it3k-event-${eventId.slice(0, 8)}.csv`)
+                downloadBlob(
+                  participantsCsv(items),
+                  `it3k-event-${event.data?.slug ?? id.slice(0, 8)}.csv`,
+                )
               }
             >
               <Download data-icon="inline-start" aria-hidden />
@@ -168,7 +174,9 @@ export function EventParticipantsPage({ eventId }: { eventId: string }) {
           )}
           {participants.data?.canCheckIn && (
             <Button
-              render={<Link to="/kiosk/$eventId" params={{ eventId }} />}
+              render={
+                <Link to="/kiosk/$eventId" params={{ eventId: event.data?.slug ?? eventId }} />
+              }
               nativeButton={false}
             >
               <ScanBarcode data-icon="inline-start" aria-hidden />

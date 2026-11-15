@@ -62,7 +62,14 @@ beforeEach(async () => {
     },
   ]);
   await t.db.insert(event).values([
-    { id: "e-sport", type: "sport", name: "ฟุตบอล", startAt: START, endAt: END },
+    {
+      id: "e-sport",
+      type: "sport",
+      name: "ฟุตบอล",
+      slug: "football-r1",
+      startAt: START,
+      endAt: END,
+    },
     { id: "e-general", type: "general", name: "พิธีเปิด", startAt: START, endAt: END },
   ]);
   await t.db.insert(eventInstitution).values([
@@ -141,6 +148,24 @@ describe("checking in", () => {
     expect(again.res.status).toBe(409);
     expect(again.body).toMatchObject({ code: "duplicate", person: { userId: "kmitl-1" } });
     expect(typeof again.body.checkedInAt).toBe("string");
+  });
+
+  test("the kiosk may name the event by its slug", async () => {
+    const list = await send<{ items: Participant[] }>(
+      "reg-staff",
+      "GET",
+      "/football-r1/participants",
+    );
+    expect(list.body.items.map((item) => item.userId)).toEqual(["kmitl-1", "kmutt-1"]);
+    const { res } = await send("reg-staff", "POST", "/football-r1/checkins", {
+      userId: "kmitl-1",
+      method: "scan",
+    });
+    expect(res.status).toBe(201);
+    const rows = await t.db.select().from(eventCheckin);
+    expect(rows).toMatchObject([{ eventId: "e-sport", userId: "kmitl-1" }]);
+    expect((await send("tech", "DELETE", "/football-r1/checkins/kmitl-1")).res.status).toBe(200);
+    expect(await t.db.select().from(eventCheckin)).toEqual([]);
   });
 
   test("other institutions' registration staff cannot run the kiosk", async () => {

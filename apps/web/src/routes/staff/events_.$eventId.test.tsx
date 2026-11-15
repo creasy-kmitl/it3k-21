@@ -18,6 +18,7 @@ const EVENT: EventItem & { canManage: boolean } = {
   id: "e-1",
   type: "sport",
   name: "ฟุตบอลรอบแรก",
+  slug: null,
   description: null,
   startAt: new Date(Date.UTC(2026, 11, 5, 2)).toISOString(),
   endAt: new Date(Date.UTC(2026, 11, 5, 5)).toISOString(),
@@ -73,7 +74,11 @@ const PEOPLE = [
   }),
 ];
 
-function setup(list: Partial<ParticipantList>, overrides: Partial<EventsApi> = {}) {
+function setup(
+  list: Partial<ParticipantList>,
+  overrides: Partial<EventsApi> = {},
+  eventId = "e-1",
+) {
   const events = fakeEventsApi({
     get: async () => EVENT,
     participants: async () => ({
@@ -89,7 +94,7 @@ function setup(list: Partial<ParticipantList>, overrides: Partial<EventsApi> = {
   return renderAtRoot(() => (
     <QueryClientProvider client={client}>
       <ApiProvider value={fakeApis({ events })}>
-        <EventParticipantsPage eventId="e-1" />
+        <EventParticipantsPage eventId={eventId} />
       </ApiProvider>
     </QueryClientProvider>
   ));
@@ -188,5 +193,36 @@ describe("participantsCsv", () => {
     expect(rows[3]).toContain("Guest X");
     expect(rows[3]).toContain(",no,");
     expect(rows[3]?.endsWith(",manual,yes")).toBe(true);
+  });
+
+  test("opened by slug, it checks in by the event's id and links the kiosk by slug", async () => {
+    const asked: string[] = [];
+    const calls: unknown[] = [];
+    const view = await setup(
+      { canCheckIn: true },
+      {
+        get: async (ref) => {
+          asked.push(ref);
+          return { ...EVENT, slug: "football-r1" };
+        },
+        checkIn: async (id, json) => {
+          calls.push([id, json]);
+          return {
+            code: "checked-in",
+            person: PEOPLE[0] as Participant,
+            checkedInAt: NOW,
+            forced: false,
+          };
+        },
+      },
+      "football-r1",
+    );
+    expect(await view.findByText("ฟุตบอลรอบแรก")).toBeTruthy();
+    expect(asked).toEqual(["football-r1"]);
+    expect(view.getByRole("button", { name: /เปิด Kiosk/ }).getAttribute("href")).toBe(
+      "/kiosk/football-r1",
+    );
+    fireEvent.click(view.getByRole("button", { name: "เช็คอิน Somchai G" }));
+    await waitFor(() => expect(calls).toEqual([["e-1", { userId: "u-1", method: "manual" }]]));
   });
 });

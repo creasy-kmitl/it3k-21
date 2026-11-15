@@ -83,6 +83,7 @@ function item(overrides: Partial<EventItem> = {}): EventItem {
     id: "e-1",
     type: "sport",
     name: "บาสรอบแรก",
+    slug: null,
     description: null,
     startAt: new Date(START).toISOString(),
     endAt: new Date(END).toISOString(),
@@ -226,6 +227,102 @@ describe("/staff/events", () => {
           }),
         ],
       ]),
+    );
+  });
+
+  test("cards link by slug, or by id for an event without one", async () => {
+    const view = await setup(
+      [item(), item({ id: "e-2", name: "บาสรอบสอง", slug: "basketball-r2" })],
+      false,
+    );
+    const first = await view.findByRole("link", { name: "บาสรอบแรก" });
+    expect(first.getAttribute("href")).toBe("/staff/events/e-1");
+    const second = view.getByRole("link", { name: "บาสรอบสอง" });
+    expect(second.getAttribute("href")).toBe("/staff/events/basketball-r2");
+  });
+
+  test("the slug follows the name until typed into, with a URL preview", async () => {
+    const created: EventInput[] = [];
+    const view = await setup([], true, {
+      create: async (json) => {
+        created.push(json);
+        return item();
+      },
+    });
+    fireEvent.click(await view.findByRole("button", { name: "เพิ่มกิจกรรม" }));
+    await choose(view.getByRole("combobox", { name: "ประเภทกิจกรรม" }), "กิจกรรมทั่วไป");
+    const slug = view.getByLabelText("ลิงก์กิจกรรม (slug)") as HTMLInputElement;
+    const name = view.getByLabelText("ชื่อกิจกรรม");
+
+    // A Thai name leaves no Latin letters: type and Bangkok date instead.
+    fireEvent.change(name, { target: { value: "พิธีเปิด" } });
+    expect(slug.value).toMatch(/^general-\d{4}-\d{2}-\d{2}$/);
+    fireEvent.change(name, { target: { value: "พิธีเปิด IT3K Opening!" } });
+    expect(slug.value).toBe("it3k-opening");
+    expect(view.getByText(`${window.location.origin}/staff/events/it3k-opening`)).toBeTruthy();
+    expect(view.getByText(`${window.location.origin}/kiosk/it3k-opening`)).toBeTruthy();
+
+    // Left alone, it is sent empty so the API can add "-2" if it is taken.
+    fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]).toMatchObject({ name: "พิธีเปิด IT3K Opening!", slug: "" });
+  });
+
+  test("a typed slug is cleaned up, kept through renames and sent as typed", async () => {
+    const created: EventInput[] = [];
+    const view = await setup([], true, {
+      create: async (json) => {
+        created.push(json);
+        return item();
+      },
+    });
+    fireEvent.click(await view.findByRole("button", { name: "เพิ่มกิจกรรม" }));
+    await choose(view.getByRole("combobox", { name: "ประเภทกิจกรรม" }), "กิจกรรมทั่วไป");
+    const slug = view.getByLabelText("ลิงก์กิจกรรม (slug)") as HTMLInputElement;
+    const name = view.getByLabelText("ชื่อกิจกรรม");
+    fireEvent.change(name, { target: { value: "Opening" } });
+    fireEvent.change(slug, { target: { value: "Day One " } });
+    expect(slug.value).toBe("day-one-");
+    fireEvent.change(name, { target: { value: "Opening Ceremony" } });
+    expect(slug.value).toBe("day-one-");
+
+    // Back to the name, then typed again.
+    fireEvent.click(view.getByRole("button", { name: "สร้างจากชื่อ" }));
+    expect(slug.value).toBe("opening-ceremony");
+    fireEvent.change(slug, { target: { value: "" } });
+    expect(slug.value).toBe("opening-ceremony");
+    fireEvent.change(slug, { target: { value: "Day One!" } });
+
+    fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]).toMatchObject({ slug: "day-one" });
+  });
+
+  test("a bad slug is shown on the field", async () => {
+    const view = await setup([], true);
+    fireEvent.click(await view.findByRole("button", { name: "เพิ่มกิจกรรม" }));
+    fireEvent.change(view.getByLabelText("ชื่อกิจกรรม"), { target: { value: "x" } });
+    fireEvent.change(view.getByLabelText("ลิงก์กิจกรรม (slug)"), { target: { value: "ab" } });
+    fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
+    expect(await view.findByText("ยาวอย่างน้อย 3 ตัวอักษร")).toBeTruthy();
+  });
+
+  test("editing keeps an event's slug when it is renamed", async () => {
+    const updated: unknown[] = [];
+    const view = await setup([item({ slug: "basketball-r1" })], true, {
+      update: async (id, json) => {
+        updated.push([id, json]);
+        return item();
+      },
+    });
+    fireEvent.click(await view.findByRole("button", { name: "แก้ไข บาสรอบแรก" }));
+    const slug = view.getByLabelText("ลิงก์กิจกรรม (slug)") as HTMLInputElement;
+    expect(slug.value).toBe("basketball-r1");
+    fireEvent.change(view.getByLabelText("ชื่อกิจกรรม"), { target: { value: "Basketball Final" } });
+    expect(slug.value).toBe("basketball-r1");
+    fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() =>
+      expect(updated).toEqual([["e-1", expect.objectContaining({ slug: "basketball-r1" })]]),
     );
   });
 });

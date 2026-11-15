@@ -17,6 +17,7 @@ const EVENT: EventItem & { canManage: boolean } = {
   id: "e-1",
   type: "sport",
   name: "ฟุตบอลรอบแรก",
+  slug: null,
   description: null,
   startAt: new Date(Date.UTC(2026, 11, 5, 2)).toISOString(),
   endAt: new Date(Date.UTC(2026, 11, 5, 5)).toISOString(),
@@ -52,7 +53,7 @@ const participant = (overrides: Partial<Participant> = {}): Participant => ({
   ...overrides,
 });
 
-function setup(overrides: Partial<EventsApi> = {}, canCheckIn = true) {
+function setup(overrides: Partial<EventsApi> = {}, canCheckIn = true, eventId = "e-1") {
   const events = fakeEventsApi({
     get: async () => EVENT,
     participants: async () => ({
@@ -70,7 +71,10 @@ function setup(overrides: Partial<EventsApi> = {}, canCheckIn = true) {
   return renderAtRoot(() => (
     <QueryClientProvider client={client}>
       <ApiProvider value={fakeApis({ events })}>
-        <KioskPage eventId="e-1" decoderFactory={() => Promise.reject(new Error("no camera"))} />
+        <KioskPage
+          eventId={eventId}
+          decoderFactory={() => Promise.reject(new Error("no camera"))}
+        />
       </ApiProvider>
     </QueryClientProvider>
   ));
@@ -109,6 +113,32 @@ describe("/kiosk/$eventId", () => {
     await scan(view, "u-1");
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(calls).toHaveLength(1);
+  });
+
+  test("opened by slug, it checks in by the event's id", async () => {
+    const asked: string[] = [];
+    const calls: unknown[] = [];
+    const view = await setup(
+      {
+        get: async (ref) => {
+          asked.push(ref);
+          return { ...EVENT, slug: "football-r1" };
+        },
+        checkIn: async (id, json) => {
+          calls.push([id, json]);
+          return { code: "checked-in", person: PERSON, checkedInAt: NOW, forced: false };
+        },
+      },
+      true,
+      "football-r1",
+    );
+    expect(await view.findByText("ฟุตบอลรอบแรก")).toBeTruthy();
+    expect(asked).toEqual(["football-r1"]);
+    expect(view.getByRole("button", { name: "ออก" }).getAttribute("href")).toBe(
+      "/staff/events/football-r1",
+    );
+    await scan(view, "u-1");
+    await waitFor(() => expect(calls).toEqual([["e-1", { userId: "u-1", method: "scan" }]]));
   });
 
   test("a duplicate shows when it was checked in", async () => {

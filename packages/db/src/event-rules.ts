@@ -3,6 +3,7 @@
 import { z } from "zod";
 
 import { INSTITUTION_IDS } from "./profile";
+import { UUID_PATTERN, slugify } from "./slugify";
 
 export const EVENT_TYPES = ["sport", "general"] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -18,6 +19,54 @@ export type CheckinMethod = (typeof CHECKIN_METHODS)[number];
 /** An event may last at most this long, like a calendar item. */
 export const MAX_EVENT_MS = 31 * 24 * 60 * 60 * 1000;
 export const MAX_EVENT_DIVISIONS = 100;
+
+export const EVENT_SLUG_MIN = 3;
+export const EVENT_SLUG_MAX = 64;
+/** Lowercase letters and digits, words joined by single hyphens. */
+export const EVENT_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** Room left after a generated slug for a "-2" … "-999" suffix. */
+const EVENT_SLUG_BASE_MAX = EVENT_SLUG_MAX - 4;
+
+/**
+ * An event's slug, or "" to have one made from its name. A slug shaped like
+ * an event id is refused, so `/kiosk/<id or slug>` always means one event.
+ */
+export const eventSlug = z
+  .string()
+  .trim()
+  .max(EVENT_SLUG_MAX, `ยาวได้ไม่เกิน ${EVENT_SLUG_MAX} ตัวอักษร`)
+  .refine(
+    (value) => value === "" || value.length >= EVENT_SLUG_MIN,
+    `ยาวอย่างน้อย ${EVENT_SLUG_MIN} ตัวอักษร`,
+  )
+  .refine(
+    (value) => value === "" || EVENT_SLUG_PATTERN.test(value),
+    "ใช้ได้เฉพาะ a-z, 0-9 และขีดกลาง (-) คั่นระหว่างคำ",
+  )
+  .refine((value) => !UUID_PATTERN.test(value), "ตั้งให้เหมือนรหัสกิจกรรมไม่ได้");
+
+/** `YYYY-MM-DD` in Bangkok, which has no daylight saving. */
+const bangkokDay = (ms: number) => new Date(ms + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+/**
+ * The slug an event gets when none is typed: its name slugified, or, when
+ * the name leaves too little (a Thai name keeps only its Latin letters and
+ * digits), its type and Bangkok start date, e.g. "sport-2026-11-15".
+ */
+export function eventSlugBase(event: { name: string; type: EventType; startAt: number }): string {
+  const fromName = slugify(event.name).slice(0, EVENT_SLUG_BASE_MAX).replace(/-+$/, "");
+  if (fromName.length >= EVENT_SLUG_MIN && !UUID_PATTERN.test(fromName)) return fromName;
+  return `${event.type}-${bangkokDay(event.startAt)}`;
+}
+
+/** `base`, or `base-2`, `base-3` … whichever is not taken yet. */
+export function firstFreeSlug(base: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base}-${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
 
 const name = z.string().trim().min(1, "กรอกชื่อ").max(120, "ชื่อยาวได้ไม่เกิน 120 ตัวอักษร");
 const description = z.string().trim().max(2000, "คำอธิบายยาวได้ไม่เกิน 2,000 ตัวอักษร");
@@ -57,6 +106,9 @@ export type VenueInput = z.infer<typeof venueInput>;
 const eventFields = z.strictObject({
   type: z.enum(EVENT_TYPES),
   name,
+  // "" makes one from the name. Omitted, a new event gets one from its name
+  // and an existing one keeps its own.
+  slug: eventSlug.optional(),
   description,
   startAt: epochMs,
   endAt: epochMs,

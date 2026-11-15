@@ -90,9 +90,12 @@ export function KioskPage({
   const { events: api } = useApis();
   const queryClient = useQueryClient();
   const event = useQuery({ queryKey: ["events", eventId], queryFn: () => api.get(eventId) });
+  // `eventId` may be a slug; once the event is loaded, its id keeps the kiosk
+  // working even if someone renames the slug mid-event.
+  const id = event.data?.id ?? eventId;
   const participants = useQuery({
     queryKey: ["events", eventId, "participants"],
-    queryFn: () => api.participants(eventId),
+    queryFn: () => api.participants(id),
   });
   const [outcome, setOutcome] = useState<CheckinOutcome | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -102,7 +105,7 @@ export function KioskPage({
 
   const checkIn = useMutation({
     mutationFn: (vars: { userId: string; force?: boolean }) =>
-      api.checkIn(eventId, { ...vars, method: "scan" }),
+      api.checkIn(id, { ...vars, method: "scan" }),
     onSuccess: (result) => {
       setFailure(null);
       setOutcome(result);
@@ -210,7 +213,9 @@ export function KioskPage({
         </p>
         <Button
           variant="outline"
-          render={<Link to="/staff/events/$eventId" params={{ eventId }} />}
+          render={
+            <Link to="/staff/events/$eventId" params={{ eventId: event.data?.slug ?? eventId }} />
+          }
           nativeButton={false}
           className="wide:h-10 wide:px-4"
         >
