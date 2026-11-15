@@ -66,6 +66,9 @@ export const event = sqliteTable(
       .$defaultFn(() => crypto.randomUUID()),
     type: text("type", { enum: EVENT_TYPES }).notNull(),
     name: text("name").notNull(),
+    // The event's address in links, e.g. `/kiosk/<slug>`; the id works too.
+    // Null for events made before slugs, until they are next saved.
+    slug: text("slug"),
     description: text("description"),
     startAt: integer("start_at", { mode: "timestamp_ms" }).notNull(),
     endAt: integer("end_at", { mode: "timestamp_ms" }).notNull(),
@@ -79,6 +82,8 @@ export const event = sqliteTable(
     ...timestamps(),
   },
   (table) => [
+    // SQLite lets any number of rows share a null slug.
+    uniqueIndex("event_slug_uidx").on(table.slug),
     index("event_start_at_idx").on(table.startAt),
     index("event_venue_id_idx").on(table.venueId),
     check("event_type_check", sql`${table.type} IN (${inList(EVENT_TYPES)})`),

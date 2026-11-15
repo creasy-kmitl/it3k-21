@@ -9,10 +9,12 @@ import {
   eventDivision,
   eventInput,
   eventInstitution,
+  eventSlugBase,
+  firstFreeSlug,
   venue,
 } from "@it3k/db/schema/event";
 import { sport, sportDivision } from "@it3k/db/schema/sport";
-import { type SQL, and, asc, eq, gte, inArray, sql } from "drizzle-orm";
+import { type SQL, and, asc, eq, gte, inArray, like, ne, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -31,6 +33,8 @@ import { validate } from "../../middleware/validation";
 import { canSport, sportAccess, sportAccessIsAsRead } from "../../policies/sports";
 import { expectedAt, findCheckin, findPerson, listParticipants } from "./checkins";
 
+// Every route takes an event's id or its slug, except editing and deleting
+// the event itself, which take the id.
 const idParam = z.strictObject({ id: z.string().min(1) });
 const listQuery = z.strictObject({
   type: z.enum(EVENT_TYPES).optional(),
@@ -55,6 +59,42 @@ const UNKNOWN_PERSON = "ไม่พบผู้ใช้จากรหัส�
 const ALREADY_IN = "เช็คอินไปแล้ว";
 const NOT_LISTED = "ไม่อยู่ในรายชื่อของกิจกรรมนี้";
 const MISSING_LINK = "ไม่พบสถานที่หรือประเภทกีฬาที่เลือก กรุณาโหลดใหม่";
+const SLUG_TAKEN = "ลิงก์นี้มีกิจกรรมอื่นใช้แล้ว ลองตั้งลิงก์อื่น";
+/** Tries at a generated slug, should another event take it meanwhile. */
+const SLUG_ATTEMPTS = 3;
+
+/** The event whose id or slug is `ref`. Slugs never look like ids, so at most one matches. */
+const byRef = (ref: string) => or(eq(event.id, ref), eq(event.slug, ref));
+
+/** Slugs in use that a generated `base` could clash with: `base` and `base-<n>`. */
+async function takenSlugs(db: Database, base: string, exceptId?: string) {
+  const rows = await db
+    .select({ slug: event.slug })
+    .from(event)
+    .where(
+      and(
+        // `base` is only a-z, 0-9 and hyphens, so it has no LIKE wildcards.
+        or(eq(event.slug, base), like(event.slug, `${base}-%`)),
+        exceptId ? ne(event.id, exceptId) : undefined,
+      ),
+    );
+  return new Set(rows.flatMap((row) => (row.slug ? [row.slug] : [])));
+}
+
+/** A free slug made from the event's name, or from its type and date. */
+async function generateSlug(db: Database, input: z.infer<typeof eventInput>, exceptId?: string) {
+  const base = eventSlugBase(input);
+  return firstFreeSlug(base, await takenSlugs(db, base, exceptId));
+}
+
+/** Whether an event other than `exceptId` already uses `slug`. */
+async function slugTaken(db: Database, slug: string, exceptId?: string) {
+  const [row] = await db
+    .select({ id: event.id })
+    .from(event)
+    .where(and(eq(event.slug, slug), exceptId ? ne(event.id, exceptId) : undefined));
+  return !!row;
+}
 
 /** Events with their venue, institutions and divisions, in start order. */
 async function loadEvents(db: Database, where: SQL | undefined) {
@@ -151,7 +191,7 @@ export const createEventRoutes = (deps: RouteDeps) =>
     })
 
     .get("/:id", validate("param", idParam), async (c) => {
-      const [item] = await loadEvents(c.var.db, eq(event.id, c.req.valid("param").id));
+      const [item] = await loadEvents(c.var.db, byRef(c.req.valid("param").id));
       if (!item) return c.json({ message: "ไม่พบกิจกรรมนี้" }, 404);
       return c.json({ ...item, canManage: canSport(c.var.user, "catalog.manage") }, 200);
     })
@@ -160,16 +200,32 @@ export const createEventRoutes = (deps: RouteDeps) =>
       const db = c.var.db;
       const input = c.req.valid("json");
       const id = crypto.randomUUID();
-      try {
-        await db.batch([
-          abortUnless(db, c.var.user.id, sportAccessIsAsRead(c.var.user)),
-          db.insert(event).values({ id, ...eventValues(input), createdBy: c.var.user.id }),
-          ...linkRows(db, id, input),
-        ]);
-      } catch (error) {
-        if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
-        if (constraintError(error) === "foreign-key") return c.json({ message: MISSING_LINK }, 400);
-        throw error;
+      // A typed slug is used as it is, or refused if taken. A generated one
+      // moves on to the next free "-<n>" when another event takes it first;
+      // the unique index is what catches that, so no abortUnless is needed.
+      const custom = input.slug || null;
+      if (custom && (await slugTaken(db, custom))) return c.json({ message: SLUG_TAKEN }, 409);
+      for (let attempt = 1; ; attempt++) {
+        const slug = custom ?? (await generateSlug(db, input));
+        try {
+          await db.batch([
+            abortUnless(db, c.var.user.id, sportAccessIsAsRead(c.var.user)),
+            db.insert(event).values({ id, ...eventValues(input), slug, createdBy: c.var.user.id }),
+            ...linkRows(db, id, input),
+          ]);
+          break;
+        } catch (error) {
+          if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
+          if (constraintError(error) === "foreign-key") {
+            return c.json({ message: MISSING_LINK }, 400);
+          }
+          if (constraintError(error) === "unique") {
+            if (custom) return c.json({ message: SLUG_TAKEN }, 409);
+            if (attempt < SLUG_ATTEMPTS) continue;
+            return c.json({ message: STALE }, 409);
+          }
+          throw error;
+        }
       }
       const [created] = await loadEvents(db, eq(event.id, id));
       if (!created) throw new Error("Event vanished");
@@ -187,11 +243,17 @@ export const createEventRoutes = (deps: RouteDeps) =>
         const { id } = c.req.valid("param");
         const { version, ...input } = c.req.valid("json");
         const [current] = await db
-          .select({ version: event.version })
+          .select({ version: event.version, slug: event.slug })
           .from(event)
           .where(eq(event.id, id));
         if (!current) return c.json({ message: "ไม่พบกิจกรรมนี้" }, 404);
         if (current.version !== version) return c.json({ message: STALE }, 409);
+        // Omitted keeps the slug; "" makes a new one from the name.
+        let slug = input.slug === undefined ? current.slug : input.slug || null;
+        if (slug && slug !== current.slug && (await slugTaken(db, slug, id))) {
+          return c.json({ message: SLUG_TAKEN }, 409);
+        }
+        slug ??= await generateSlug(db, input, id);
         try {
           await db.batch([
             abortUnless(
@@ -204,7 +266,7 @@ export const createEventRoutes = (deps: RouteDeps) =>
             ),
             db
               .update(event)
-              .set({ ...eventValues(input), version: version + 1 })
+              .set({ ...eventValues(input), slug, version: version + 1 })
               .where(eq(event.id, id)),
             db.delete(eventInstitution).where(eq(eventInstitution.eventId, id)),
             db.delete(eventDivision).where(eq(eventDivision.eventId, id)),
@@ -215,6 +277,8 @@ export const createEventRoutes = (deps: RouteDeps) =>
           if (constraintError(error) === "foreign-key") {
             return c.json({ message: MISSING_LINK }, 400);
           }
+          // Another event took the slug between the check and the write.
+          if (constraintError(error) === "unique") return c.json({ message: SLUG_TAKEN }, 409);
           throw error;
         }
         const [updated] = await loadEvents(db, eq(event.id, id));
@@ -248,7 +312,7 @@ export const createEventRoutes = (deps: RouteDeps) =>
       const [item] = await c.var.db
         .select({ id: event.id, type: event.type })
         .from(event)
-        .where(eq(event.id, c.req.valid("param").id));
+        .where(byRef(c.req.valid("param").id));
       if (!item) return c.json({ message: "ไม่พบกิจกรรมนี้" }, 404);
       const items = await listParticipants(c.var.db, item, sportAccess(actor).scope);
       return c.json(
@@ -270,13 +334,13 @@ export const createEventRoutes = (deps: RouteDeps) =>
       async (c) => {
         const db = c.var.db;
         const actor = c.var.user;
-        const { id } = c.req.valid("param");
         const { userId, method, force } = c.req.valid("json");
         const [item] = await db
           .select({ id: event.id, type: event.type })
           .from(event)
-          .where(eq(event.id, id));
+          .where(byRef(c.req.valid("param").id));
         if (!item) return c.json({ message: "ไม่พบกิจกรรมนี้" }, 404);
+        const id = item.id;
         const person = await findPerson(db, id, userId);
         if (!person) return c.json({ code: "unknown" as const, message: UNKNOWN_PERSON }, 404);
 
@@ -363,7 +427,15 @@ export const createEventRoutes = (deps: RouteDeps) =>
             abortUnless(db, c.var.user.id, sportAccessIsAsRead(c.var.user)),
             db
               .delete(eventCheckin)
-              .where(and(eq(eventCheckin.eventId, id), eq(eventCheckin.userId, userId)))
+              .where(
+                and(
+                  inArray(
+                    eventCheckin.eventId,
+                    db.select({ id: event.id }).from(event).where(byRef(id)),
+                  ),
+                  eq(eventCheckin.userId, userId),
+                ),
+              )
               .returning({ id: eventCheckin.id }),
           ]);
           if (!rows[0]) return c.json({ message: "ไม่พบการเช็คอินนี้" }, 404);

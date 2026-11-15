@@ -1,15 +1,19 @@
 import {
+  EVENT_SLUG_MAX,
   EVENT_TYPES,
   EVENT_TYPE_LABELS,
   type EventInput,
   type EventType,
   eventInput,
+  eventSlugBase,
 } from "@it3k/db/event-rules";
 import { INSTITUTIONS, type Institution } from "@it3k/db/profile";
+import { slugify } from "@it3k/db/slugify";
 import type { SportIcon } from "@it3k/db/sport-rules";
 import { Badge } from "@it3k/ui/components/badge";
 import { Button } from "@it3k/ui/components/button";
 import { Checkbox } from "@it3k/ui/components/checkbox";
+import { Input } from "@it3k/ui/components/input";
 import {
   Combobox,
   ComboboxCollection,
@@ -37,6 +41,7 @@ import {
   CalendarDays,
   Clock,
   ImageIcon,
+  Link2,
   type LucideIcon,
   MapPin,
   Medal,
@@ -44,6 +49,7 @@ import {
   Plus,
   School,
   Shapes,
+  Sparkles,
   TextAlignStart,
   Trash2,
   Type,
@@ -175,7 +181,7 @@ export function EventsPage() {
                   <h2 className="flex-1 font-semibold">
                     <Link
                       to="/staff/events/$eventId"
-                      params={{ eventId: event.id }}
+                      params={{ eventId: event.slug ?? event.id }}
                       className="underline-offset-4 hover:underline"
                     >
                       {event.name}
@@ -218,7 +224,12 @@ export function EventsPage() {
                   variant="ghost"
                   size="sm"
                   className="mr-auto"
-                  render={<Link to="/staff/events/$eventId" params={{ eventId: event.id }} />}
+                  render={
+                    <Link
+                      to="/staff/events/$eventId"
+                      params={{ eventId: event.slug ?? event.id }}
+                    />
+                  }
                   nativeButton={false}
                 >
                   <Users data-icon="inline-start" aria-hidden /> ผู้เข้าร่วม
@@ -305,6 +316,10 @@ export function EventForm({
   const start = initial ? Date.parse(initial.startAt) : nextHour();
   const [type, setType] = useState<EventType>(initial?.type ?? "sport");
   const [name, setName] = useState(initial?.name ?? "");
+  // Follows the name until typed into; an event that already has a slug
+  // keeps it, so renaming the event does not break links to it.
+  const [slug, setSlug] = useState(initial?.slug ?? "");
+  const [slugTyped, setSlugTyped] = useState(!!initial?.slug);
   const [description, setDescription] = useState(initial?.description ?? "");
   const [startAt, setStartAt] = useState(toDatetimeLocal(start));
   const [endAt, setEndAt] = useState(
@@ -320,6 +335,9 @@ export function EventForm({
 
   const venueItems = venues.data?.items ?? [];
   const selectedVenue = venueItems.find((venue) => venue.id === venueId) ?? null;
+  const shownSlug = slugTyped
+    ? slug
+    : eventSlugBase({ name, type, startAt: fromDatetimeLocal(startAt) ?? start });
 
   return (
     <FormDialog
@@ -338,6 +356,8 @@ export function EventForm({
         const parsed = eventInput.safeParse({
           type,
           name,
+          // "" has the API make it from the name, adding "-2" if it is taken.
+          slug: slugTyped ? slugify(slug) : "",
           description,
           startAt: start,
           endAt: end,
@@ -374,6 +394,21 @@ export function EventForm({
         value={name}
         onChange={setName}
         error={issues.name}
+      />
+      <SlugField
+        value={shownSlug}
+        typed={slugTyped}
+        error={issues.slug}
+        onChange={(value) => {
+          const next = slugify(value, { keepTrailingHyphen: true });
+          setSlug(next);
+          // Clearing the box hands it back to the name.
+          setSlugTyped(next !== "");
+        }}
+        onReset={() => {
+          setSlug("");
+          setSlugTyped(false);
+        }}
       />
       <TextAreaField
         id="event-description"
@@ -486,6 +521,66 @@ export function EventForm({
         </>
       )}
     </FormDialog>
+  );
+}
+
+/** Where the event's pages live, for the URL preview. */
+const appOrigin = () => (typeof window === "undefined" ? "" : window.location.origin);
+
+/** The event's address in links, with a preview of the URLs it makes. */
+function SlugField({
+  value,
+  typed,
+  error,
+  onChange,
+  onReset,
+}: {
+  value: string;
+  typed: boolean;
+  error?: string;
+  onChange: (value: string) => void;
+  onReset: () => void;
+}) {
+  const shown = value.replace(/-+$/, "") || "…";
+  return (
+    <Field data-invalid={!!error}>
+      <div className="flex items-center justify-between gap-2">
+        <FormLabel htmlFor="event-slug" icon={Link2}>
+          ลิงก์กิจกรรม (slug)
+        </FormLabel>
+        {typed && (
+          <Button type="button" variant="ghost" size="xs" onClick={onReset}>
+            <Sparkles data-icon="inline-start" aria-hidden /> สร้างจากชื่อ
+          </Button>
+        )}
+      </div>
+      <Input
+        id="event-slug"
+        value={value}
+        maxLength={EVENT_SLUG_MAX}
+        autoCapitalize="none"
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
+        aria-invalid={!!error}
+        aria-describedby="event-slug-preview"
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <FieldDescription id="event-slug-preview" className="flex flex-col gap-0.5">
+        <span>
+          {typed
+            ? "a-z, 0-9 และขีดกลาง ลบให้ว่างเพื่อสร้างจากชื่ออีกครั้ง"
+            : "สร้างจากตัวอักษรอังกฤษและตัวเลขในชื่อ ถ้าไม่มีจะใช้ประเภทกับวันที่แทน ถ้าซ้ำจะเติมเลขต่อท้าย"}
+        </span>
+        <span className="font-mono text-xs break-all">
+          {appOrigin()}/staff/events/{shown}
+        </span>
+        <span className="font-mono text-xs break-all">
+          {appOrigin()}/kiosk/{shown}
+        </span>
+      </FieldDescription>
+      <FieldError>{error}</FieldError>
+    </Field>
   );
 }
 
