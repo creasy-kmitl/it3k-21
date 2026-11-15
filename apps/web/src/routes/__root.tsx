@@ -4,6 +4,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
+import { ConnectionStatus } from "../components/connection-status";
 import { NavigationProgress } from "../components/navigation-progress";
 import NotFound from "../components/not-found";
 import { getOrigin } from "../functions/get-origin";
@@ -100,6 +101,7 @@ function RootDocument() {
           <Outlet />
         </div>
         <Toaster richColors />
+        <ConnectionStatus />
         <TanStackRouterDevtools position="bottom-left" />
         <Scripts />
       </body>

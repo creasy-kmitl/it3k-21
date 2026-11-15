@@ -24,6 +24,7 @@ import LeadershipForm, { type FormMode } from "@/components/leadership-form";
 import type { FilterControl } from "@/hooks/use-filters";
 import { useApis } from "@/lib/api-context";
 import { type ListFilters, listSearchSchema, replacesHistory } from "@/lib/list-search";
+import { toastError } from "@/lib/errors";
 
 export const Route = createFileRoute("/staff/head")({
   validateSearch: (search) => listSearchSchema.parse(search),
@@ -123,7 +124,7 @@ function DeleteSeatButton({ seat, api }: { seat: LeadershipSummary; api: Leaders
       toast.success("ลบแล้ว");
       await queryClient.invalidateQueries({ queryKey: ["leadership", "list"] });
     },
-    onError: (error) => toast.error(`ลบไม่สำเร็จ: ${error.message}`),
+    onError: (error) => toastError(error, "ลบไม่สำเร็จ"),
   });
 
   return (

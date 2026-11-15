@@ -31,6 +31,8 @@ import { useApis } from "@/lib/api-context";
 import { fileSize, type LibraryFile } from "@/lib/files";
 import { isAccountChanged, isSignedOut } from "@/lib/leadership";
 import { useEndSession } from "./session-boundary";
+import { ErrorState } from "@/components/error-state";
+import { toastError } from "@/lib/errors";
 
 export function FileLibrary({
   userId,
@@ -77,7 +79,7 @@ export function FileLibrary({
     },
     onError: (err) => {
       if (isAccountChanged(err) || isSignedOut(err)) endSession?.();
-      toast.error(err.message);
+      toastError(err, "ทำรายการไม่สำเร็จ");
     },
   });
 
@@ -224,14 +226,12 @@ export function FileLibrary({
                   {library.isPending ? (
                     <Skeleton className="h-64 w-full" />
                   ) : library.isError ? (
-                    <Alert variant="destructive">
-                      <AlertDescription>
-                        {library.error.message}
-                        <Button variant="outline" onClick={() => void library.refetch()}>
-                          ลองอีกครั้ง
-                        </Button>
-                      </AlertDescription>
-                    </Alert>
+                    <ErrorState
+                      error={library.error}
+                      onRetry={library.refetch}
+                      title="โหลดคลังไฟล์ไม่สำเร็จ"
+                      size="sm"
+                    />
                   ) : !library.data.items.length ? (
                     <Empty>
                       <EmptyHeader>

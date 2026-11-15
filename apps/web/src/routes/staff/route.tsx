@@ -14,7 +14,7 @@ import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-
 import { AppSidebar } from "@/components/app-sidebar";
 import { SessionBoundary } from "@/components/session-boundary";
 import { NotificationBell } from "@/components/calendar/notification-bell";
-import { authClient } from "@/lib/auth-client";
+import { getSessionOrThrow } from "@/lib/auth-client";
 import { clearCacheOnUserChange } from "@/lib/query-cache";
 
 // Every staff page shares one column, so the header and page title stay put
@@ -52,7 +52,7 @@ export const Route = createFileRoute("/staff")({
   ssr: false,
   component: AuthLayout,
   beforeLoad: async ({ context, location }) => {
-    const session = await authClient.getSession();
+    const session = await getSessionOrThrow();
     clearCacheOnUserChange(context.queryClient, session.data?.user.id ?? null);
     const away = staffRedirect(session.data?.user, location.href);
     if (away) throw redirect(away);

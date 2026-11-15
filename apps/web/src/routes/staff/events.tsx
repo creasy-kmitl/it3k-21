@@ -57,6 +57,8 @@ import {
 import type { EventItem } from "@/lib/events";
 import type { Sport } from "@/lib/sports";
 import type { Venue } from "@/lib/venues";
+import { ErrorState } from "@/components/error-state";
+import { toastError } from "@/lib/errors";
 
 export const Route = createFileRoute("/staff/events")({
   component: EventsPage,
@@ -106,7 +108,7 @@ export function EventsPage() {
       toast.success("บันทึกแล้ว");
       setEditing(null);
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toastError(error, "บันทึกไม่สำเร็จ"),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["events"] }),
   });
 
@@ -133,12 +135,7 @@ export function EventsPage() {
           <Skeleton className="h-72" />
         </div>
       ) : events.isError ? (
-        <div role="alert" className="flex flex-col items-start gap-2 text-destructive">
-          <p>โหลดกิจกรรมไม่สำเร็จ: {events.error.message}</p>
-          <Button variant="outline" size="sm" onClick={() => void events.refetch()}>
-            ลองอีกครั้ง
-          </Button>
-        </div>
+        <ErrorState error={events.error} onRetry={events.refetch} title="โหลดกิจกรรมไม่สำเร็จ" />
       ) : events.data.items.length === 0 ? (
         <p className="text-muted-foreground">{showPast ? "ยังไม่มีกิจกรรม" : "ไม่มีกิจกรรมที่กำลังจะมาถึง"}</p>
       ) : (

@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import z from "zod";
 import { isMember } from "@it3k/auth/permissions";
 import { profileApi } from "@/lib/profile";
+import { toastError } from "@/lib/errors";
 
 // Better Auth redirects back to `errorCallbackURL` with the failure reason in `?error=`.
 // `to` is the page a signed-out visitor asked for; they return to it after signing in.
@@ -84,9 +85,7 @@ function RouteComponent() {
       });
     } catch (err) {
       if (err instanceof Error) {
-        toast.error("เกิดข้อผิดพลาดในการเข้าสู่ระบบ", {
-          description: err.message,
-        });
+        toastError(err, "เกิดข้อผิดพลาดในการเข้าสู่ระบบ");
       }
     } finally {
       setLoading(false);

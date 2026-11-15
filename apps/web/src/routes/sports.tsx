@@ -59,6 +59,8 @@ import { useApis } from "@/lib/api-context";
 import { requireParticipantSession } from "@/lib/participant-auth";
 import type { MyRegistration, MyRegistrations } from "@/lib/registrations";
 import type { Division, Sport } from "@/lib/sports";
+import { ErrorState } from "@/components/error-state";
+import { toastError } from "@/lib/errors";
 
 const searchSchema = z.object({
   // Better Auth sends people back here with ?error= when linking Discord fails.
@@ -144,15 +146,11 @@ export function SportsRegistrationPage() {
   }
   if (me.isError || sports.isError) {
     return (
-      <div role="alert" className="flex flex-col items-start gap-2 text-destructive">
-        <p>โหลดข้อมูลไม่สำเร็จ: {(me.error ?? sports.error)?.message}</p>
-        <Button
-          variant="outline"
-          onClick={() => void Promise.all([me.refetch(), sports.refetch()])}
-        >
-          ลองอีกครั้ง
-        </Button>
-      </div>
+      <ErrorState
+        error={me.error ?? sports.error}
+        onRetry={() => Promise.all([me.refetch(), sports.refetch()])}
+        title="โหลดข้อมูลกีฬาไม่สำเร็จ"
+      />
     );
   }
 
@@ -435,7 +433,7 @@ function useLinkDiscord() {
   const { registrations: api } = useApis();
   return useMutation({
     mutationFn: () => api.linkDiscord(`${window.location.origin}/sports`),
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toastError(error, "เชื่อม Discord ไม่สำเร็จ"),
   });
 }
 
@@ -447,7 +445,7 @@ function DiscordBar({ discord }: { discord: MyRegistrations["discord"] }) {
   const unlink = useMutation({
     mutationFn: (accountId: string) => api.unlinkDiscord(accountId),
     onSuccess: () => toast.success("ยกเลิกการเชื่อม Discord แล้ว"),
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toastError(error, "ยกเลิกการเชื่อม Discord ไม่สำเร็จ"),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["registrations"] }),
   });
   const linked = discord.linked;
@@ -531,7 +529,7 @@ function RegistrationDialog({
       toast.success(registration ? "บันทึกแล้ว" : `สมัคร ${division.name} แล้ว รอฝ่ายทะเบียนตรวจสอบ`);
       onClose();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toastError(error, "บันทึกการสมัครไม่สำเร็จ"),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["registrations"] }),
   });
 
@@ -625,7 +623,7 @@ function WithdrawDialog({
       toast.success("ถอนการสมัครแล้ว");
       onClose();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toastError(error, "ถอนการสมัครไม่สำเร็จ"),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["registrations"] }),
   });
   return (

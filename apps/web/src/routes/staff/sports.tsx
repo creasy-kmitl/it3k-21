@@ -33,6 +33,8 @@ import { DivisionBadges } from "@/components/sport-badges";
 import { SportArt, SportThumbnail } from "@/components/sport-art";
 import { useApis } from "@/lib/api-context";
 import type { Division, Sport } from "@/lib/sports";
+import { ErrorState } from "@/components/error-state";
+import { toastError } from "@/lib/errors";
 
 export const Route = createFileRoute("/staff/sports")({
   component: SportsPage,
@@ -92,12 +94,7 @@ export function SportsPage() {
           <Skeleton className="h-72" />
         </div>
       ) : sports.isError ? (
-        <div role="alert" className="flex flex-col items-start gap-2 text-destructive">
-          <p>โหลดกีฬาไม่สำเร็จ: {sports.error.message}</p>
-          <Button variant="outline" size="sm" onClick={() => void sports.refetch()}>
-            ลองอีกครั้ง
-          </Button>
-        </div>
+        <ErrorState error={sports.error} onRetry={sports.refetch} title="โหลดกีฬาไม่สำเร็จ" />
       ) : sports.data.items.length === 0 ? (
         <p className="text-muted-foreground">ยังไม่มีกีฬา</p>
       ) : (
@@ -219,7 +216,7 @@ function EditingDialog({ editing, onClose }: { editing: Editing; onClose: () => 
       toast.success("บันทึกแล้ว");
       onClose();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toastError(error, "บันทึกไม่สำเร็จ"),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["sports"] }),
   });
   const run = (action: () => Promise<unknown>) => save.mutate(action);

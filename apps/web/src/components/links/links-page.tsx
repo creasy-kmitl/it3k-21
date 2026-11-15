@@ -54,6 +54,8 @@ import { useApis } from "@/lib/api-context";
 import { xlsxBlob } from "@/lib/xlsx";
 import { type ShortLink, linkError } from "@/lib/links";
 import { type QrBrowser, qrBrowser } from "@/lib/qr-export";
+import { ErrorState } from "@/components/error-state";
+import { toastError } from "@/lib/errors";
 
 /** Days of visits the spreadsheet export covers: the longest chart range. */
 const REPORT_DAYS = 90;
@@ -154,7 +156,7 @@ export function LinksPage({
       setOpenId(link.id);
     },
     onError: (error) => {
-      if (!linkError(error)) toast.error(`สร้างลิงก์ไม่สำเร็จ: ${error.message}`);
+      if (!linkError(error)) toastError(error, "สร้างลิงก์ไม่สำเร็จ");
     },
   });
 
@@ -176,7 +178,7 @@ export function LinksPage({
         `${scope}-visits-${report.from}-${report.to}.xlsx`,
       );
     } catch (error) {
-      toast.error(`ดาวน์โหลดรายงานไม่สำเร็จ: ${error instanceof Error ? error.message : error}`);
+      toastError(error, "ดาวน์โหลดรายงานไม่สำเร็จ");
     } finally {
       setReporting(false);
     }
@@ -288,12 +290,7 @@ export function LinksPage({
           <Skeleton className="h-20 w-full rounded-2xl" />
         </div>
       ) : list.isError ? (
-        <div role="alert" className="flex flex-col items-start gap-2 text-destructive">
-          <p>โหลดลิงก์ไม่สำเร็จ: {list.error.message}</p>
-          <Button variant="outline" size="sm" onClick={() => void list.refetch()}>
-            ลองอีกครั้ง
-          </Button>
-        </div>
+        <ErrorState error={list.error} onRetry={list.refetch} title="โหลดลิงก์ไม่สำเร็จ" />
       ) : list.data.items.length === 0 ? (
         <Empty className="flex-none border border-dashed">
           <EmptyHeader>

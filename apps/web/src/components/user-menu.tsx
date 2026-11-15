@@ -15,6 +15,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { authClient } from "@/lib/auth-client";
 import { useSignOutGuard } from "@/lib/sign-out-guard";
 import { toast } from "sonner";
+import { toastError } from "@/lib/errors";
 
 export type UserMenuClient = Pick<typeof authClient, "signOut"> & {
   useSession: () => {
@@ -74,7 +75,7 @@ export default function UserMenu({ client = authClient }: { client?: UserMenuCli
                   },
                 });
               } catch (error) {
-                toast.error(error instanceof Error ? error.message : "ออกจากระบบไม่สำเร็จ");
+                toastError(error, "ออกจากระบบไม่สำเร็จ");
               }
             }}
           >
