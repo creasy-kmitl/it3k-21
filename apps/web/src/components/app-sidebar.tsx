@@ -17,7 +17,6 @@ import {
   MedalIcon,
   Link2Icon,
   MapPinnedIcon,
-  MedalIcon,
   QrCodeIcon,
   TrophyIcon,
   UserCogIcon,
