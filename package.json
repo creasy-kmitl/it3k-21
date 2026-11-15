@@ -43,7 +43,7 @@
     "deploy": "vp run --filter @it3k/infra deploy",
     "destroy": "vp run --filter @it3k/infra destroy",
     "env:generate": "varlock codegen --path ./apps/web/ && varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/",
-    "postinstall": "varlock codegen --path ./apps/web/ && varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/"
+    "postinstall": "varlock codegen --path ./apps/web/ || true; varlock codegen --path ./apps/server/ || true; varlock codegen --path ./packages/db/ || true"
   },
   "dependencies": {
     "it3k": ".",

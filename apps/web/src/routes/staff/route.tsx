@@ -28,6 +28,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/staff/users": "ผู้ใช้",
   "/staff/qr-code": "QR Code",
   "/staff/links": "ลิงก์สั้น",
+  "/staff/scores": "คะแนน",
 };
 
 /**
@@ -44,6 +45,7 @@ export function staffRedirect(user: { role?: string | null } | undefined, href: 
 export const Route = createFileRoute("/staff")({
   ssr: false,
   component: AuthLayout,
+
   beforeLoad: async ({ context, location }) => {
     const session = await authClient.getSession();
     clearCacheOnUserChange(context.queryClient, session.data?.user.id ?? null);

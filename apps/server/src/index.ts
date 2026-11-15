@@ -10,6 +10,7 @@ import type { RouteDeps } from "./middleware/current-user";
 import { createCalendarRoutes } from "./routes/calendar";
 import { createDepartmentRoutes } from "./routes/departments";
 import { createLinkRoutes } from "./routes/links";
+import { createMatchRoutes, createPublicScoreRoutes } from "./routes/matches";
 import { createShortLinkRedirect } from "./routes/links/redirect";
 import { createQrPresetRoutes } from "./routes/qr-presets";
 import { createUserRoutes } from "./routes/users";
@@ -74,6 +75,10 @@ app.route(
 app.route("/api/calendar", createCalendarRoutes(deps));
 app.route("/api/links", createLinkRoutes({ ...deps, webOrigin: env.CORS_ORIGIN }));
 app.route("/api/qr-presets", createQrPresetRoutes(deps));
+app.route("/api/matches", createMatchRoutes(deps));
+
+// Public: the scoreboard anyone can see without signing in.
+app.route("/api/public/scores", createPublicScoreRoutes(deps));
 
 // Public: the web worker forwards its `/l/<slug>` paths here.
 app.route("/l", createShortLinkRedirect(deps));

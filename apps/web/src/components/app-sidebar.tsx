@@ -13,6 +13,7 @@ import {
   Building2Icon,
   CalendarDaysIcon,
   LayoutDashboardIcon,
+  MedalIcon,
   Link2Icon,
   QrCodeIcon,
   TrophyIcon,
@@ -37,6 +38,7 @@ export function AppSidebar({
         { title: "หน้าหลัก", to: "/staff/dashboard", icon: <LayoutDashboardIcon /> },
         { title: "ปฏิทิน", to: "/staff/calendar", icon: <CalendarDaysIcon /> },
         { title: "หัวหน้าฝ่าย", to: "/staff/head", icon: <UsersIcon /> },
+        { title: "คะแนน", to: "/staff/scores", icon: <MedalIcon /> },
       ],
     },
     {

@@ -9,6 +9,7 @@ import { ApiProvider, type Apis } from "@/lib/api-context";
 import type { CalendarApi, CalendarItem } from "@/lib/calendar";
 import type { LeadershipApi, LeadershipPage, LeadershipSummary } from "@/lib/leadership";
 import type { LinksApi, ShortLink } from "@/lib/links";
+import type { Match, MatchesApi, PublicScoresApi } from "@/lib/matches";
 import type { QrPresetsApi } from "@/lib/qr-presets";
 import type { UsersApi } from "@/lib/users";
 
@@ -56,6 +57,8 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
     calendar: apis.calendar ?? fakeCalendarApi(),
     links: apis.links ?? fakeLinksApi(),
     qrPresets: apis.qrPresets ?? fakeQrPresetsApi(),
+    matches: apis.matches ?? fakeMatchesApi(),
+    publicScores: apis.publicScores ?? fakePublicScoresApi(),
   };
 }
 
@@ -194,6 +197,38 @@ export function fakeQrPresetsApi(overrides: Partial<QrPresetsApi> = {}): QrPrese
     create: unexpected("qrPresets.create"),
     update: unexpected("qrPresets.update"),
     remove: unexpected("qrPresets.remove"),
+    ...overrides,
+  };
+}
+
+export function fakeMatchesApi(overrides: Partial<MatchesApi> = {}): MatchesApi {
+  return {
+    list: async () => ({ items: [] }),
+    create: unexpected("matches.create"),
+    update: unexpected("matches.update"),
+    remove: unexpected("matches.remove"),
+    ...overrides,
+  };
+}
+
+export function fakePublicScoresApi(overrides: Partial<PublicScoresApi> = {}): PublicScoresApi {
+  return { get: unexpected("publicScores.get"), ...overrides };
+}
+
+export function match(overrides: Partial<Match> = {}): Match {
+  return {
+    id: crypto.randomUUID(),
+    sport: "ฟุตบอล",
+    round: null,
+    teamA: "kmutt",
+    teamB: "kmitl",
+    scoreA: null,
+    scoreB: null,
+    status: "scheduled",
+    startsAt: null,
+    updatedAt: CALENDAR_NOW,
+    version: 1,
+    updatedBy: { id: "u-art", name: "Art Staff" },
     ...overrides,
   };
 }

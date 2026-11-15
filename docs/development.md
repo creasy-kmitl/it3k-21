@@ -100,12 +100,14 @@ browser ─▶ web worker (TanStack Start)
 
 `apps/server/src/index.ts` sets up evlog, CORS and Better Auth, then mounts one router per resource.
 
-| Prefix             | Endpoints                                                                                                                        |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/departments` | `GET /`, `GET /:id`, `POST /`, `PATCH /:id`, `DELETE /:id`, `PATCH /:id/code`, `PUT` and `DELETE /:id/members/:userId`           |
-| `/api/users`       | `GET /me`, `GET /`, `PUT /:id/assignment`, `PUT /:id/admin`                                                                      |
-| `/api/leadership`  | `GET /`, `GET /departments`, `GET /users`, `GET /:id`, `POST /`, `PATCH /:id`, `POST /:id/reveal`, `DELETE /:id`                 |
-| `/api/calendar`    | `GET` and `POST /items`, `GET`, `PATCH` and `DELETE /items/:id`, `GET /people`, `GET /notifications`, `POST /notifications/read` |
+| Prefix               | Endpoints                                                                                                                        |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/departments`   | `GET /`, `GET /:id`, `POST /`, `PATCH /:id`, `DELETE /:id`, `PATCH /:id/code`, `PUT` and `DELETE /:id/members/:userId`           |
+| `/api/users`         | `GET /me`, `GET /`, `PUT /:id/assignment`, `PUT /:id/admin`                                                                      |
+| `/api/leadership`    | `GET /`, `GET /departments`, `GET /users`, `GET /:id`, `POST /`, `PATCH /:id`, `POST /:id/reveal`, `DELETE /:id`                 |
+| `/api/calendar`      | `GET` and `POST /items`, `GET`, `PATCH` and `DELETE /items/:id`, `GET /people`, `GET /notifications`, `POST /notifications/read` |
+| `/api/matches`       | `GET /`, `POST /`, `PATCH /:id` (needs `version`), `DELETE /:id?version=`                                                        |
+| `/api/public/scores` | `GET /`: matches and standings, no sign-in                                                                                       |
 
 Every router follows the same conventions:
 

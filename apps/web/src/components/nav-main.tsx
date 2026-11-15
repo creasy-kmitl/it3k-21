@@ -17,7 +17,8 @@ export type NavMainItem = {
     | "/staff/departments"
     | "/staff/users"
     | "/staff/qr-code"
-    | "/staff/links";
+    | "/staff/links"
+    | "/staff/scores";
   icon: React.ReactNode;
 };
 

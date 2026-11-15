@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
+import { Trophy } from "lucide-react";
 import { SiFacebook, SiInstagram } from "@icons-pack/react-simple-icons";
 import { buttonVariants } from "@it3k/ui/components/button";
 import { cn } from "@it3k/ui/lib/utils";
@@ -35,6 +36,11 @@ function HomeComponent() {
             </p>
           </li>
         </ol>
+
+        <Link to="/scores" className={cn(buttonVariants(), "mb-6")}>
+          <Trophy data-icon="inline-start" />
+          ดูคะแนนการแข่งขัน
+        </Link>
 
         <footer className="flex items-center font-bold">
           <a
