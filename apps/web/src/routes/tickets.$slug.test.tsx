@@ -72,7 +72,8 @@ describe("/tickets/$slug", () => {
     const view = await setup({
       ticketFor: async () => ({ ticket: ticket({ checkedInAt: START }) }),
     });
-    expect(await view.findByText(/เช็คอินแล้ว/)).toBeTruthy();
+    expect(await view.findByText(/^เช็คอินแล้ว \d/)).toBeTruthy();
+    expect(view.getByText("ตั๋วนี้ใช้เช็คอินแล้ว")).toBeTruthy();
   });
 
   test("without a ticket, points to the event", async () => {

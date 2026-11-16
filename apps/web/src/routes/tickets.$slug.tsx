@@ -45,7 +45,7 @@ export function TicketView({ eventRef }: { eventRef: string }) {
   });
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-md flex-col gap-6 md:max-w-3xl">
       <Button
         variant="ghost"
         size="sm"
@@ -60,7 +60,7 @@ export function TicketView({ eventRef }: { eventRef: string }) {
       {held.isPending ? (
         <div role="status">
           <span className="sr-only">กำลังโหลด</span>
-          <Skeleton className="h-[36rem] w-full rounded-3xl" />
+          <Skeleton className="h-[36rem] w-full rounded-3xl md:h-80" />
         </div>
       ) : held.isError ? (
         held.error instanceof ApiError && held.error.status === 404 ? (
@@ -84,55 +84,66 @@ export function TicketView({ eventRef }: { eventRef: string }) {
   );
 }
 
-/** A paper-ticket look: event on top, a torn line, then the QR. */
+/**
+ * A paper ticket. Wide screens lay it on its side: the event's picture, the
+ * details, a torn line, then the QR stub. Phones stack the same parts, so
+ * the QR stays large enough for the kiosk camera.
+ */
 function TicketStub({ ticket }: { ticket: Ticket }) {
   const checkedInAt = ticket.checkedInAt;
   return (
-    <article className="overflow-hidden rounded-3xl border bg-card shadow-sm">
-      <div className="relative">
+    <article className="flex flex-col overflow-hidden rounded-3xl border bg-card shadow-sm md:flex-row">
+      <div className="relative md:w-52 md:shrink-0">
         <SportThumbnail
           src={ticket.event.thumbnailUrl}
           icon={ticket.event.sports[0]?.icon ?? "general"}
           seed={ticket.event.id}
           label={ticket.event.name}
-          className="aspect-[5/2]"
+          className="aspect-[5/2] md:absolute md:inset-0 md:aspect-auto md:h-full"
         />
         <EventDateChip startAt={ticket.event.startAt} className="absolute top-3 left-3" />
       </div>
-      <div className="flex flex-col gap-2 p-5">
-        <h1 className="text-xl font-bold text-balance">{ticket.event.name}</h1>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-3 p-5 md:justify-center md:p-6">
+        <p className="text-xs font-semibold tracking-widest text-primary uppercase">ตั๋วเข้างาน</p>
+        <h1 className="text-xl font-bold text-balance md:text-2xl">{ticket.event.name}</h1>
         <div className="flex flex-col gap-1 text-sm text-muted-foreground">
           <EventWhen startAt={ticket.event.startAt} endAt={ticket.event.endAt} />
           <EventWhere venue={ticket.venue} />
         </div>
-      </div>
-
-      {/* The tear line, with a notch cut out on each side. */}
-      <div aria-hidden className="relative h-6">
-        <div className="absolute inset-x-6 top-1/2 border-t-2 border-dashed" />
-        <div className="absolute top-0 -left-3 size-6 rounded-full border bg-background" />
-        <div className="absolute top-0 -right-3 size-6 rounded-full border bg-background" />
-      </div>
-
-      <div className="flex flex-col items-center gap-4 p-6 pt-3">
-        <TicketQr code={ticket.code} label={`QR ตั๋ว ${ticket.event.name}`} className="max-w-72" />
         {checkedInAt ? (
-          <p className="flex items-center gap-2 font-medium text-emerald-700 dark:text-emerald-400">
-            <CircleCheck className="size-5" aria-hidden />
+          <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <CircleCheck className="size-4" aria-hidden />
             เช็คอินแล้ว {formatBangkok(Date.parse(checkedInAt), "time")}
           </p>
-        ) : (
-          <p className="text-center text-sm text-muted-foreground">
-            แสดง QR นี้ที่จุดเช็คอินหน้างาน เพิ่มความสว่างหน้าจอให้สแกนง่ายขึ้น
-          </p>
-        )}
+        ) : null}
         <Button
           variant="outline"
+          size="sm"
+          className="self-start"
           render={<Link to="/events/$eventId" params={{ eventId: ticketRef(ticket.event) }} />}
           nativeButton={false}
         >
           ดูรายละเอียดกิจกรรม
         </Button>
+      </div>
+
+      {/* The tear line, with a notch cut out at each end: across on phones, upright on wide screens. */}
+      <div aria-hidden className="relative h-6 shrink-0 md:h-auto md:w-6">
+        <div className="absolute inset-x-6 top-1/2 border-t-2 border-dashed md:inset-x-auto md:top-6 md:bottom-6 md:left-1/2 md:border-t-0 md:border-l-2" />
+        <div className="absolute top-0 -left-3 size-6 rounded-full border bg-background md:-top-3 md:left-0" />
+        <div className="absolute top-0 -right-3 size-6 rounded-full border bg-background md:top-auto md:right-auto md:-bottom-3 md:left-0" />
+      </div>
+
+      <div className="flex flex-col items-center justify-center gap-3 p-6 pt-3 md:w-64 md:shrink-0 md:p-6">
+        <TicketQr
+          code={ticket.code}
+          label={`QR ตั๋ว ${ticket.event.name}`}
+          className="max-w-72 md:max-w-52"
+        />
+        <p className="text-center text-xs text-muted-foreground">
+          {checkedInAt ? "ตั๋วนี้ใช้เช็คอินแล้ว" : "แสดง QR นี้ที่จุดเช็คอินหน้างาน เพิ่มความสว่างหน้าจอให้สแกนง่ายขึ้น"}
+        </p>
       </div>
     </article>
   );
