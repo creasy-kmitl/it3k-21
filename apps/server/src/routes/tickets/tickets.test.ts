@@ -19,7 +19,12 @@ let app: ReturnType<typeof createTicketRoutes>;
 const HOUR = 60 * 60 * 1000;
 
 type Ticket = { id: string; code: string; event: { id: string }; checkedInAt: string | null };
-type OpenEvent = { id: string; claimed: boolean; remaining: number | null };
+type OpenEvent = {
+  id: string;
+  claimed: boolean;
+  remaining: number | null;
+  sports: { name: string; icon: string }[];
+};
 
 beforeEach(async () => {
   t = createTestContext();
@@ -181,6 +186,10 @@ describe("listing", () => {
       { id: "e-general", claimed: true, remaining: 4 },
       { id: "e-sport", claimed: false, remaining: null },
     ]);
+    expect(athlete.body.items[0]).toMatchObject({ sports: [] });
+    expect(athlete.body.items[1]).toMatchObject({
+      sports: [{ name: "กีฬาฟุตบอล", icon: "football" }],
+    });
     const guest = await send<{ items: OpenEvent[] }>("guest", "GET", "/events");
     expect(guest.body.items).toMatchObject([{ id: "e-general", claimed: false, remaining: 4 }]);
   });
