@@ -17,6 +17,7 @@ import { createSportRoutes } from "./routes/sports";
 import { createRegistrationRoutes } from "./routes/registrations";
 import { createAthleteRoutes } from "./routes/athletes";
 import { createEventRoutes } from "./routes/events";
+import { createPublicEventRoutes } from "./routes/public-events";
 import { createTicketRoutes } from "./routes/tickets";
 import { createVenueRoutes } from "./routes/venues";
 import type { DiscordDeps } from "./routes/registrations/shared";
@@ -38,7 +39,7 @@ initLogger({
 
 const identifyUser = createAuthMiddleware((await createAuth()) as BetterAuthInstance, {
   // Short links are public and carry no session; skip the lookup on every visit.
-  exclude: ["/api/auth/**", "/l/**", "/api/files/public/**"],
+  exclude: ["/api/auth/**", "/l/**", "/api/files/public/**", "/api/public/**"],
   maskEmail: true,
 });
 
@@ -117,6 +118,8 @@ app.route("/api/athletes", createAthleteRoutes(deps));
 app.route("/api/venues", createVenueRoutes(deps));
 app.route("/api/events", createEventRoutes(deps));
 app.route("/api/tickets", createTicketRoutes(deps));
+// Public: link previews (Open Graph) for event pages, fetched signed out.
+app.route("/api/public/events", createPublicEventRoutes(deps));
 
 // Public: the web worker forwards its `/l/<slug>` paths here.
 app.route("/l", createShortLinkRedirect(deps));
