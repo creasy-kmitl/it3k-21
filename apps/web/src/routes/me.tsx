@@ -15,6 +15,7 @@ import {
   Barcode,
   Building2,
   CalendarDays,
+  CalendarRange,
   ClipboardList,
   ContactRound,
   Copy,
@@ -248,10 +249,14 @@ function TicketsCard() {
         </CardTitle>
         <CardDescription>รับตั๋วกิจกรรม แล้วแสดง QR ที่จุดเช็คอิน</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-wrap gap-2">
         <Button render={<Link to="/me/tickets" />} nativeButton={false}>
           <Ticket data-icon="inline-start" aria-hidden />
           ตั๋วของฉัน
+        </Button>
+        <Button variant="outline" render={<Link to="/events" />} nativeButton={false}>
+          <CalendarRange data-icon="inline-start" aria-hidden />
+          ดูกิจกรรม
         </Button>
       </CardContent>
     </Card>

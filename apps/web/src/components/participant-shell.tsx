@@ -1,7 +1,7 @@
 import { isMember } from "@it3k/auth/permissions";
 import { Button } from "@it3k/ui/components/button";
 import { Link } from "@tanstack/react-router";
-import { FolderOpen, Ticket } from "lucide-react";
+import { CalendarRange, FolderOpen, Ticket } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { SignOutGuardProvider } from "@/lib/sign-out-guard";
 import { FileLibrary } from "./file-library";
@@ -28,6 +28,10 @@ export function ParticipantShell({
             </Link>
             <nav className="flex flex-wrap items-center gap-2" aria-label="บัญชีผู้เข้าร่วม">
               {isMember(role) && <Link to="/staff/dashboard">ระบบทีมงาน</Link>}
+              <Button variant="ghost" render={<Link to="/events" />} nativeButton={false}>
+                <CalendarRange data-icon="inline-start" />
+                กิจกรรม
+              </Button>
               <Button variant="ghost" render={<Link to="/me/tickets" />} nativeButton={false}>
                 <Ticket data-icon="inline-start" />
                 ตั๋วของฉัน
