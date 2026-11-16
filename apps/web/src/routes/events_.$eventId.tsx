@@ -1,23 +1,34 @@
 import { EVENT_TYPE_LABELS } from "@it3k/db/event-rules";
 import { Badge } from "@it3k/ui/components/badge";
 import { Button } from "@it3k/ui/components/button";
+import { Separator } from "@it3k/ui/components/separator";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { ArrowLeft, CircleCheck, ExternalLink, Lock, Ticket as TicketIcon } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  CircleCheck,
+  ExternalLink,
+  Lock,
+  type LucideIcon,
+  MapPin,
+  Tag,
+  Ticket as TicketIcon,
+} from "lucide-react";
+import type { ReactNode } from "react";
 
 import { ErrorState } from "@/components/error-state";
 import { Seats, useClaimTicket } from "@/components/event-claim";
-import { EventDateChip, EventWhen, EventWhere } from "@/components/event-when-where";
+import { EventDateChip } from "@/components/event-when-where";
 import { LoadingButton } from "@/components/loading-button";
 import { ParticipantShell } from "@/components/participant-shell";
 import { SportThumbnail } from "@/components/sport-art";
-import { TicketQr } from "@/components/ticket-qr";
 import { useApis } from "@/lib/api-context";
-import { formatBangkok } from "@/lib/bangkok-time";
+import { formatBangkok, formatRange } from "@/lib/bangkok-time";
 import { ApiError } from "@/lib/leadership";
 import { requireParticipantSession } from "@/lib/participant-auth";
-import { type EventDetail, TICKETS_KEY } from "@/lib/tickets";
+import { type EventDetail, TICKETS_KEY, ticketRef } from "@/lib/tickets";
 
 export const Route = createFileRoute("/events_/$eventId")({
   ssr: false,
@@ -40,7 +51,7 @@ function EventPage() {
   );
 }
 
-/** One event: its picture, details, and the ticket (or the way to claim one). */
+/** One event: details on the left, a sticky card with the ticket action on the right. */
 export function EventView({ eventId }: { eventId: string }) {
   const { tickets } = useApis();
   const detail = useQuery({
@@ -48,125 +59,181 @@ export function EventView({ eventId }: { eventId: string }) {
     queryFn: () => tickets.event(eventId),
   });
 
-  return (
-    <div className="flex w-full flex-col gap-6">
-      <Button
-        variant="ghost"
-        className="self-start"
-        render={<Link to="/events" />}
-        nativeButton={false}
-      >
-        <ArrowLeft data-icon="inline-start" aria-hidden />
-        กิจกรรมทั้งหมด
-      </Button>
-
-      {detail.isPending ? (
-        <div role="status" className="flex flex-col gap-6">
-          <span className="sr-only">กำลังโหลด</span>
-          <Skeleton className="aspect-[21/9] w-full rounded-3xl" />
-          <Skeleton className="h-40 w-full" />
+  if (detail.isPending) {
+    return (
+      <div role="status" className="grid w-full gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <span className="sr-only">กำลังโหลด</span>
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-10 w-2/3" />
+          <Skeleton className="aspect-video w-full rounded-3xl" />
         </div>
-      ) : detail.isError ? (
-        detail.error instanceof ApiError && detail.error.status === 404 ? (
+        <Skeleton className="h-96 rounded-3xl" />
+      </div>
+    );
+  }
+  if (detail.isError) {
+    return (
+      <div className="flex w-full flex-col gap-6">
+        <BackToEvents />
+        {detail.error instanceof ApiError && detail.error.status === 404 ? (
           <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed p-12 text-center text-muted-foreground">
             <p>ไม่พบกิจกรรมนี้ หรือกิจกรรมนี้ไม่ได้เปิดให้คุณรับตั๋ว</p>
           </div>
         ) : (
           <ErrorState error={detail.error} onRetry={detail.refetch} title="โหลดกิจกรรมไม่สำเร็จ" />
-        )
-      ) : (
-        <EventBody item={detail.data} />
-      )}
-    </div>
-  );
-}
+        )}
+      </div>
+    );
+  }
 
-function EventBody({ item }: { item: EventDetail }) {
+  const item = detail.data;
   return (
-    <article className="flex flex-col gap-8">
-      <div className="relative overflow-hidden rounded-3xl border">
+    // Phones stack header, card, then details; wide screens put the card in
+    // its own column beside both, sticky while the details scroll.
+    <article className="grid w-full gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-x-12">
+      <header className="flex flex-col gap-4 lg:col-start-1 lg:row-start-1">
+        <BackToEvents />
+        <h1 className="text-3xl font-bold tracking-tight text-balance sm:text-4xl">{item.name}</h1>
+        <span className="flex flex-wrap gap-1.5">
+          <Badge variant="secondary">{EVENT_TYPE_LABELS[item.type]}</Badge>
+          {item.sports.map((sport) => (
+            <Badge key={sport.id} variant="outline">
+              {sport.name}
+            </Badge>
+          ))}
+        </span>
+      </header>
+
+      <aside className="self-start lg:sticky lg:top-20 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+        <EventCard item={item} />
+      </aside>
+
+      <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-2">
+        <Separator className="hidden lg:block" />
+        {/* The card already shows the picture on phones. */}
         <SportThumbnail
           src={item.thumbnailUrl}
           icon={item.sports[0]?.icon ?? "general"}
           seed={item.id}
           label={item.name}
-          className="aspect-video sm:aspect-[21/9]"
+          className="hidden rounded-3xl border lg:block"
         />
-        <EventDateChip startAt={item.startAt} className="absolute top-4 left-4 scale-110" />
-      </div>
-
-      <div className="grid gap-8 lg:grid-cols-[1fr_22rem] lg:items-start">
-        <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-3">
-            <span className="flex flex-wrap gap-1.5">
-              <Badge variant="secondary">{EVENT_TYPE_LABELS[item.type]}</Badge>
-              {item.sports.map((sport) => (
-                <Badge key={sport.id} variant="outline">
-                  {sport.name}
-                </Badge>
-              ))}
-            </span>
-            <h1 className="text-3xl font-bold tracking-tight text-balance">{item.name}</h1>
-          </div>
-          <div className="flex flex-col gap-2 text-muted-foreground">
-            <EventWhen startAt={item.startAt} endAt={item.endAt} />
-            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <EventWhere venue={item.venue} />
-              {item.venue?.externalUrl && (
-                <a
-                  href={item.venue.externalUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-primary underline-offset-4 hover:underline"
-                >
-                  ดูแผนที่
-                  <ExternalLink className="size-3.5" aria-hidden />
-                </a>
-              )}
-            </span>
-          </div>
-          {item.description && (
-            <section aria-labelledby="about-event" className="flex flex-col gap-2">
-              <h2 id="about-event" className="text-lg font-semibold">
-                รายละเอียด
-              </h2>
-              <p className="leading-relaxed whitespace-pre-wrap">{item.description}</p>
-            </section>
-          )}
-        </div>
-
-        <aside className="flex flex-col gap-4 rounded-2xl border bg-card p-5 shadow-xs lg:sticky lg:top-20">
-          <TicketPanel item={item} />
-        </aside>
+        {item.description ? (
+          <section aria-labelledby="about-event" className="flex flex-col gap-2">
+            <h2 id="about-event" className="text-lg font-semibold">
+              รายละเอียด
+            </h2>
+            <p className="leading-relaxed whitespace-pre-wrap">{item.description}</p>
+          </section>
+        ) : null}
       </div>
     </article>
   );
 }
 
-function TicketPanel({ item }: { item: EventDetail }) {
+function BackToEvents() {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="-ml-2 self-start"
+      render={<Link to="/events" />}
+      nativeButton={false}
+    >
+      <ArrowLeft data-icon="inline-start" aria-hidden />
+      กิจกรรมทั้งหมด
+    </Button>
+  );
+}
+
+function EventCard({ item }: { item: EventDetail }) {
+  const start = Date.parse(item.startAt);
+  return (
+    <div className="flex flex-col overflow-hidden rounded-3xl border bg-card shadow-sm">
+      <div className="relative">
+        <SportThumbnail
+          src={item.thumbnailUrl}
+          icon={item.sports[0]?.icon ?? "general"}
+          seed={item.id}
+          label={item.name}
+        />
+        <EventDateChip startAt={item.startAt} className="absolute top-3 left-3" />
+      </div>
+      <div aria-hidden className="h-1 bg-primary" />
+      <dl className="flex flex-col gap-4 p-5">
+        <Fact icon={CalendarDays} label="วันเวลาจัดงาน">
+          {formatBangkok(start, "day")} · {formatRange(start, Date.parse(item.endAt))}
+        </Fact>
+        {item.venue ? (
+          <Fact icon={MapPin} label="สถานที่">
+            {item.venue.externalUrl ? (
+              <a
+                href={item.venue.externalUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
+              >
+                {item.venue.name}
+                <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+                <span className="sr-only">(เปิดแผนที่)</span>
+              </a>
+            ) : (
+              item.venue.name
+            )}
+          </Fact>
+        ) : null}
+        <Fact icon={Tag} label="ประเภท">
+          {[EVENT_TYPE_LABELS[item.type], ...item.sports.map((sport) => sport.name)].join(" · ")}
+        </Fact>
+      </dl>
+      <div className="flex flex-col gap-3 border-t p-5">
+        <TicketAction item={item} />
+      </div>
+    </div>
+  );
+}
+
+function Fact({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon: LucideIcon;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex gap-3">
+      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <dt className="text-sm font-medium">{label}</dt>
+        <dd className="text-sm text-muted-foreground">{children}</dd>
+      </div>
+    </div>
+  );
+}
+
+/** The card's call to action. The QR itself lives only on the ticket's page. */
+function TicketAction({ item }: { item: EventDetail }) {
   const claim = useClaimTicket(item);
 
   if (item.ticket) {
     const checkedInAt = item.ticket.checkedInAt;
     return (
       <>
-        <h2 className="flex items-center gap-2 font-semibold">
-          <TicketIcon className="size-5 text-primary" aria-hidden />
-          ตั๋วของคุณ
-        </h2>
-        {checkedInAt ? (
-          <Badge className="self-start">
-            <CircleCheck data-icon="inline-start" aria-hidden />
-            เช็คอินแล้ว {formatBangkok(Date.parse(checkedInAt), "time")}
-          </Badge>
-        ) : (
-          <p className="text-sm text-muted-foreground">แสดง QR นี้ที่จุดเช็คอินหน้างาน</p>
-        )}
-        <div className="flex justify-center">
-          <TicketQr code={item.ticket.code} label={`QR ตั๋ว ${item.name}`} />
-        </div>
-        <Button variant="outline" render={<Link to="/me/tickets" />} nativeButton={false}>
-          ตั๋วทั้งหมดของฉัน
+        <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+          <CircleCheck className="size-4" aria-hidden />
+          {checkedInAt
+            ? `เช็คอินแล้ว ${formatBangkok(Date.parse(checkedInAt), "time")}`
+            : "คุณมีตั๋วกิจกรรมนี้แล้ว"}
+        </p>
+        <Button
+          size="lg"
+          render={<Link to="/tickets/$slug" params={{ slug: ticketRef(item) }} />}
+          nativeButton={false}
+        >
+          <TicketIcon data-icon="inline-start" aria-hidden />
+          ดูตั๋ว
         </Button>
       </>
     );
@@ -174,20 +241,16 @@ function TicketPanel({ item }: { item: EventDetail }) {
 
   if (!item.open) {
     return (
-      <p className="flex items-center gap-2 text-muted-foreground">
-        <Lock className="size-4" aria-hidden />
+      <Button size="lg" variant="secondary" disabled>
+        <Lock data-icon="inline-start" aria-hidden />
         ปิดรับตั๋วแล้ว
-      </p>
+      </Button>
     );
   }
 
   const soldOut = item.remaining === 0;
   return (
     <>
-      <h2 className="flex items-center gap-2 font-semibold">
-        <TicketIcon className="size-5 text-primary" aria-hidden />
-        รับตั๋ว
-      </h2>
       <Seats capacity={item.capacity} remaining={item.remaining} />
       <LoadingButton
         icon={TicketIcon}

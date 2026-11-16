@@ -50,10 +50,13 @@ function setup(overrides: Partial<TicketsApi>) {
 }
 
 describe("/me/tickets", () => {
-  test("shows each ticket's QR, and the way to /events when there are none", async () => {
+  test("each ticket opens its own page; the QR is not shown here", async () => {
     const view = await setup({ mine: async () => ({ items: [ticket()] }) });
-    expect(await view.findByRole("img", { name: "QR ตั๋ว พิธีเปิด" })).toBeTruthy();
-    expect(view.getByText("หอประชุม")).toBeTruthy();
+    expect(await view.findByText("หอประชุม")).toBeTruthy();
+    expect(view.getByRole("button", { name: "แสดงตั๋ว" }).getAttribute("href")).toBe(
+      "/tickets/opening",
+    );
+    expect(view.queryByRole("img", { name: "QR ตั๋ว พิธีเปิด" })).toBeNull();
     expect(view.getByRole("button", { name: "ดูกิจกรรม" }).getAttribute("href")).toBe("/events");
     // Claiming lives on /events now.
     expect(view.queryByRole("button", { name: "รับตั๋ว" })).toBeNull();

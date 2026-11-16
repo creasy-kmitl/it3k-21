@@ -62,22 +62,18 @@ describe("/events/$eventId", () => {
     expect(await view.findByRole("heading", { name: "คอนเสิร์ต" })).toBeTruthy();
     expect(asked).toEqual(["concert"]);
     expect(view.getByText("ดนตรีสดตลอดคืน")).toBeTruthy();
-    expect(view.getByRole("link", { name: "ดูแผนที่" }).getAttribute("href")).toBe(
+    expect(view.getByRole("link", { name: /ลานกิจกรรม/ }).getAttribute("href")).toBe(
       "https://maps.example/v-1",
     );
     expect(view.getByText("60/100")).toBeTruthy();
     expect(view.getByRole("button", { name: "กิจกรรมทั้งหมด" }).getAttribute("href")).toBe("/events");
   });
 
-  test("claiming swaps the button for the ticket's QR", async () => {
+  test("claiming swaps the button for a link to the ticket, without the QR", async () => {
     let held = false;
     const view = await setup({
       event: async () =>
-        detail(
-          held
-            ? { claimed: true, ticket: { id: "t-1", code: "a".repeat(32), checkedInAt: null } }
-            : {},
-        ),
+        detail(held ? { claimed: true, ticket: { id: "t-1", checkedInAt: null } } : {}),
       claim: async () => {
         held = true;
         return {
@@ -102,13 +98,16 @@ describe("/events/$eventId", () => {
       },
     });
     fireEvent.click(await view.findByRole("button", { name: "รับตั๋ว" }));
-    expect(await view.findByRole("img", { name: "QR ตั๋ว คอนเสิร์ต" })).toBeTruthy();
-    expect(view.queryByRole("button", { name: "รับตั๋ว" })).toBeNull();
+    const open = await view.findByRole("button", { name: "ดูตั๋ว" });
+    expect(open.getAttribute("href")).toBe("/tickets/concert");
+    expect(view.getByText("คุณมีตั๋วกิจกรรมนี้แล้ว")).toBeTruthy();
+    expect(view.queryByRole("img", { name: /QR/ })).toBeNull();
   });
 
   test("a closed event says so; a full one cannot be claimed", async () => {
     const closed = await setup({ event: async () => detail({ open: false }) });
-    expect(await closed.findByText("ปิดรับตั๋วแล้ว")).toBeTruthy();
+    const shut = (await closed.findByRole("button", { name: "ปิดรับตั๋วแล้ว" })) as HTMLButtonElement;
+    expect(shut.disabled).toBe(true);
     expect(closed.queryByRole("button", { name: "รับตั๋ว" })).toBeNull();
     cleanup();
 

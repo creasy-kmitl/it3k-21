@@ -71,7 +71,8 @@ describe("/events", () => {
     );
     expect(view.getByText("ไม่จำกัดจำนวน")).toBeTruthy();
     expect(view.getByText("รับตั๋วแล้ว")).toBeTruthy();
-    expect(view.getByRole("button", { name: "ดูตั๋ว" }).getAttribute("href")).toBe("/me/tickets");
+    // A held ticket opens its own page, where the QR is.
+    expect(view.getByRole("button", { name: "ดูตั๋ว" }).getAttribute("href")).toBe("/tickets/concert");
     expect(view.getAllByRole("button", { name: "รับตั๋ว" })).toHaveLength(2);
   });
 

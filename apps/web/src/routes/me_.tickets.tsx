@@ -30,12 +30,11 @@ import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
 import { ParticipantShell } from "@/components/participant-shell";
 import { SportThumbnail } from "@/components/sport-art";
-import { TicketQr } from "@/components/ticket-qr";
 import { useApis } from "@/lib/api-context";
 import { formatBangkok } from "@/lib/bangkok-time";
 import { toastError } from "@/lib/errors";
 import { requireParticipantSession } from "@/lib/participant-auth";
-import { TICKETS_KEY, type Ticket } from "@/lib/tickets";
+import { TICKETS_KEY, type Ticket, ticketRef } from "@/lib/tickets";
 
 export const Route = createFileRoute("/me_/tickets")({
   ssr: false,
@@ -68,7 +67,7 @@ export function TicketsView() {
         <PageHeader
           icon={TicketIcon}
           title="ตั๋วของฉัน"
-          description="แสดง QR ของตั๋วที่จุดเช็คอินของกิจกรรม"
+          description="เปิดตั๋วเพื่อแสดง QR ที่จุดเช็คอินของกิจกรรม"
         />
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" render={<Link to="/me" />} nativeButton={false}>
@@ -131,22 +130,28 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
           <EventWhere venue={ticket.venue} />
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col items-center gap-3">
-        {checkedIn ? (
-          <Badge className="self-start">
+      {checkedIn ? (
+        <CardContent>
+          <Badge>
             <CircleCheck data-icon="inline-start" aria-hidden />
             เช็คอินแล้ว {formatBangkok(Date.parse(ticket.checkedInAt ?? ""), "time")}
           </Badge>
-        ) : null}
-        <TicketQr code={ticket.code} label={`QR ตั๋ว ${ticket.event.name}`} />
-      </CardContent>
-      {!checkedIn && (
-        <CardFooter>
+        </CardContent>
+      ) : null}
+      <CardFooter className="mt-auto flex-wrap gap-2">
+        <Button
+          render={<Link to="/tickets/$slug" params={{ slug: ticketRef(ticket.event) }} />}
+          nativeButton={false}
+        >
+          <TicketIcon data-icon="inline-start" aria-hidden />
+          แสดงตั๋ว
+        </Button>
+        {!checkedIn && (
           <Button variant="ghost" onClick={() => setConfirming(true)}>
             ยกเลิกตั๋ว
           </Button>
-        </CardFooter>
-      )}
+        )}
+      </CardFooter>
       {confirming && <CancelDialog ticket={ticket} onClose={() => setConfirming(false)} />}
     </Card>
   );

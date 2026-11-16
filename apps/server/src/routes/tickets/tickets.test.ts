@@ -213,21 +213,46 @@ describe("one event", () => {
     id: string;
     open: boolean;
     claimed: boolean;
-    ticket: { id: string; code: string; checkedInAt: string | null } | null;
+    ticket: { id: string; checkedInAt: string | null } | null;
   };
 
   test("shows an event by id or slug, with the caller's ticket", async () => {
     const before = await send<Detail>("guest", "GET", "/events/opening");
     expect(before.res.status).toBe(200);
-    expect(before.body).toMatchObject({ id: "e-general", open: true, claimed: false, ticket: null });
+    expect(before.body).toMatchObject({
+      id: "e-general",
+      open: true,
+      claimed: false,
+      ticket: null,
+    });
     const { body: claimed } = await claim("guest", "e-general");
     const after = await send<Detail>("guest", "GET", "/events/e-general");
     expect(after.body).toMatchObject({
       claimed: true,
-      ticket: { id: claimed.ticket.id, code: claimed.ticket.code, checkedInAt: null },
+      ticket: { id: claimed.ticket.id, checkedInAt: null },
     });
+    // The QR code stays on the ticket's own page.
+    expect(after.body.ticket).not.toHaveProperty("code");
     // Someone else sees no ticket of theirs.
     expect((await send<Detail>("guest-2", "GET", "/events/e-general")).body.ticket).toBeNull();
+  });
+
+  test("the ticket's own page carries its code, for its holder only", async () => {
+    type Held = { ticket: { id: string; code: string; event: { id: string } } };
+    expect((await send("guest", "GET", "/events/opening/ticket")).res.status).toBe(404);
+    const { body: claimed } = await claim("guest", "e-general");
+    for (const ref of ["opening", "e-general"]) {
+      const held = await send<Held>("guest", "GET", `/events/${ref}/ticket`);
+      expect(held.res.status).toBe(200);
+      expect(held.body.ticket).toMatchObject({
+        id: claimed.ticket.id,
+        code: claimed.ticket.code,
+        event: { id: "e-general" },
+      });
+    }
+    const other = await send<{ code: string }>("guest-2", "GET", "/events/opening/ticket");
+    expect(other.res.status).toBe(404);
+    expect(other.body.code).toBe("no-ticket");
   });
 
   test("closed and finished events still show, as not open", async () => {

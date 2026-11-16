@@ -234,7 +234,8 @@ export const createTicketRoutes = (deps: RouteDeps) =>
 
     // One event's page: open or not, as long as the caller may see it (any
     // general event, a sport event that expects them, or one they hold a
-    // ticket to), with their ticket when they have one.
+    // ticket to), with their ticket when they have one. The ticket's code
+    // (the QR) is left out; only the ticket's own page shows it.
     .get("/events/:id", validate("param", idParam), async (c) => {
       const db = c.var.db;
       const me = c.var.user.id;
@@ -244,12 +245,19 @@ export const createTicketRoutes = (deps: RouteDeps) =>
       return c.json(
         {
           ...item,
-          ticket: ticket
-            ? { id: ticket.id, code: ticket.code, checkedInAt: ticket.checkedInAt }
-            : null,
+          ticket: ticket ? { id: ticket.id, checkedInAt: ticket.checkedInAt } : null,
         },
         200,
       );
+    })
+
+    // The caller's ticket to one event (by id or slug), QR code included.
+    .get("/events/:id/ticket", validate("param", idParam), async (c) => {
+      const [ticket] = await loadTickets(c.var.db, c.var.user.id, byRef(c.req.valid("param").id));
+      if (!ticket) {
+        return c.json({ code: "no-ticket" as const, message: "ยังไม่ได้รับตั๋วกิจกรรมนี้" }, 404);
+      }
+      return c.json({ ticket }, 200);
     })
 
     // Claim a ticket. Claiming one already held returns it again.

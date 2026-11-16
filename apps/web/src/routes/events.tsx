@@ -16,7 +16,7 @@ import { SegmentedControl } from "@/components/segmented-control";
 import { SportThumbnail } from "@/components/sport-art";
 import { useApis } from "@/lib/api-context";
 import { requireParticipantSession } from "@/lib/participant-auth";
-import { type OpenEvent, TICKETS_KEY } from "@/lib/tickets";
+import { type OpenEvent, TICKETS_KEY, ticketRef } from "@/lib/tickets";
 
 export const Route = createFileRoute("/events")({
   ssr: false,
@@ -194,7 +194,11 @@ function EventCard({ item }: { item: OpenEvent }) {
                 <CircleCheck data-icon="inline-start" aria-hidden />
                 รับตั๋วแล้ว
               </Badge>
-              <Button variant="outline" render={<Link to="/me/tickets" />} nativeButton={false}>
+              <Button
+                variant="outline"
+                render={<Link to="/tickets/$slug" params={{ slug: ticketRef(item) }} />}
+                nativeButton={false}
+              >
                 <TicketIcon data-icon="inline-start" aria-hidden />
                 ดูตั๋ว
               </Button>
