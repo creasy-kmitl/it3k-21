@@ -12,6 +12,7 @@ import {
   Download,
   LogIn,
   MapPin,
+  MonitorSmartphone,
   ScanBarcode,
   Search,
   Undo2,
@@ -19,6 +20,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { ScanSheet } from "@/components/checkin/scan-sheet";
 import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
 import { SegmentedControl } from "@/components/segmented-control";
@@ -26,6 +28,7 @@ import { useApis } from "@/lib/api-context";
 import { formatBangkok } from "@/lib/bangkok-time";
 import { csvBlob } from "@/lib/csv";
 import type { Participant } from "@/lib/events";
+import { type Decoder, createDecoder } from "@/lib/kiosk";
 import { downloadBlob } from "@/lib/qr-export";
 import { eventTime } from "./events";
 import { ErrorState } from "@/components/error-state";
@@ -84,7 +87,13 @@ export function participantsCsv(items: Participant[]) {
 type Show = "all" | "in" | "out";
 
 /** Who an event expects and who has checked in, with manual check-in and export. */
-export function EventParticipantsPage({ eventId }: { eventId: string }) {
+export function EventParticipantsPage({
+  eventId,
+  decoderFactory = createDecoder,
+}: {
+  eventId: string;
+  decoderFactory?: () => Promise<Decoder>;
+}) {
   const { events: api } = useApis();
   const queryClient = useQueryClient();
   const event = useQuery({ queryKey: ["events", eventId], queryFn: () => api.get(eventId) });
@@ -97,6 +106,7 @@ export function EventParticipantsPage({ eventId }: { eventId: string }) {
   });
   const [show, setShow] = useState<Show>("all");
   const [search, setSearch] = useState("");
+  const [scanning, setScanning] = useState(false);
 
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["events", eventId, "participants"] });
@@ -173,18 +183,38 @@ export function EventParticipantsPage({ eventId }: { eventId: string }) {
             </Button>
           )}
           {participants.data?.canCheckIn && (
-            <Button
-              render={
-                <Link to="/kiosk/$eventId" params={{ eventId: event.data?.slug ?? eventId }} />
-              }
-              nativeButton={false}
-            >
-              <ScanBarcode data-icon="inline-start" aria-hidden />
-              เปิด Kiosk
-            </Button>
+            <>
+              {/* Two ways to scan: a drawer here, or the full-screen kiosk for a desk. */}
+              <Button
+                variant="outline"
+                render={
+                  <Link to="/kiosk/$eventId" params={{ eventId: event.data?.slug ?? eventId }} />
+                }
+                nativeButton={false}
+              >
+                <MonitorSmartphone data-icon="inline-start" aria-hidden />
+                เปิด Kiosk
+              </Button>
+              <Button onClick={() => setScanning(true)}>
+                <ScanBarcode data-icon="inline-start" aria-hidden />
+                สแกนเช็คอิน
+              </Button>
+            </>
           )}
         </div>
       </div>
+
+      {participants.data?.canCheckIn && (
+        <ScanSheet
+          open={scanning}
+          onOpenChange={setScanning}
+          eventKey={eventId}
+          id={id}
+          eventName={event.data?.name}
+          counts={{ checkedIn, total: items.length }}
+          decoderFactory={decoderFactory}
+        />
+      )}
 
       {participants.isPending ? (
         <div role="status" className="flex flex-col gap-2">
