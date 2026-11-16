@@ -171,7 +171,7 @@ export function KioskPage({
 
           <p className="hidden items-start gap-3 rounded-2xl border border-dashed p-4 text-muted-foreground wide:flex wide-xl:text-lg">
             <ScanBarcode className="mt-0.5 size-5 shrink-0" aria-hidden />
-            ให้ผู้เข้าร่วมเปิดบาร์โค้ดในหน้าโปรไฟล์ แล้วหันเข้ากล้องให้อยู่ในกรอบ
+            ให้ผู้เข้าร่วมเปิด QR ตั๋วในหน้าตั๋วของฉัน (หรือบาร์โค้ดในหน้าโปรไฟล์) แล้วหันเข้ากล้องให้อยู่ในกรอบ
           </p>
 
           {/* Below the camera, not above it, so an error never pushes the camera down. */}
@@ -225,6 +225,7 @@ function Result({
     person,
     details,
     forceable,
+    forceLabel,
   } = describeResult(outcome, failure);
 
   return (
@@ -272,7 +273,7 @@ function Result({
               onForce(forceable.userId);
             }}
           >
-            เช็คอินนอกรายชื่อ
+            {forceLabel}
           </LoadingButton>
           <Button variant="outline" size="lg" className="bg-transparent text-inherit">
             ไม่เช็คอิน

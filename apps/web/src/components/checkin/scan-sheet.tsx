@@ -109,7 +109,9 @@ function ScanBody({
         )}
       </CheckinCamera>
       <ScanForm onCode={scan.handleCode} pending={scan.pending} input={input} />
-      <p className="text-muted-foreground">ให้ผู้เข้าร่วมเปิดบาร์โค้ดในหน้าโปรไฟล์ แล้วหันเข้ากล้องให้อยู่ในกรอบ</p>
+      <p className="text-muted-foreground">
+        ให้ผู้เข้าร่วมเปิด QR ตั๋วในหน้าตั๋วของฉัน (หรือบาร์โค้ดในหน้าโปรไฟล์) แล้วหันเข้ากล้องให้อยู่ในกรอบ
+      </p>
     </div>
   );
 }
@@ -126,6 +128,7 @@ function ResultCard({ scan, onDismiss }: { scan: ScanCheckIn; onDismiss: () => v
     person,
     details,
     forceable,
+    forceLabel,
   } = describeResult(scan.outcome, scan.failure);
   return (
     <div
@@ -157,7 +160,7 @@ function ResultCard({ scan, onDismiss }: { scan: ScanCheckIn; onDismiss: () => v
             loading={scan.forcing}
             onClick={() => scan.force(forceable.userId)}
           >
-            เช็คอินนอกรายชื่อ
+            {forceLabel}
           </LoadingButton>
         )}
         <Button

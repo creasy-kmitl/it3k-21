@@ -1,3 +1,4 @@
+import { parseScan } from "@it3k/db/event-rules";
 import { INSTITUTIONS } from "@it3k/db/profile";
 import { Button } from "@it3k/ui/components/button";
 import { Input } from "@it3k/ui/components/input";
@@ -70,7 +71,7 @@ export function useScanCheckIn({ eventKey, id }: { eventKey: string; id: string 
   const [gate] = useState(() => createScanGate(SAME_CODE_MS));
 
   const checkIn = useMutation({
-    mutationFn: (vars: { userId: string; force?: boolean }) =>
+    mutationFn: (vars: ({ userId: string } | { ticketCode: string }) & { force?: boolean }) =>
       api.checkIn(id, { ...vars, method: "scan" }),
     onSuccess: (result) => {
       setFailure(null);
@@ -90,14 +91,15 @@ export function useScanCheckIn({ eventKey, id }: { eventKey: string; id: string 
   onCode.current = (raw: string) => {
     if (pending) return;
     const code = gate(raw);
-    if (code) checkIn.mutate({ userId: code });
+    // A ticket's QR, or the profile barcode (an account id).
+    if (code) checkIn.mutate(parseScan(code));
   };
   const handleCode = useCallback((code: string) => onCode.current(code), []);
 
   // Results clear themselves, except one a manager may still force through.
   useEffect(() => {
     if (!outcome && !failure) return;
-    if (outcome?.code === "not-listed" && outcome.canForce) return;
+    if (outcome && "canForce" in outcome && outcome.canForce) return;
     const timer = setTimeout(() => {
       setOutcome(null);
       setFailure(null);
@@ -154,7 +156,7 @@ export function describeResult(outcome: CheckinOutcome | null, failure: string |
   const title =
     outcome?.code === "checked-in"
       ? outcome.forced
-        ? "เช็คอินแล้ว (นอกรายชื่อ)"
+        ? "เช็คอินแล้ว (บังคับ)"
         : "เช็คอินสำเร็จ"
       : outcome?.code === "duplicate"
         ? `เช็คอินไปแล้วเมื่อ ${formatBangkok(Date.parse(outcome.checkedInAt), "time")}`
@@ -165,8 +167,9 @@ export function describeResult(outcome: CheckinOutcome | null, failure: string |
         .filter(Boolean)
         .join(" · ")
     : "";
-  const forceable = outcome?.code === "not-listed" && outcome.canForce ? outcome.person : null;
-  return { tone, toneClass: TONES[tone], icon, title, person, details, forceable };
+  const forceable = outcome && "canForce" in outcome && outcome.canForce ? outcome.person : null;
+  const forceLabel = outcome?.code === "not-listed" ? "เช็คอินนอกรายชื่อ" : "เช็คอินโดยไม่มีตั๋ว";
+  return { tone, toneClass: TONES[tone], icon, title, person, details, forceable, forceLabel };
 }
 
 /** The camera preview, scanning frames while it runs, with a switch for multi-camera devices. */
@@ -258,7 +261,7 @@ export function CheckinCamera({
       {state === "on" && (
         <div
           aria-hidden
-          className="pointer-events-none absolute top-1/2 left-1/2 aspect-[4/1] w-[76%] -translate-1/2 rounded-2xl border-4 border-white/80 shadow-[0_0_0_9999px_rgb(0_0_0/0.25)]"
+          className="pointer-events-none absolute top-1/2 left-1/2 aspect-[3/2] h-[72%] -translate-1/2 rounded-2xl border-4 border-white/80 shadow-[0_0_0_9999px_rgb(0_0_0/0.25)]"
         />
       )}
       {state !== "on" && (
@@ -326,8 +329,8 @@ export function ScanForm({
       <Input
         ref={input}
         autoComplete="off"
-        aria-label="รหัสผู้ใช้"
-        placeholder="สแกนด้วยเครื่องสแกน หรือพิมพ์รหัสผู้ใช้แล้วกด Enter"
+        aria-label="รหัสตั๋วหรือรหัสผู้ใช้"
+        placeholder="สแกนด้วยเครื่องสแกน หรือพิมพ์รหัสแล้วกด Enter"
         value={typed}
         onChange={(e) => setTyped(e.target.value)}
         onBlur={keepFocused ? () => focusOnDesk(input) : undefined}

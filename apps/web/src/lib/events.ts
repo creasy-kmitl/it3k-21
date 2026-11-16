@@ -14,16 +14,34 @@ export type EventItem = EventList["items"][number];
 export type EventFilters = { type?: EventType; endsAfter?: number };
 export type ParticipantList = InferResponseType<Client[":id"]["participants"]["$get"], 200>;
 export type Participant = ParticipantList["items"][number];
-export type Person = Omit<Participant, "expected" | "checkin">;
+export type Person = Omit<Participant, "expected" | "hasTicket" | "checkin">;
 
 /** What the kiosk shows after a scan. */
 export type CheckinOutcome =
   | { code: "checked-in"; person: Person; checkedInAt: string; forced: boolean }
   | { code: "duplicate"; person: Person; checkedInAt: string; message: string }
   | { code: "not-listed"; person: Person; canForce: boolean; message: string }
+  | { code: "no-ticket"; person: Person; canForce: boolean; message: string }
+  | {
+      code: "wrong-event";
+      person: Person;
+      canForce: boolean;
+      message: string;
+      otherEvent: { id: string; name: string };
+    }
   | { code: "unknown"; message: string };
 
-const OUTCOME_CODES = new Set(["checked-in", "duplicate", "not-listed", "unknown"]);
+/** The refusals a catalog manager may check someone in through anyway. */
+export type ForceableOutcome = Extract<CheckinOutcome, { canForce: boolean }>;
+
+const OUTCOME_CODES = new Set([
+  "checked-in",
+  "duplicate",
+  "not-listed",
+  "no-ticket",
+  "wrong-event",
+  "unknown",
+]);
 const isOutcome = (body: unknown): body is CheckinOutcome =>
   !!body &&
   typeof body === "object" &&
@@ -71,7 +89,10 @@ export function createEventsApi(baseUrl: string, fetchImpl?: ClientRequestOption
     /** A refused scan is an outcome to show, not an error; only failures throw. */
     async checkIn(
       id: string,
-      json: { userId: string; method: CheckinMethod; force?: boolean },
+      json: ({ userId: string } | { ticketCode: string }) & {
+        method: CheckinMethod;
+        force?: boolean;
+      },
     ): Promise<CheckinOutcome> {
       const res = await client[":id"].checkins.$post({ param: { id }, json });
       const body: unknown = await res.json().catch(() => null);

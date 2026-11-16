@@ -15,6 +15,7 @@ import {
   MonitorSmartphone,
   ScanBarcode,
   Search,
+  Ticket,
   Undo2,
 } from "lucide-react";
 import { useState } from "react";
@@ -30,7 +31,7 @@ import { csvBlob } from "@/lib/csv";
 import type { Participant } from "@/lib/events";
 import { type Decoder, createDecoder } from "@/lib/kiosk";
 import { downloadBlob } from "@/lib/qr-export";
-import { eventTime } from "./events";
+import { eventTime, ticketSummary } from "./events";
 import { ErrorState } from "@/components/error-state";
 import { toastError } from "@/lib/errors";
 
@@ -63,6 +64,7 @@ export function participantsCsv(items: Participant[]) {
       "institution",
       "divisions",
       "on_list",
+      "has_ticket",
       "checked_in_at",
       "method",
       "forced",
@@ -77,6 +79,7 @@ export function participantsCsv(items: Participant[]) {
       institutionShort(item.institution),
       item.divisions.map((division) => division.name).join(" / "),
       item.expected ? "yes" : "no",
+      item.hasTicket ? "yes" : "no",
       item.checkin ? formatBangkok(Date.parse(item.checkin.at), "dateTime") : "",
       item.checkin?.method ?? "",
       item.checkin ? (item.checkin.forced ? "yes" : "no") : "",
@@ -111,10 +114,18 @@ export function EventParticipantsPage({
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["events", eventId, "participants"] });
   const checkIn = useMutation({
-    mutationFn: (userId: string) => api.checkIn(id, { userId, method: "manual" }),
-    onSuccess: (outcome) => {
+    mutationFn: (vars: { userId: string; force?: boolean }) =>
+      api.checkIn(id, { ...vars, method: "manual" }),
+    onSuccess: (outcome, vars) => {
       if (outcome.code === "checked-in") toast.success(`เช็คอิน ${fullName(outcome.person)} แล้ว`);
-      else toast.error(outcome.message);
+      else if ("canForce" in outcome && outcome.canForce) {
+        toast.error(outcome.message, {
+          action: {
+            label: "บังคับเช็คอิน",
+            onClick: () => checkIn.mutate({ userId: vars.userId, force: true }),
+          },
+        });
+      } else toast.error(outcome.message);
     },
     onError: (error) => toastError(error, "เช็คอินไม่สำเร็จ"),
     onSettled: refresh,
@@ -157,6 +168,10 @@ export function EventParticipantsPage({
             event.data ? (
               <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span>{eventTime(event.data)}</span>
+                <span className="inline-flex items-center gap-1">
+                  <Ticket className="size-4" aria-hidden />
+                  {ticketSummary(event.data)}
+                </span>
                 {event.data.venue && (
                   <span className="inline-flex items-center gap-1">
                     <MapPin className="size-4" aria-hidden />
@@ -287,6 +302,9 @@ export function EventParticipantsPage({
                         <span>{item.divisions.map((d) => d.name).join(", ")}</span>
                       )}
                       {!item.expected && <Badge variant="destructive">ไม่อยู่ในรายชื่อ</Badge>}
+                      {!item.hasTicket && !item.checkin && (
+                        <Badge variant="outline">ยังไม่รับตั๋ว</Badge>
+                      )}
                     </span>
                   </div>
                   {item.checkin ? (
@@ -314,9 +332,9 @@ export function EventParticipantsPage({
                         size="sm"
                         aria-label={`เช็คอิน ${item.name}`}
                         icon={LogIn}
-                        loading={checkIn.isPending && checkIn.variables === item.userId}
+                        loading={checkIn.isPending && checkIn.variables?.userId === item.userId}
                         disabled={checkIn.isPending}
-                        onClick={() => checkIn.mutate(item.userId)}
+                        onClick={() => checkIn.mutate({ userId: item.userId })}
                       >
                         เช็คอิน
                       </LoadingButton>

@@ -26,6 +26,7 @@ import {
   Pill,
   Smile,
   Stethoscope,
+  Ticket,
   Trophy,
   UserRound,
   UserRoundPlus,
@@ -226,12 +227,34 @@ function MePage() {
                   </dl>
                 </CardContent>
               </Card>
+              <TicketsCard />
               <AthleteCard />
             </div>
           </div>
         )}
       </div>
     </ParticipantShell>
+  );
+}
+
+/** The way to /me/tickets, where an event's QR ticket is shown at check-in. */
+function TicketsCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 [&_svg]:size-5 [&_svg]:shrink-0">
+          <Ticket className="text-primary" aria-hidden />
+          ตั๋วกิจกรรม
+        </CardTitle>
+        <CardDescription>รับตั๋วกิจกรรม แล้วแสดง QR ที่จุดเช็คอิน</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button render={<Link to="/me/tickets" />} nativeButton={false}>
+          <Ticket data-icon="inline-start" aria-hidden />
+          ตั๋วของฉัน
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 

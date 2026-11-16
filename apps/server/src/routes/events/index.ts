@@ -10,7 +10,9 @@ import {
   eventInput,
   eventInstitution,
   eventSlugBase,
+  eventTicket,
   firstFreeSlug,
+  ticketCode,
   venue,
 } from "@it3k/db/schema/event";
 import { sport, sportDivision } from "@it3k/db/schema/sport";
@@ -31,7 +33,16 @@ import { limitJsonBody } from "../../middleware/json-body-limit";
 import { allowSport } from "../../middleware/sport-permission";
 import { validate } from "../../middleware/validation";
 import { canSport, sportAccess, sportAccessIsAsRead } from "../../policies/sports";
-import { expectedAt, findCheckin, findPerson, listParticipants } from "./checkins";
+import {
+  byRef,
+  expectedAt,
+  findCheckin,
+  findPerson,
+  findTicket,
+  hasTicketAt,
+  listParticipants,
+  ticketCounts,
+} from "./checkins";
 
 // Every route takes an event's id or its slug, except editing and deleting
 // the event itself, which take the id.
@@ -42,13 +53,21 @@ const listQuery = z.strictObject({
   endsAfter: z.coerce.number().int().min(0).optional(),
 });
 const checkinParam = z.strictObject({ id: z.string().min(1), userId: z.string().min(1) });
-const checkinInput = z.strictObject({
-  // What the barcode on /me encodes: the account id.
-  userId: z.string().trim().min(1).max(128),
-  method: z.enum(CHECKIN_METHODS),
-  // Catalog managers may check in someone the event does not expect.
-  force: z.boolean().optional(),
-});
+const checkinInput = z
+  .strictObject({
+    // What the barcode on /me encodes: the account id. Also what the
+    // participant list sends for a check-in by hand.
+    userId: z.string().trim().min(1).max(128).optional(),
+    // What a ticket's QR encodes after its prefix.
+    ticketCode: ticketCode.optional(),
+    method: z.enum(CHECKIN_METHODS),
+    // Catalog managers may check in someone without a ticket, or whom the
+    // event does not expect.
+    force: z.boolean().optional(),
+  })
+  .refine((input) => !input.userId !== !input.ticketCode, {
+    message: "ส่ง userId หรือ ticketCode อย่างใดอย่างหนึ่ง",
+  });
 const updateInput = eventInput.and(z.strictObject({ version: z.number().int().positive() }));
 
 /** Plenty for one festival; the list is not paged. */
@@ -58,13 +77,13 @@ export const STALE = "ข้อมูลเปลี่ยนแปลงแล�
 const UNKNOWN_PERSON = "ไม่พบผู้ใช้จากรหัสนี้";
 const ALREADY_IN = "เช็คอินไปแล้ว";
 const NOT_LISTED = "ไม่อยู่ในรายชื่อของกิจกรรมนี้";
+const UNKNOWN_TICKET = "ไม่พบตั๋วจากรหัสนี้";
+const NO_TICKET = "ยังไม่ได้รับตั๋วกิจกรรมนี้";
+const WRONG_EVENT = "ตั๋วนี้เป็นของกิจกรรมอื่น";
 const MISSING_LINK = "ไม่พบสถานที่หรือประเภทกีฬาที่เลือก กรุณาโหลดใหม่";
 const SLUG_TAKEN = "ลิงก์นี้มีกิจกรรมอื่นใช้แล้ว ลองตั้งลิงก์อื่น";
 /** Tries at a generated slug, should another event take it meanwhile. */
 const SLUG_ATTEMPTS = 3;
-
-/** The event whose id or slug is `ref`. Slugs never look like ids, so at most one matches. */
-const byRef = (ref: string) => or(eq(event.id, ref), eq(event.slug, ref));
 
 /** Slugs in use that a generated `base` could clash with: `base` and `base-<n>`. */
 async function takenSlugs(db: Database, base: string, exceptId?: string) {
@@ -107,7 +126,7 @@ async function loadEvents(db: Database, where: SQL | undefined) {
     .limit(MAX_EVENTS);
   const ids = rows.map((row) => row.event.id);
   if (ids.length === 0) return [];
-  const [institutions, divisions] = await Promise.all([
+  const [institutions, divisions, tickets] = await Promise.all([
     db
       .select()
       .from(eventInstitution)
@@ -127,10 +146,12 @@ async function loadEvents(db: Database, where: SQL | undefined) {
       .innerJoin(sport, eq(sport.id, sportDivision.sportId))
       .where(inArray(eventDivision.eventId, ids))
       .orderBy(asc(sport.sortOrder), asc(sportDivision.sortOrder)),
+    ticketCounts(db, ids),
   ]);
   return rows.map((row) => ({
     ...row.event,
     venue: row.venue,
+    ticketCount: tickets.get(row.event.id) ?? 0,
     institutions: institutions
       .filter((item) => item.eventId === row.event.id)
       .map((item) => item.institution),
@@ -149,6 +170,8 @@ function eventValues(input: z.infer<typeof eventInput>) {
     endAt: new Date(input.endAt),
     venueId: input.venueId,
     thumbnailUrl: input.thumbnailUrl || null,
+    ticketsOpen: input.ticketsOpen,
+    ticketCapacity: input.ticketCapacity,
   };
 }
 
@@ -334,13 +357,31 @@ export const createEventRoutes = (deps: RouteDeps) =>
       async (c) => {
         const db = c.var.db;
         const actor = c.var.user;
-        const { userId, method, force } = c.req.valid("json");
+        const input = c.req.valid("json");
+        const { method, force } = input;
         const [item] = await db
           .select({ id: event.id, type: event.type })
           .from(event)
           .where(byRef(c.req.valid("param").id));
         if (!item) return c.json({ message: "ไม่พบกิจกรรมนี้" }, 404);
         const id = item.id;
+        const canForce = canSport(actor, "catalog.manage");
+
+        // A ticket's QR names its holder; so does the barcode on /me.
+        let userId: string;
+        let otherEvent: { id: string; name: string } | null = null;
+        if (input.ticketCode) {
+          const [scanned] = await db
+            .select({ userId: eventTicket.userId, eventId: event.id, eventName: event.name })
+            .from(eventTicket)
+            .innerJoin(event, eq(event.id, eventTicket.eventId))
+            .where(eq(eventTicket.code, input.ticketCode));
+          if (!scanned) return c.json({ code: "unknown" as const, message: UNKNOWN_TICKET }, 404);
+          userId = scanned.userId;
+          if (scanned.eventId !== id) otherEvent = { id: scanned.eventId, name: scanned.eventName };
+        } else {
+          userId = input.userId ?? "";
+        }
         const person = await findPerson(db, id, userId);
         if (!person) return c.json({ code: "unknown" as const, message: UNKNOWN_PERSON }, 404);
 
@@ -356,18 +397,31 @@ export const createEventRoutes = (deps: RouteDeps) =>
             409,
           );
         }
-        const expected = item.type === "general" || person.divisions.length > 0;
-        const forced = !expected;
-        if (forced && !(force && canSport(actor, "catalog.manage"))) {
-          return c.json(
-            {
-              code: "not-listed" as const,
-              message: NOT_LISTED,
-              person,
-              canForce: canSport(actor, "catalog.manage"),
-            },
-            409,
-          );
+        const listed = item.type === "general" || person.divisions.length > 0;
+        // A ticket from another event still lets its holder in when they
+        // hold one to this event too.
+        const ticket = await findTicket(db, id, userId);
+        const forced = !listed || !ticket;
+        if (forced && !(force && canForce)) {
+          if (!listed) {
+            return c.json(
+              { code: "not-listed" as const, message: NOT_LISTED, person, canForce },
+              409,
+            );
+          }
+          if (otherEvent) {
+            return c.json(
+              {
+                code: "wrong-event" as const,
+                message: `${WRONG_EVENT} (${otherEvent.name})`,
+                person,
+                canForce,
+                otherEvent,
+              },
+              409,
+            );
+          }
+          return c.json({ code: "no-ticket" as const, message: NO_TICKET, person, canForce }, 409);
         }
         try {
           await db.batch([
@@ -376,7 +430,12 @@ export const createEventRoutes = (deps: RouteDeps) =>
               actor.id,
               and(
                 sportAccessIsAsRead(actor),
-                item.type === "sport" && !forced ? expectedAt(id, userId) : sql`1`,
+                forced
+                  ? sql`1`
+                  : and(
+                      hasTicketAt(id, userId),
+                      item.type === "sport" ? expectedAt(id, userId) : sql`1`,
+                    ),
               ) ?? sql`0`,
             ),
             db.insert(eventCheckin).values({

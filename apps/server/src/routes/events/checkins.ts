@@ -4,15 +4,29 @@
 import type { Database } from "@it3k/db";
 import type { Institution } from "@it3k/db/profile";
 import { user } from "@it3k/db/schema/auth";
-import { type event, eventCheckin, eventDivision, eventInstitution } from "@it3k/db/schema/event";
+import {
+  event,
+  eventCheckin,
+  eventDivision,
+  eventInstitution,
+  eventTicket,
+} from "@it3k/db/schema/event";
 import { userProfile } from "@it3k/db/schema/profile";
 import { athlete, sportDivision, sportRegistration } from "@it3k/db/schema/sport";
-import { type SQL, and, asc, eq, sql } from "drizzle-orm";
+import { type SQL, and, asc, count, eq, inArray, or, sql } from "drizzle-orm";
 
 import { type SportScope, inScope } from "../../policies/sports";
 
+/** The event whose id or slug is `ref`. Slugs never look like ids, so at most one matches. */
+export const byRef = (ref: string) => or(eq(event.id, ref), eq(event.slug, ref));
+
+/** SQL: `userId` holds a ticket to the event. */
+export function hasTicketAt(eventId: string, userId: string | SQL): SQL {
+  return sql`exists (select 1 from ${eventTicket} where ${eventTicket.eventId} = ${eventId} and ${eventTicket.userId} = ${userId})`;
+}
+
 /** SQL: `userId` has an approved registration this event expects. */
-export function expectedAt(eventId: string, userId: string | SQL): SQL {
+export function expectedAt(eventId: string | SQL, userId: string | SQL): SQL {
   return sql`exists (
     select 1 from ${sportRegistration}
     join ${eventDivision} on ${eventDivision.divisionId} = ${sportRegistration.divisionId}
@@ -38,8 +52,12 @@ export type Person = {
 };
 
 export type Participant = Person & {
-  /** On the event's list, as opposed to checked in by force. */
+  /**
+   * On the event's list, as opposed to checked in by force: an approved
+   * athlete at a sport event, a ticket holder at a general one.
+   */
   expected: boolean;
+  hasTicket: boolean;
   checkin: { at: string; method: "scan" | "manual"; forced: boolean } | null;
 };
 
@@ -113,6 +131,25 @@ export async function findPerson(db: Database, eventId: string, userId: string) 
   return toPerson(row, await divisionsAt(db, eventId, userId));
 }
 
+/** Tickets handed out per event. */
+export async function ticketCounts(db: Database, eventIds: string[]) {
+  if (eventIds.length === 0) return new Map<string, number>();
+  const rows = await db
+    .select({ eventId: eventTicket.eventId, n: count() })
+    .from(eventTicket)
+    .where(inArray(eventTicket.eventId, eventIds))
+    .groupBy(eventTicket.eventId);
+  return new Map(rows.map((row) => [row.eventId, row.n]));
+}
+
+export async function findTicket(db: Database, eventId: string, userId: string) {
+  const [row] = await db
+    .select()
+    .from(eventTicket)
+    .where(and(eq(eventTicket.eventId, eventId), eq(eventTicket.userId, userId)));
+  return row ?? null;
+}
+
 export async function findCheckin(db: Database, eventId: string, userId: string) {
   const [row] = await db
     .select()
@@ -127,7 +164,7 @@ export async function listParticipants(
   item: Pick<typeof event.$inferSelect, "id" | "type">,
   scope: SportScope,
 ): Promise<Participant[]> {
-  const [registrations, checkins] = await Promise.all([
+  const [registrations, tickets, checkins] = await Promise.all([
     item.type === "sport"
       ? db
           .select({
@@ -144,6 +181,14 @@ export async function listParticipants(
           .where(and(expectedAtDivision(item.id), inScope(scope, sportRegistration.institution)))
           .orderBy(asc(sportRegistration.institution), asc(user.name), asc(sportDivision.sortOrder))
       : Promise.resolve([]),
+    db
+      .select(personSelect())
+      .from(eventTicket)
+      .innerJoin(user, eq(user.id, eventTicket.userId))
+      .leftJoin(athlete, eq(athlete.userId, eventTicket.userId))
+      .leftJoin(userProfile, eq(userProfile.userId, eventTicket.userId))
+      .where(and(eq(eventTicket.eventId, item.id), inScope(scope, user.institution)))
+      .orderBy(asc(user.name)),
     db
       .select({
         ...personSelect(),
@@ -170,15 +215,28 @@ export async function listParticipants(
     people.set(row.userId, {
       ...toPerson({ ...row, institution: row.registrationInstitution }, [division]),
       expected: true,
+      hasTicket: false,
       checkin: null,
     });
+  }
+  for (const row of tickets) {
+    const existing = people.get(row.userId);
+    if (existing) existing.hasTicket = true;
+    else if (item.type === "general") {
+      people.set(row.userId, {
+        ...toPerson(row, []),
+        expected: true,
+        hasTicket: true,
+        checkin: null,
+      });
+    }
   }
   for (const row of checkins) {
     const checkin = { at: row.at.toISOString(), method: row.method, forced: row.forced };
     const existing = people.get(row.userId);
     if (existing) existing.checkin = checkin;
     else
-      people.set(row.userId, { ...toPerson(row, []), expected: item.type === "general", checkin });
+      people.set(row.userId, { ...toPerson(row, []), expected: false, hasTicket: false, checkin });
   }
   return [...people.values()];
 }

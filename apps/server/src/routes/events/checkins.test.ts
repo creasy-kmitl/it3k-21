@@ -5,6 +5,7 @@ import {
   eventCheckin,
   eventDivision,
   eventInstitution,
+  eventTicket,
   sportRegistration,
   user,
 } from "@it3k/db/schema/index";
@@ -23,6 +24,7 @@ type Participant = {
   userId: string;
   institution: string;
   expected: boolean;
+  hasTicket: boolean;
   divisions: { name: string }[];
   checkin: { method: string; forced: boolean } | null;
 };
@@ -80,7 +82,17 @@ beforeEach(async () => {
     { eventId: "e-sport", divisionId: football },
     { eventId: "e-sport", divisionId: rov },
   ]);
+  // The expected athletes have claimed their tickets.
+  await t.db.insert(eventTicket).values([
+    { id: "t-kmitl-1", eventId: "e-sport", userId: "kmitl-1", code: code("kmitl-1") },
+    { id: "t-kmutt-1", eventId: "e-sport", userId: "kmutt-1", code: code("kmutt-1") },
+  ]);
 });
+
+/** A well-formed ticket code, made readable for the test. */
+function code(name: string) {
+  return name.replaceAll(/[^A-Za-z0-9]/g, "").padEnd(32, "x");
+}
 
 async function send<T = Record<string, unknown>>(
   userId: string,
@@ -106,6 +118,7 @@ describe("participants", () => {
     expect(body.items.map((item) => item.userId)).toEqual(["kmitl-1", "kmutt-1"]);
     expect(body.items[1]).toMatchObject({
       expected: true,
+      hasTicket: true,
       divisions: [{ name: "ฟุตบอล" }],
       checkin: null,
     });
@@ -124,13 +137,23 @@ describe("participants", () => {
     expect((await send("tech", "GET", "/nope/participants")).res.status).toBe(404);
   });
 
-  test("a general event lists whoever checked in", async () => {
-    const general = (userId: string) =>
-      send("reg-staff", "POST", "/e-general/checkins", { userId, method: "manual" });
+  test("a general event lists its ticket holders and whoever checked in", async () => {
+    await t.db
+      .insert(eventTicket)
+      .values({ eventId: "e-general", userId: "kmutnb-1", code: code("general-kmutnb") });
+    const general = (userId: string, extra: Record<string, unknown> = {}) =>
+      send("tech", "POST", "/e-general/checkins", { userId, method: "manual", ...extra });
     expect((await general("kmutnb-1")).res.status).toBe(201);
+    expect((await general("kmitl-1", { force: true })).res.status).toBe(201);
     const { body } = await send<{ items: Participant[] }>("tech", "GET", "/e-general/participants");
     expect(body.items).toMatchObject([
-      { userId: "kmutnb-1", expected: true, checkin: { method: "manual", forced: false } },
+      {
+        userId: "kmutnb-1",
+        expected: true,
+        hasTicket: true,
+        checkin: { method: "manual", forced: false },
+      },
+      { userId: "kmitl-1", expected: false, hasTicket: false, checkin: { forced: true } },
     ]);
   });
 });
@@ -165,6 +188,77 @@ describe("checking in", () => {
     const rows = await t.db.select().from(eventCheckin);
     expect(rows).toMatchObject([{ eventId: "e-sport", userId: "kmitl-1" }]);
     expect((await send("tech", "DELETE", "/football-r1/checkins/kmitl-1")).res.status).toBe(200);
+    expect(await t.db.select().from(eventCheckin)).toEqual([]);
+  });
+
+  test("a ticket's QR code checks its holder in", async () => {
+    const { res, body } = await send("reg-staff", "POST", "/e-sport/checkins", {
+      ticketCode: code("kmutt-1"),
+      method: "scan",
+    });
+    expect(res.status).toBe(201);
+    expect(body).toMatchObject({
+      code: "checked-in",
+      forced: false,
+      person: { userId: "kmutt-1" },
+    });
+  });
+
+  test("an unknown ticket code, or a malformed one, is refused", async () => {
+    const unknown = await send("reg-staff", "POST", "/e-sport/checkins", {
+      ticketCode: code("nobody"),
+      method: "scan",
+    });
+    expect(unknown.res.status).toBe(404);
+    expect(unknown.body).toMatchObject({ code: "unknown" });
+    const malformed = await send("reg-staff", "POST", "/e-sport/checkins", {
+      ticketCode: "short",
+      method: "scan",
+    });
+    expect(malformed.res.status).toBe(400);
+    const both = await send("reg-staff", "POST", "/e-sport/checkins", {
+      ticketCode: code("kmutt-1"),
+      userId: "kmutt-1",
+      method: "scan",
+    });
+    expect(both.res.status).toBe(400);
+  });
+
+  test("a ticket to another event is refused, unless its holder has one here too", async () => {
+    const scan = () =>
+      send("tech", "POST", "/e-general/checkins", { ticketCode: code("kmitl-1"), method: "scan" });
+    const refused = await scan();
+    expect(refused.res.status).toBe(409);
+    expect(refused.body).toMatchObject({
+      code: "wrong-event",
+      canForce: true,
+      person: { userId: "kmitl-1" },
+      otherEvent: { id: "e-sport", name: "ฟุตบอล" },
+    });
+    await t.db
+      .insert(eventTicket)
+      .values({ eventId: "e-general", userId: "kmitl-1", code: code("general-kmitl") });
+    expect((await scan()).res.status).toBe(201);
+  });
+
+  test("an expected athlete without a ticket is refused unless a manager forces it", async () => {
+    await t.db.delete(eventTicket).where(eq(eventTicket.userId, "kmitl-1"));
+    const refused = await checkIn("reg-staff", "kmitl-1");
+    expect(refused.res.status).toBe(409);
+    expect(refused.body).toMatchObject({ code: "no-ticket", canForce: false });
+    expect((await checkIn("reg-staff", "kmitl-1", { force: true })).res.status).toBe(409);
+    const forced = await checkIn("tech", "kmitl-1", { force: true });
+    expect(forced.res.status).toBe(201);
+    expect(forced.body).toMatchObject({ forced: true });
+  });
+
+  test("a ticket cancelled between the read and the write is refused", async () => {
+    t.hooks.beforeBatch = () => {
+      t.sqlite.run(`delete from event_ticket where user_id = 'kmitl-1'`);
+    };
+    const { res, body } = await checkIn("reg-staff", "kmitl-1");
+    expect(res.status).toBe(409);
+    expect(body.message).toBe("ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่");
     expect(await t.db.select().from(eventCheckin)).toEqual([]);
   });
 
