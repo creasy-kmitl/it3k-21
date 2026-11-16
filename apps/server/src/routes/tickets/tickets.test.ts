@@ -208,6 +208,46 @@ describe("listing", () => {
   });
 });
 
+describe("one event", () => {
+  type Detail = {
+    id: string;
+    open: boolean;
+    claimed: boolean;
+    ticket: { id: string; code: string; checkedInAt: string | null } | null;
+  };
+
+  test("shows an event by id or slug, with the caller's ticket", async () => {
+    const before = await send<Detail>("guest", "GET", "/events/opening");
+    expect(before.res.status).toBe(200);
+    expect(before.body).toMatchObject({ id: "e-general", open: true, claimed: false, ticket: null });
+    const { body: claimed } = await claim("guest", "e-general");
+    const after = await send<Detail>("guest", "GET", "/events/e-general");
+    expect(after.body).toMatchObject({
+      claimed: true,
+      ticket: { id: claimed.ticket.id, code: claimed.ticket.code, checkedInAt: null },
+    });
+    // Someone else sees no ticket of theirs.
+    expect((await send<Detail>("guest-2", "GET", "/events/e-general")).body.ticket).toBeNull();
+  });
+
+  test("closed and finished events still show, as not open", async () => {
+    expect((await send<Detail>("guest", "GET", "/events/e-closed")).body.open).toBe(false);
+    expect((await send<Detail>("guest", "GET", "/events/e-over")).body.open).toBe(false);
+  });
+
+  test("a sport event shows only to athletes it expects, or ticket holders", async () => {
+    expect((await send("outsider", "GET", "/events/e-sport")).res.status).toBe(404);
+    expect((await send("athlete", "GET", "/events/e-sport")).res.status).toBe(200);
+    // A ticket outlives a registration withdrawn later.
+    await claim("athlete", "e-sport");
+    await t.db.delete(sportRegistration).where(eq(sportRegistration.userId, "athlete"));
+    const held = await send<Detail>("athlete", "GET", "/events/e-sport");
+    expect(held.res.status).toBe(200);
+    expect(held.body.claimed).toBe(true);
+    expect((await send("guest", "GET", "/events/nope")).res.status).toBe(404);
+  });
+});
+
 describe("cancelling", () => {
   test("a holder hands a ticket back and may claim again", async () => {
     const { body } = await claim("guest", "e-general");

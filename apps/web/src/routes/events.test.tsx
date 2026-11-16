@@ -26,7 +26,8 @@ function openEvent(overrides: Partial<OpenEvent> = {}): OpenEvent {
     endAt: END,
     thumbnailUrl: null,
     sports: [],
-    venue: { id: "v-1", name: "ลานกิจกรรม" },
+    venue: { id: "v-1", name: "ลานกิจกรรม", externalUrl: null },
+    open: true,
     capacity: 100,
     remaining: 3,
     claimed: false,
@@ -64,8 +65,10 @@ describe("/events", () => {
     expect(view.getByText("เหลือเพียง 3 ที่")).toBeTruthy();
     expect(view.getByText("97/100")).toBeTruthy();
     expect(view.getByRole("progressbar", { name: "ตั๋วที่รับไปแล้ว" })).toBeTruthy();
-    // The soonest event leads the page.
-    expect(view.getByText("ใกล้ที่สุด")).toBeTruthy();
+    // The whole card opens the event's page, by slug when it has one.
+    expect(view.getByRole("link", { name: "คอนเสิร์ต" }).getAttribute("href")).toBe(
+      "/events/concert",
+    );
     expect(view.getByText("ไม่จำกัดจำนวน")).toBeTruthy();
     expect(view.getByText("รับตั๋วแล้ว")).toBeTruthy();
     expect(view.getByRole("button", { name: "ดูตั๋ว" }).getAttribute("href")).toBe("/me/tickets");
