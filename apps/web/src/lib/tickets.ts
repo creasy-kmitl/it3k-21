@@ -13,6 +13,9 @@ export type Ticket = TicketList["items"][number];
 export type OpenEventList = InferResponseType<Client["events"]["$get"], 200>;
 export type OpenEvent = OpenEventList["items"][number];
 
+/** Every ticket query lives under this key, so a claim or cancel refreshes them all. */
+export const TICKETS_KEY = ["tickets"] as const;
+
 /** Why a claim was refused, as the API reports it. */
 export type ClaimRefusal = "closed" | "full" | "not-listed" | "missing";
 
