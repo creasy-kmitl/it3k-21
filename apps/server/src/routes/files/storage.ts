@@ -28,6 +28,12 @@ export type FileStore = {
 export function createFileStore(binding: R2Bucket): FileStore {
   const files = new Files({ adapter: r2({ binding }) });
   return {
+    // Uploads go to the binding directly, not through files-sdk. Each upload
+    // reserves an R2 multipart upload, and only that upload can publish the
+    // object. Once cleanup or a delete aborts it, a late PUT fails with 10024
+    // instead of leaving an untracked object that no quota counts. files-sdk's
+    // binding mode does a single put(), and its multipart path needs the
+    // aws-sdk client, which does not run on Workers without a DOMParser.
     async createUpload(key, contentType) {
       const upload = await binding.createMultipartUpload(key, { httpMetadata: { contentType } });
       return upload.uploadId;
