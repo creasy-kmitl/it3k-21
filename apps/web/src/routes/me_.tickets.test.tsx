@@ -28,6 +28,7 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
       startAt: START,
       endAt: END,
       thumbnailUrl: null,
+      sports: [],
     },
     venue: { id: "v-1", name: "หอประชุม" },
     ...overrides,

@@ -25,6 +25,7 @@ function openEvent(overrides: Partial<OpenEvent> = {}): OpenEvent {
     startAt: START,
     endAt: END,
     thumbnailUrl: null,
+    sports: [],
     venue: { id: "v-1", name: "ลานกิจกรรม" },
     capacity: 100,
     remaining: 3,
@@ -59,7 +60,12 @@ describe("/events", () => {
       }),
     });
     expect(await view.findByText("คอนเสิร์ต")).toBeTruthy();
-    expect(view.getByText("เหลือ 3 ที่")).toBeTruthy();
+    // 3 of 100 left reads as running out, with a bar of the 97 taken.
+    expect(view.getByText("เหลือเพียง 3 ที่")).toBeTruthy();
+    expect(view.getByText("97/100")).toBeTruthy();
+    expect(view.getByRole("progressbar", { name: "ตั๋วที่รับไปแล้ว" })).toBeTruthy();
+    // The soonest event leads the page.
+    expect(view.getByText("ใกล้ที่สุด")).toBeTruthy();
     expect(view.getByText("ไม่จำกัดจำนวน")).toBeTruthy();
     expect(view.getByText("รับตั๋วแล้ว")).toBeTruthy();
     expect(view.getByRole("button", { name: "ดูตั๋ว" }).getAttribute("href")).toBe("/me/tickets");
@@ -88,6 +94,7 @@ describe("/events", () => {
               startAt: START,
               endAt: END,
               thumbnailUrl: null,
+              sports: [],
             },
             venue: null,
           },
@@ -108,8 +115,33 @@ describe("/events", () => {
       },
     });
     expect(await view.findByText("เต็มแล้ว")).toBeTruthy();
-    const button = view.getByRole("button", { name: "รับตั๋ว" }) as HTMLButtonElement;
+    const button = view.getByRole("button", { name: "ตั๋วเต็มแล้ว" }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
+  });
+
+  test("filters by event type and by tickets held", async () => {
+    const view = await setup({
+      openEvents: async () => ({
+        items: [
+          openEvent({ id: "e-1", name: "พิธีเปิด", claimed: true }),
+          openEvent({
+            id: "e-4",
+            type: "sport",
+            name: "ฟุตบอลรอบแรก",
+            sports: [{ id: "s-1", name: "กีฬาฟุตบอล", icon: "football" }],
+          }),
+        ],
+      }),
+    });
+    expect(await view.findByText("2 กิจกรรม")).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: "กิจกรรมกีฬา" }));
+    expect(view.getByText("1 กิจกรรม")).toBeTruthy();
+    expect(view.getByText("ฟุตบอลรอบแรก")).toBeTruthy();
+    expect(view.getByText("กีฬาฟุตบอล")).toBeTruthy();
+    expect(view.queryByText("พิธีเปิด")).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "มีตั๋วแล้ว" }));
+    expect(view.getByText("พิธีเปิด")).toBeTruthy();
+    expect(view.queryByText("ฟุตบอลรอบแรก")).toBeNull();
   });
 
   test("says so when nothing is open", async () => {

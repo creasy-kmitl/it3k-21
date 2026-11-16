@@ -2,9 +2,18 @@
 // is open for tickets: any account for a general event, an athlete the event
 // expects for a sport one. The ticket's QR is what the kiosk scans.
 import type { Database } from "@it3k/db";
-import { event, eventCheckin, eventTicket, newTicketCode, venue } from "@it3k/db/schema/event";
+import {
+  event,
+  eventCheckin,
+  eventDivision,
+  eventTicket,
+  newTicketCode,
+  venue,
+} from "@it3k/db/schema/event";
+import type { SportIcon } from "@it3k/db/sport-rules";
+import { sport, sportDivision } from "@it3k/db/schema/sport";
 import { user } from "@it3k/db/schema/auth";
-import { type SQL, and, asc, count, eq, gt, sql } from "drizzle-orm";
+import { type SQL, and, asc, count, eq, gt, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -79,6 +88,29 @@ async function whyNot(
   return null;
 }
 
+type EventSport = { id: string; name: string; icon: SportIcon };
+
+/** The sports each event's divisions belong to, in catalog order, once each. */
+async function sportsOf(db: Database, eventIds: string[]) {
+  const bySport = new Map<string, EventSport[]>();
+  if (eventIds.length === 0) return bySport;
+  const rows = await db
+    .select({ eventId: eventDivision.eventId, id: sport.id, name: sport.name, icon: sport.icon })
+    .from(eventDivision)
+    .innerJoin(sportDivision, eq(sportDivision.id, eventDivision.divisionId))
+    .innerJoin(sport, eq(sport.id, sportDivision.sportId))
+    .where(inArray(eventDivision.eventId, eventIds))
+    .orderBy(asc(sport.sortOrder), asc(sportDivision.sortOrder));
+  for (const row of rows) {
+    const list = bySport.get(row.eventId) ?? [];
+    if (!list.some((item) => item.id === row.id)) {
+      list.push({ id: row.id, name: row.name, icon: row.icon });
+    }
+    bySport.set(row.eventId, list);
+  }
+  return bySport;
+}
+
 /** One ticket as its holder sees it. */
 async function loadTickets(db: Database, userId: string, where?: SQL) {
   const rows = await db
@@ -107,6 +139,10 @@ async function loadTickets(db: Database, userId: string, where?: SQL) {
     )
     .where(and(eq(eventTicket.userId, userId), where))
     .orderBy(asc(event.startAt), asc(event.id));
+  const sports = await sportsOf(
+    db,
+    rows.map((row) => row.event.id),
+  );
   return rows.map((row) => ({
     id: row.id,
     code: row.code,
@@ -116,6 +152,7 @@ async function loadTickets(db: Database, userId: string, where?: SQL) {
       ...row.event,
       startAt: row.event.startAt.toISOString(),
       endAt: row.event.endAt.toISOString(),
+      sports: sports.get(row.event.id) ?? [],
     },
     venue: row.venue,
   }));
@@ -157,6 +194,10 @@ export const createTicketRoutes = (deps: RouteDeps) =>
         )
         .orderBy(asc(event.startAt), asc(event.id))
         .limit(MAX_OPEN_EVENTS);
+      const sports = await sportsOf(
+        db,
+        rows.map((row) => row.event.id),
+      );
       return c.json(
         {
           items: rows.map((row) => ({
@@ -168,6 +209,7 @@ export const createTicketRoutes = (deps: RouteDeps) =>
             startAt: row.event.startAt.toISOString(),
             endAt: row.event.endAt.toISOString(),
             thumbnailUrl: row.event.thumbnailUrl,
+            sports: sports.get(row.event.id) ?? [],
             venue: row.venue,
             capacity: row.event.ticketCapacity,
             remaining:

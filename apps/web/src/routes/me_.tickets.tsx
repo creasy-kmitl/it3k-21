@@ -25,10 +25,11 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { ErrorState } from "@/components/error-state";
-import { EventWhen, EventWhere } from "@/components/event-when-where";
+import { EventDateChip, EventWhen, EventWhere } from "@/components/event-when-where";
 import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
 import { ParticipantShell } from "@/components/participant-shell";
+import { SportThumbnail } from "@/components/sport-art";
 import { TicketQr } from "@/components/ticket-qr";
 import { useApis } from "@/lib/api-context";
 import { formatBangkok } from "@/lib/bangkok-time";
@@ -112,7 +113,17 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
   const [confirming, setConfirming] = useState(false);
   const checkedIn = ticket.checkedInAt !== null;
   return (
-    <Card>
+    <Card className="pt-0">
+      <div className="relative">
+        <SportThumbnail
+          src={ticket.event.thumbnailUrl}
+          icon={ticket.event.sports[0]?.icon ?? "general"}
+          seed={ticket.event.id}
+          label={ticket.event.name}
+          className="aspect-[5/2]"
+        />
+        <EventDateChip startAt={ticket.event.startAt} className="absolute top-3 left-3" />
+      </div>
       <CardHeader>
         <CardTitle>{ticket.event.name}</CardTitle>
         <CardDescription className="flex flex-col gap-1">
