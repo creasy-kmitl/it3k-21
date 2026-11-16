@@ -16,6 +16,30 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
 export const CHECKIN_METHODS = ["scan", "manual"] as const;
 export type CheckinMethod = (typeof CHECKIN_METHODS)[number];
 
+/** What a ticket's QR holds before its code, so the kiosk tells it from a profile barcode. */
+export const TICKET_QR_PREFIX = "it3k-t:";
+/** A ticket code: 24 random bytes as base64url. */
+export const TICKET_CODE_PATTERN = /^[A-Za-z0-9_-]{32}$/;
+export const ticketCode = z.string().regex(TICKET_CODE_PATTERN);
+export const MAX_TICKET_CAPACITY = 100_000;
+
+/** A new random ticket code. */
+export function newTicketCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_");
+}
+
+/** What a scanned code means: a ticket's QR or a profile barcode (an account id). */
+export function parseScan(raw: string): { ticketCode: string } | { userId: string } {
+  const text = raw.trim();
+  if (text.toLowerCase().startsWith(TICKET_QR_PREFIX)) {
+    return { ticketCode: text.slice(TICKET_QR_PREFIX.length) };
+  }
+  return { userId: text };
+}
+
 /** An event may last at most this long, like a calendar item. */
 export const MAX_EVENT_MS = 31 * 24 * 60 * 60 * 1000;
 export const MAX_EVENT_DIVISIONS = 100;
@@ -114,6 +138,13 @@ const eventFields = z.strictObject({
   endAt: epochMs,
   venueId: z.string().min(1).max(64).nullable(),
   thumbnailUrl: httpsUrl,
+  ticketsOpen: z.boolean(),
+  ticketCapacity: z
+    .number({ error: "กรอกเป็นตัวเลข" })
+    .int("กรอกเป็นจำนวนเต็ม")
+    .min(1, "อย่างน้อย 1 ใบ")
+    .max(MAX_TICKET_CAPACITY, `ไม่เกิน ${MAX_TICKET_CAPACITY.toLocaleString("en-US")} ใบ`)
+    .nullable(),
   // Sport events only; a general event sends both empty.
   institutions: z.array(z.enum(INSTITUTION_IDS)).max(INSTITUTION_IDS.length),
   divisionIds: z.array(z.string().min(1).max(64)).max(MAX_EVENT_DIVISIONS),

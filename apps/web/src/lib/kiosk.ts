@@ -1,5 +1,5 @@
 // The check-in kiosk's scanning pieces: which camera to use, how to read a
-// CODE128 barcode from it, and a gate so one barcode held in front of the
+// ticket's QR code or a CODE128 barcode from it, and a gate so one barcode held in front of the
 // camera checks in once.
 
 const CAMERA_KEY = "it3k:kiosk-camera";
@@ -61,18 +61,20 @@ type NativeDetectorClass = {
   getSupportedFormats(): Promise<string[]>;
 };
 
+/** What the camera reads: ticket QR codes and the CODE128 barcode on /me. */
+const NATIVE_FORMATS = ["qr_code", "code_128"];
+
 /**
- * Reads CODE128 (what /me shows) from a video frame: the browser's own
- * BarcodeDetector when it has one, otherwise zxing compiled to WebAssembly,
- * whose .wasm file is part of this app's build rather than a CDN download.
+ * Reads a ticket's QR code or the CODE128 barcode on /me from a video frame:
+ * the browser's own BarcodeDetector when it reads both, otherwise zxing
+ * compiled to WebAssembly, whose .wasm file is part of this app's build
+ * rather than a CDN download.
  */
 export async function createDecoder(): Promise<Decoder> {
   const Native = (globalThis as { BarcodeDetector?: NativeDetectorClass }).BarcodeDetector;
-  if (
-    Native &&
-    (await Native.getSupportedFormats().catch((): string[] => [])).includes("code_128")
-  ) {
-    const detector = new Native({ formats: ["code_128"] });
+  const supported = Native ? await Native.getSupportedFormats().catch((): string[] => []) : [];
+  if (Native && NATIVE_FORMATS.every((format) => supported.includes(format))) {
+    const detector = new Native({ formats: NATIVE_FORMATS });
     return async (video) => (await detector.detect(video))[0]?.rawValue ?? null;
   }
 
@@ -89,7 +91,10 @@ export async function createDecoder(): Promise<Decoder> {
     canvas.height = video.videoHeight;
     context.drawImage(video, 0, 0);
     const image = context.getImageData(0, 0, canvas.width, canvas.height);
-    const [result] = await readBarcodes(image, { formats: ["Code128"], maxNumberOfSymbols: 1 });
+    const [result] = await readBarcodes(image, {
+      formats: ["QRCode", "Code128"],
+      maxNumberOfSymbols: 1,
+    });
     return result?.isValid ? result.text : null;
   };
 }

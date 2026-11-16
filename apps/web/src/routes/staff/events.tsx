@@ -51,6 +51,7 @@ import {
   Shapes,
   Sparkles,
   TextAlignStart,
+  Ticket,
   Trash2,
   Type,
   Users,
@@ -201,6 +202,10 @@ export function EventsPage() {
                     {event.venue.name}
                   </p>
                 )}
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Ticket className="size-4 shrink-0" aria-hidden />
+                  {ticketSummary(event)}
+                </p>
                 {event.description && (
                   <p className="text-sm whitespace-pre-wrap">{event.description}</p>
                 )}
@@ -327,6 +332,10 @@ export function EventForm({
   );
   const [venueId, setVenueId] = useState<string | null>(initial?.venue?.id ?? null);
   const [thumbnailUrl, setThumbnailUrl] = useState(initial?.thumbnailUrl ?? "");
+  const [ticketsOpen, setTicketsOpen] = useState(initial?.ticketsOpen ?? false);
+  const [ticketCapacity, setTicketCapacity] = useState(
+    initial?.ticketCapacity == null ? "" : String(initial.ticketCapacity),
+  );
   const [institutions, setInstitutions] = useState<Institution[]>(initial?.institutions ?? []);
   const [divisionIds, setDivisionIds] = useState<string[]>(
     initial?.divisions.map((division) => division.id) ?? [],
@@ -363,6 +372,9 @@ export function EventForm({
           endAt: end,
           venueId,
           thumbnailUrl,
+          ticketsOpen,
+          // Blank is no limit; anything else is checked as a number.
+          ticketCapacity: ticketCapacity.trim() === "" ? null : Number(ticketCapacity),
           // A general event keeps nothing it picked while it was a sport event.
           institutions: sport ? institutions : [],
           divisionIds: sport ? divisionIds : [],
@@ -485,6 +497,36 @@ export function EventForm({
         error={issues.thumbnailUrl}
         hint="ไม่ใส่ก็ได้ ระบบจะสร้างภาพประกอบให้"
       />
+      <FieldSet>
+        <FormLegend icon={Ticket}>ตั๋ว</FormLegend>
+        <Field orientation="horizontal">
+          <Checkbox
+            id="event-tickets-open"
+            checked={ticketsOpen}
+            onCheckedChange={(checked) => setTicketsOpen(checked === true)}
+          />
+          <FieldLabel htmlFor="event-tickets-open">เปิดรับตั๋ว</FieldLabel>
+        </Field>
+        <FieldDescription>
+          ต้องมีตั๋วจึงจะเช็คอินได้ ผู้เข้าร่วมกดรับตั๋วเองที่หน้าตั๋วของฉัน
+          {type === "sport" ? " (เฉพาะนักกีฬาในรายชื่อ)" : ""} ปิดรับเองเมื่อกิจกรรมจบ
+        </FieldDescription>
+        <TextField
+          id="event-ticket-capacity"
+          label="จำนวนตั๋วสูงสุด"
+          icon={Users}
+          inputMode="numeric"
+          placeholder="ไม่จำกัด"
+          value={ticketCapacity}
+          onChange={setTicketCapacity}
+          error={issues.ticketCapacity}
+          hint={
+            initial
+              ? `รับไปแล้ว ${initial.ticketCount.toLocaleString("th-TH")} ใบ · เว้นว่างถ้าไม่จำกัด`
+              : "เว้นว่างถ้าไม่จำกัด"
+          }
+        />
+      </FieldSet>
       {type === "sport" && (
         <>
           <FieldSet data-invalid={!!issues.institutions}>
@@ -522,6 +564,16 @@ export function EventForm({
       )}
     </FormDialog>
   );
+}
+
+/** "ตั๋ว 12/50 · เปิดรับ", for staff. */
+export function ticketSummary(
+  event: Pick<EventItem, "ticketsOpen" | "ticketCapacity" | "ticketCount">,
+) {
+  const count = event.ticketCount.toLocaleString("th-TH");
+  const of =
+    event.ticketCapacity === null ? "" : `/${event.ticketCapacity.toLocaleString("th-TH")}`;
+  return `ตั๋ว ${count}${of} ใบ · ${event.ticketsOpen ? "เปิดรับ" : "ปิดรับ"}`;
 }
 
 /** Where the event's pages live, for the URL preview. */

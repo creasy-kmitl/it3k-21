@@ -15,6 +15,7 @@ import type { RegistrationsApi } from "@/lib/registrations";
 import type { AthletesApi } from "@/lib/athletes";
 import type { EventsApi } from "@/lib/events";
 import type { VenuesApi } from "@/lib/venues";
+import type { TicketsApi } from "@/lib/tickets";
 import type { UsersApi } from "@/lib/users";
 
 /** Narrows a value a test expects to exist, failing loudly when it does not. */
@@ -78,6 +79,17 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
     athletes: apis.athletes ?? fakeAthletesApi(),
     venues: apis.venues ?? fakeVenuesApi(),
     events: apis.events ?? fakeEventsApi(),
+    tickets: apis.tickets ?? fakeTicketsApi(),
+  };
+}
+
+export function fakeTicketsApi(overrides: Partial<TicketsApi> = {}): TicketsApi {
+  return {
+    mine: unexpected("tickets.mine"),
+    openEvents: unexpected("tickets.openEvents"),
+    claim: unexpected("tickets.claim"),
+    cancel: unexpected("tickets.cancel"),
+    ...overrides,
   };
 }
 

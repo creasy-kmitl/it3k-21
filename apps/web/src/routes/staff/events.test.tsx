@@ -89,6 +89,9 @@ function item(overrides: Partial<EventItem> = {}): EventItem {
     endAt: new Date(END).toISOString(),
     venueId: "v-1",
     thumbnailUrl: null,
+    ticketsOpen: false,
+    ticketCapacity: null,
+    ticketCount: 0,
     createdBy: "u-1",
     version: 2,
     createdAt: NOW,
@@ -228,6 +231,33 @@ describe("/staff/events", () => {
         ],
       ]),
     );
+  });
+
+  test("tickets open with an optional limit, and the card counts them", async () => {
+    const created: EventInput[] = [];
+    const view = await setup(
+      [item({ ticketsOpen: true, ticketCapacity: 50, ticketCount: 12 })],
+      true,
+      {
+        create: async (json) => {
+          created.push(json);
+          return item();
+        },
+      },
+    );
+    expect(await view.findByText("ตั๋ว 12/50 ใบ · เปิดรับ")).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: "เพิ่มกิจกรรม" }));
+    await choose(view.getByRole("combobox", { name: "ประเภทกิจกรรม" }), "กิจกรรมทั่วไป");
+    fireEvent.change(view.getByLabelText("ชื่อกิจกรรม"), { target: { value: "พิธีเปิด" } });
+    fireEvent.click(view.getByRole("checkbox", { name: "เปิดรับตั๋ว" }));
+    const capacity = view.getByLabelText("จำนวนตั๋วสูงสุด");
+    fireEvent.change(capacity, { target: { value: "0" } });
+    fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
+    expect(await view.findByText("อย่างน้อย 1 ใบ")).toBeTruthy();
+    fireEvent.change(capacity, { target: { value: "200" } });
+    fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]).toMatchObject({ ticketsOpen: true, ticketCapacity: 200 });
   });
 
   test("cards link by slug, or by id for an event without one", async () => {

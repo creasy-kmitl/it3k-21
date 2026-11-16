@@ -30,6 +30,9 @@ const EVENT: EventItem & { canManage: boolean } = {
   endAt: new Date(Date.UTC(2026, 11, 5, 5)).toISOString(),
   venueId: "v-1",
   thumbnailUrl: null,
+  ticketsOpen: true,
+  ticketCapacity: null,
+  ticketCount: 0,
   createdBy: null,
   version: 1,
   createdAt: NOW,
@@ -53,6 +56,7 @@ function participant(overrides: Partial<Participant> = {}): Participant {
     nickname: "ชาย",
     divisions: [{ id: "d-1", name: "ฟุตบอล" }],
     expected: true,
+    hasTicket: true,
     checkin: null,
     ...overrides,
   };
@@ -182,7 +186,7 @@ describe("/staff/events/$eventId", () => {
     expect(within(drawer).getByText("อุปกรณ์นี้ไม่มีกล้อง ใช้เครื่องสแกนหรือพิมพ์รหัสด้านล่าง")).toBeTruthy();
 
     const before = listed;
-    const box = within(drawer).getByLabelText("รหัสผู้ใช้");
+    const box = within(drawer).getByLabelText("รหัสตั๋วหรือรหัสผู้ใช้");
     fireEvent.change(box, { target: { value: " u-1 " } });
     fireEvent.submit(box.closest("form") as HTMLFormElement);
 
@@ -203,7 +207,11 @@ describe("/staff/events/$eventId", () => {
       {
         checkIn: async (_, json): Promise<CheckinOutcome> => {
           calls.push(json);
-          const person = { ...(PEOPLE[0] as Participant), userId: json.userId, divisions: [] };
+          const person = {
+            ...(PEOPLE[0] as Participant),
+            userId: "userId" in json ? json.userId : "",
+            divisions: [],
+          };
           return json.force
             ? { code: "checked-in", person, checkedInAt: NOW, forced: true }
             : { code: "not-listed", person, canForce: true, message: "ไม่อยู่ในรายชื่อของกิจกรรมนี้" };
@@ -212,13 +220,13 @@ describe("/staff/events/$eventId", () => {
     );
     fireEvent.click(await view.findByRole("button", { name: "สแกนเช็คอิน" }));
     const drawer = await view.findByRole("dialog", { name: "สแกนเช็คอิน" });
-    const box = within(drawer).getByLabelText("รหัสผู้ใช้");
+    const box = within(drawer).getByLabelText("รหัสตั๋วหรือรหัสผู้ใช้");
     fireEvent.change(box, { target: { value: "u-9" } });
     fireEvent.submit(box.closest("form") as HTMLFormElement);
 
     const result = await within(drawer).findByRole("status", { name: "ไม่อยู่ในรายชื่อของกิจกรรมนี้" });
     fireEvent.click(within(result).getByRole("button", { name: "เช็คอินนอกรายชื่อ" }));
-    expect(await within(drawer).findByRole("status", { name: "เช็คอินแล้ว (นอกรายชื่อ)" })).toBeTruthy();
+    expect(await within(drawer).findByRole("status", { name: "เช็คอินแล้ว (บังคับ)" })).toBeTruthy();
     expect(calls).toEqual([
       { userId: "u-9", method: "scan" },
       { userId: "u-9", force: true, method: "scan" },

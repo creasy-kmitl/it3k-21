@@ -76,6 +76,12 @@ export const event = sqliteTable(
     venueId: text("venue_id").references(() => venue.id),
     // Null shows a generated illustration.
     thumbnailUrl: text("thumbnail_url"),
+    // Whether accounts may claim a ticket now; claiming also stops at endAt.
+    ticketsOpen: integer("tickets_open", { mode: "boolean" }).notNull().default(false),
+    // Most tickets the event hands out; null for no limit. Kept positive by
+    // `eventInput`, not a CHECK: adding one would rebuild the table, and on D1
+    // that cascades deletes into check-ins.
+    ticketCapacity: integer("ticket_capacity"),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
     // Bumped by every write, so an edit based on an old read is refused.
     version: integer("version").notNull().default(1),
@@ -146,5 +152,34 @@ export const eventCheckin = sqliteTable(
     uniqueIndex("event_checkin_event_user_uidx").on(table.eventId, table.userId),
     index("event_checkin_user_id_idx").on(table.userId),
     check("event_checkin_method_check", sql`${table.method} IN (${inList(CHECKIN_METHODS)})`),
+  ],
+);
+
+/**
+ * One account's ticket to one event, claimed by the account itself. The QR
+ * it shows holds `code`; cancelling a ticket deletes the row.
+ */
+export const eventTicket = sqliteTable(
+  "event_ticket",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => event.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    // Random and unguessable; what the kiosk looks a ticket up by.
+    code: text("code").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("event_ticket_code_uidx").on(table.code),
+    uniqueIndex("event_ticket_event_user_uidx").on(table.eventId, table.userId),
+    index("event_ticket_user_id_idx").on(table.userId),
   ],
 );

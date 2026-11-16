@@ -23,6 +23,9 @@ const EVENT: EventItem & { canManage: boolean } = {
   endAt: new Date(Date.UTC(2026, 11, 5, 5)).toISOString(),
   venueId: null,
   thumbnailUrl: null,
+  ticketsOpen: true,
+  ticketCapacity: null,
+  ticketCount: 0,
   createdBy: null,
   version: 1,
   createdAt: NOW,
@@ -49,6 +52,7 @@ const PERSON: Person = {
 const participant = (overrides: Partial<Participant> = {}): Participant => ({
   ...PERSON,
   expected: true,
+  hasTicket: true,
   checkin: null,
   ...overrides,
 });
@@ -81,8 +85,8 @@ function setup(overrides: Partial<EventsApi> = {}, canCheckIn = true, eventId = 
 }
 
 async function scan(view: Awaited<ReturnType<typeof setup>>, code: string) {
-  fireEvent.change(await view.findByLabelText("รหัสผู้ใช้"), { target: { value: code } });
-  fireEvent.submit(view.getByLabelText("รหัสผู้ใช้").closest("form") as HTMLFormElement);
+  fireEvent.change(await view.findByLabelText("รหัสตั๋วหรือรหัสผู้ใช้"), { target: { value: code } });
+  fireEvent.submit(view.getByLabelText("รหัสตั๋วหรือรหัสผู้ใช้").closest("form") as HTMLFormElement);
 }
 
 describe("/kiosk/$eventId", () => {
@@ -141,6 +145,62 @@ describe("/kiosk/$eventId", () => {
     await waitFor(() => expect(calls).toEqual([["e-1", { userId: "u-1", method: "scan" }]]));
   });
 
+  test("a ticket's QR code checks in by its ticket code", async () => {
+    const calls: unknown[] = [];
+    const view = await setup({
+      checkIn: async (id, json) => {
+        calls.push([id, json]);
+        return { code: "checked-in", person: PERSON, checkedInAt: NOW, forced: false };
+      },
+    });
+    const code = "a".repeat(32);
+    await scan(view, `it3k-t:${code}`);
+    expect(await view.findByRole("alertdialog", { name: "เช็คอินสำเร็จ" })).toBeTruthy();
+    expect(calls).toEqual([["e-1", { ticketCode: code, method: "scan" }]]);
+  });
+
+  test("someone without a ticket waits for a manager to let them in", async () => {
+    const calls: unknown[] = [];
+    const view = await setup({
+      checkIn: async (_, json): Promise<CheckinOutcome> => {
+        calls.push(json);
+        return json.force
+          ? { code: "checked-in", person: PERSON, checkedInAt: NOW, forced: true }
+          : {
+              code: "no-ticket",
+              person: PERSON,
+              canForce: true,
+              message: "ยังไม่ได้รับตั๋วกิจกรรมนี้",
+            };
+      },
+    });
+    await scan(view, "u-1");
+    expect(await view.findByRole("alertdialog", { name: "ยังไม่ได้รับตั๋วกิจกรรมนี้" })).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: "เช็คอินโดยไม่มีตั๋ว" }));
+    expect(await view.findByRole("alertdialog", { name: "เช็คอินแล้ว (บังคับ)" })).toBeTruthy();
+    expect(calls).toEqual([
+      { userId: "u-1", method: "scan" },
+      { userId: "u-1", force: true, method: "scan" },
+    ]);
+  });
+
+  test("a ticket to another event says so", async () => {
+    const view = await setup({
+      checkIn: async (): Promise<CheckinOutcome> => ({
+        code: "wrong-event",
+        person: PERSON,
+        canForce: false,
+        message: "ตั๋วนี้เป็นของกิจกรรมอื่น (พิธีเปิด)",
+        otherEvent: { id: "e-2", name: "พิธีเปิด" },
+      }),
+    });
+    await scan(view, `it3k-t:${"b".repeat(32)}`);
+    expect(
+      await view.findByRole("alertdialog", { name: "ตั๋วนี้เป็นของกิจกรรมอื่น (พิธีเปิด)" }),
+    ).toBeTruthy();
+    expect(view.queryByRole("button", { name: "เช็คอินโดยไม่มีตั๋ว" })).toBeNull();
+  });
+
   test("a duplicate shows when it was checked in", async () => {
     const view = await setup({
       checkIn: async (): Promise<CheckinOutcome> => ({
@@ -159,7 +219,7 @@ describe("/kiosk/$eventId", () => {
     const view = await setup({
       checkIn: async (_, json): Promise<CheckinOutcome> => {
         calls.push(json);
-        const person = { ...PERSON, userId: json.userId, divisions: [] };
+        const person = { ...PERSON, userId: "userId" in json ? json.userId : "", divisions: [] };
         return json.force
           ? { code: "checked-in", person, checkedInAt: NOW, forced: true }
           : { code: "not-listed", person, canForce: true, message: "ไม่อยู่ในรายชื่อของกิจกรรมนี้" };
@@ -168,7 +228,7 @@ describe("/kiosk/$eventId", () => {
     await scan(view, "u-9");
     expect(await view.findByRole("alertdialog", { name: "ไม่อยู่ในรายชื่อของกิจกรรมนี้" })).toBeTruthy();
     fireEvent.click(view.getByRole("button", { name: "เช็คอินนอกรายชื่อ" }));
-    expect(await view.findByRole("alertdialog", { name: "เช็คอินแล้ว (นอกรายชื่อ)" })).toBeTruthy();
+    expect(await view.findByRole("alertdialog", { name: "เช็คอินแล้ว (บังคับ)" })).toBeTruthy();
     expect(calls).toEqual([
       { userId: "u-9", method: "scan" },
       { userId: "u-9", force: true, method: "scan" },

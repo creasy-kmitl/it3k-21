@@ -12,6 +12,7 @@ import { type RegistrationsApi, registrationsApi } from "./registrations";
 import { type AthletesApi, athletesApi } from "./athletes";
 import { type EventsApi, eventsApi } from "./events";
 import { type VenuesApi, venuesApi } from "./venues";
+import { type TicketsApi, ticketsApi } from "./tickets";
 
 /** The API clients route pages call; tests swap in fakes with ApiProvider. */
 export type Apis = {
@@ -27,6 +28,7 @@ export type Apis = {
   athletes: AthletesApi;
   venues: VenuesApi;
   events: EventsApi;
+  tickets: TicketsApi;
 };
 
 const ApiContext = createContext<Apis>({
@@ -42,6 +44,7 @@ const ApiContext = createContext<Apis>({
   athletes: athletesApi,
   venues: venuesApi,
   events: eventsApi,
+  tickets: ticketsApi,
 });
 
 export const ApiProvider = ApiContext.Provider;
