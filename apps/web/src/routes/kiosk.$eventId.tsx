@@ -1,44 +1,30 @@
-import { INSTITUTIONS } from "@it3k/db/profile";
 import { Button } from "@it3k/ui/components/button";
-import { Input } from "@it3k/ui/components/input";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { cn } from "@it3k/ui/lib/utils";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, redirect } from "@tanstack/react-router";
-import {
-  CircleAlert,
-  CircleCheck,
-  CircleX,
-  Clock,
-  LogOut,
-  ScanBarcode,
-  SwitchCamera,
-  UserCheck,
-  VideoOff,
-} from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Clock, LogOut, ScanBarcode, UserPlus } from "lucide-react";
+import { useEffect, useRef } from "react";
 
+import {
+  CheckinCamera,
+  ScanForm,
+  describeResult,
+  focusOnDesk,
+  personName,
+  resultKey,
+  useScanCheckIn,
+} from "@/components/checkin/scan-checkin";
+import { ErrorState } from "@/components/error-state";
 import { LoadingButton } from "@/components/loading-button";
 import { SessionBoundary } from "@/components/session-boundary";
 import { useApis } from "@/lib/api-context";
 import { getSessionOrThrow } from "@/lib/auth-client";
-import { formatBangkok } from "@/lib/bangkok-time";
-import type { CheckinOutcome, Person } from "@/lib/events";
-import {
-  type Decoder,
-  canUseCamera,
-  createDecoder,
-  createScanGate,
-  listCameras,
-  nextCamera,
-  openCamera,
-  saveCamera,
-  savedCamera,
-} from "@/lib/kiosk";
+import type { CheckinOutcome } from "@/lib/events";
+import { type Decoder, createDecoder } from "@/lib/kiosk";
 import { clearCacheOnUserChange } from "@/lib/query-cache";
 import { staffRedirect } from "./staff/route";
 import { eventTime } from "./staff/events";
-import { ErrorState } from "@/components/error-state";
 
 export const Route = createFileRoute("/kiosk/$eventId")({
   ssr: false,
@@ -65,20 +51,11 @@ function RouteComponent() {
   );
 }
 
-/** How long a result stays on screen, and how long the same badge is ignored. */
-const RESULT_MS = 3500;
-const SAME_CODE_MS = 5000;
-const SCAN_EVERY_MS = 200;
-
-type CameraState = "starting" | "on" | "denied" | "none";
-
-const personName = (person: Person) =>
-  person.firstName ? `${person.prefix}${person.firstName} ${person.lastName}` : person.name;
-
 /**
  * Full-screen check-in for one event: the camera reads the barcode on /me, a
  * USB scanner or the keyboard types into the box, and each result fills the
- * screen for a moment.
+ * screen for a moment. The staff event page has a smaller scan drawer that
+ * shares the same parts.
  */
 export function KioskPage({
   eventId,
@@ -88,7 +65,6 @@ export function KioskPage({
   decoderFactory?: () => Promise<Decoder>;
 }) {
   const { events: api } = useApis();
-  const queryClient = useQueryClient();
   const event = useQuery({ queryKey: ["events", eventId], queryFn: () => api.get(eventId) });
   // `eventId` may be a slug; once the event is loaded, its id keeps the kiosk
   // working even if someone renames the slug mid-event.
@@ -97,57 +73,9 @@ export function KioskPage({
     queryKey: ["events", eventId, "participants"],
     queryFn: () => api.participants(id),
   });
-  const [outcome, setOutcome] = useState<CheckinOutcome | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
-  const [typed, setTyped] = useState("");
+  const scan = useScanCheckIn({ eventKey: eventId, id });
   const input = useRef<HTMLInputElement>(null);
-  const [gate] = useState(() => createScanGate(SAME_CODE_MS));
-
-  const checkIn = useMutation({
-    mutationFn: (vars: { userId: string; force?: boolean }) =>
-      api.checkIn(id, { ...vars, method: "scan" }),
-    onSuccess: (result) => {
-      setFailure(null);
-      setOutcome(result);
-    },
-    onError: (error) => {
-      setOutcome(null);
-      setFailure(error.message);
-    },
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: ["events", eventId, "participants"] }),
-  });
-
-  // The camera loop calls the latest version, without restarting the camera.
-  const pending = checkIn.isPending;
-  const onCode = useRef<(code: string) => void>(() => {});
-  onCode.current = (raw: string) => {
-    if (pending) return;
-    const code = gate(raw);
-    if (code) checkIn.mutate({ userId: code });
-  };
-  const handleCode = useCallback((code: string) => onCode.current(code), []);
-
-  // Results clear themselves, except one a manager may still force through.
-  useEffect(() => {
-    if (!outcome && !failure) return;
-    if (outcome?.code === "not-listed" && outcome.canForce) return;
-    const timer = setTimeout(() => {
-      setOutcome(null);
-      setFailure(null);
-    }, RESULT_MS);
-    return () => clearTimeout(timer);
-  }, [outcome, failure]);
-
-  // A desk with a USB scanner types into the box, so keep it focused there;
-  // on touch screens that would keep the keyboard open over the camera, and
-  // opening it on load would shrink the page under the camera.
-  const keepFocus = useCallback(() => {
-    if (window.matchMedia?.("(pointer: fine)").matches) {
-      setTimeout(() => input.current?.focus(), 0);
-    }
-  }, []);
-  useEffect(keepFocus, [keepFocus]);
+  useEffect(() => focusOnDesk(input), []);
 
   const items = participants.data?.items ?? [];
   const checkedIn = items.filter((item) => item.checkin).length;
@@ -225,38 +153,21 @@ export function KioskPage({
 
       {/* Phones and portrait screens stack; big landscape screens put the camera beside the input. */}
       <div className="flex flex-col gap-4 wide:grid wide:min-h-0 wide:flex-1 wide:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)] wide:gap-6 wide-xl:grid-cols-[minmax(0,1fr)_32rem]">
-        <Camera decoderFactory={decoderFactory} onCode={handleCode} />
+        <CheckinCamera
+          decoderFactory={decoderFactory}
+          onCode={scan.handleCode}
+          className="mx-auto max-w-xl md:max-w-3xl wide:mx-0 wide:aspect-auto wide:h-full wide:max-w-none"
+        />
 
         <aside className="mx-auto flex w-full max-w-xl flex-col gap-4 md:max-w-3xl wide:mx-0 wide:max-w-none wide:gap-6">
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleCode(typed);
-              setTyped("");
-            }}
-          >
-            <Input
-              ref={input}
-              autoComplete="off"
-              aria-label="รหัสผู้ใช้"
-              placeholder="สแกนด้วยเครื่องสแกน หรือพิมพ์รหัสผู้ใช้แล้วกด Enter"
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              onBlur={keepFocus}
-              className="wide:h-12 wide:px-4 wide:text-base wide-xl:h-14 wide-xl:text-lg"
-            />
-            {/* An icon from the start, so the spinner swaps in without widening the button. */}
-            <LoadingButton
-              type="submit"
-              icon={UserCheck}
-              loading={pending}
-              disabled={!typed.trim()}
-              className="wide:h-12 wide:px-5 wide:text-base wide-xl:h-14 wide-xl:text-lg"
-            >
-              เช็คอิน
-            </LoadingButton>
-          </form>
+          <ScanForm
+            onCode={scan.handleCode}
+            pending={scan.pending}
+            input={input}
+            keepFocused
+            inputClassName="wide:h-12 wide:px-4 wide:text-base wide-xl:h-14 wide-xl:text-lg"
+            buttonClassName="wide:h-12 wide:px-5 wide:text-base wide-xl:h-14 wide-xl:text-lg"
+          />
 
           <p className="hidden items-start gap-3 rounded-2xl border border-dashed p-4 text-muted-foreground wide:flex wide-xl:text-lg">
             <ScanBarcode className="mt-0.5 size-5 shrink-0" aria-hidden />
@@ -276,16 +187,16 @@ export function KioskPage({
         </aside>
       </div>
 
-      {(outcome || failure) && (
+      {(scan.outcome || scan.failure) && (
         <Result
-          outcome={outcome}
-          failure={failure}
-          forcing={pending}
-          onForce={(userId) => checkIn.mutate({ userId, force: true })}
+          key={resultKey(scan.outcome, scan.failure)}
+          outcome={scan.outcome}
+          failure={scan.failure}
+          forcing={scan.forcing}
+          onForce={scan.force}
           onDismiss={() => {
-            setOutcome(null);
-            setFailure(null);
-            keepFocus();
+            scan.clear();
+            focusOnDesk(input);
           }}
         />
       )}
@@ -293,126 +204,7 @@ export function KioskPage({
   );
 }
 
-/** The camera preview, scanning frames while it runs, with a switch for multi-camera devices. */
-function Camera({
-  decoderFactory,
-  onCode,
-}: {
-  decoderFactory: () => Promise<Decoder>;
-  onCode: (code: string) => void;
-}) {
-  const video = useRef<HTMLVideoElement>(null);
-  const decoder = useRef<Promise<Decoder> | null>(null);
-  const [deviceId, setDeviceId] = useState<string | null>(() => savedCamera());
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
-  const [state, setState] = useState<CameraState>(() => (canUseCamera() ? "starting" : "none"));
-
-  useEffect(() => {
-    if (!canUseCamera()) return;
-    let stopped = false;
-    let stream: MediaStream | null = null;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    const scan = async (read: Decoder) => {
-      if (stopped) return;
-      const element = video.current;
-      if (element && element.readyState >= 2) {
-        const code = await read(element).catch(() => null);
-        if (code && !stopped) onCode(code);
-      }
-      timer = setTimeout(() => void scan(read), SCAN_EVERY_MS);
-    };
-
-    setState("starting");
-    openCamera(deviceId)
-      .then(async (opened) => {
-        if (stopped) {
-          for (const track of opened.getTracks()) track.stop();
-          return;
-        }
-        stream = opened;
-        const element = video.current;
-        if (element) {
-          element.srcObject = opened;
-          await element.play().catch(() => {});
-        }
-        setState("on");
-        setActiveId(opened.getVideoTracks()[0]?.getSettings().deviceId ?? deviceId);
-        setCameras(await listCameras());
-        decoder.current ??= decoderFactory();
-        void scan(await decoder.current);
-      })
-      .catch(() => {
-        if (stopped) return;
-        // A remembered camera that is gone: fall back to the default one.
-        if (deviceId) setDeviceId(null);
-        else setState("denied");
-      });
-
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-      for (const track of stream?.getTracks() ?? []) track.stop();
-    };
-  }, [deviceId, decoderFactory, onCode]);
-
-  return (
-    // The box itself is 16:9 (or the whole column on wide screens), and the
-    // video and the placeholder are laid over it, so neither can change its
-    // size: an inline <video> would add a baseline gap the placeholder lacks.
-    <section className="relative mx-auto aspect-video w-full max-w-xl overflow-hidden rounded-3xl border bg-muted md:max-w-3xl wide:mx-0 wide:aspect-auto wide:h-full wide:max-w-none">
-      <video
-        ref={video}
-        muted
-        playsInline
-        aria-label="ภาพจากกล้อง"
-        className={cn("absolute inset-0 size-full object-cover", state !== "on" && "invisible")}
-      />
-      {state === "on" && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute top-1/2 left-1/2 aspect-[4/1] w-[76%] -translate-1/2 rounded-2xl border-4 border-white/80 shadow-[0_0_0_9999px_rgb(0_0_0/0.25)]"
-        />
-      )}
-      {state !== "on" && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 overflow-y-auto p-6 text-center text-muted-foreground wide-xl:text-lg">
-          <VideoOff className="size-8 wide-xl:size-12" aria-hidden />
-          <p>
-            {state === "starting"
-              ? "กำลังเปิดกล้อง"
-              : state === "denied"
-                ? "เปิดกล้องไม่ได้ อนุญาตการใช้กล้องในเบราว์เซอร์ หรือใช้เครื่องสแกนด้านล่าง"
-                : "อุปกรณ์นี้ไม่มีกล้อง ใช้เครื่องสแกนหรือพิมพ์รหัสด้านล่าง"}
-          </p>
-        </div>
-      )}
-      {cameras.length > 1 && (
-        <Button
-          variant="secondary"
-          size="icon"
-          className="absolute top-3 right-3"
-          aria-label="สลับกล้อง"
-          onClick={() => {
-            const next = nextCamera(cameras, activeId);
-            if (!next) return;
-            saveCamera(next);
-            setDeviceId(next);
-          }}
-        >
-          <SwitchCamera />
-        </Button>
-      )}
-    </section>
-  );
-}
-
-const TONES = {
-  success: "bg-emerald-600 text-white",
-  warning: "bg-amber-500 text-black",
-  error: "bg-destructive text-white",
-} as const;
-
+/** The result, filling the screen so people at the desk can read it from afar. */
 function Result({
   outcome,
   failure,
@@ -426,23 +218,14 @@ function Result({
   onForce: (userId: string) => void;
   onDismiss: () => void;
 }) {
-  const tone =
-    outcome?.code === "checked-in"
-      ? "success"
-      : outcome?.code === "duplicate"
-        ? "warning"
-        : "error";
-  const Icon = tone === "success" ? CircleCheck : tone === "warning" ? CircleAlert : CircleX;
-  const person = outcome && "person" in outcome ? outcome.person : null;
-  const title =
-    outcome?.code === "checked-in"
-      ? outcome.forced
-        ? "เช็คอินแล้ว (นอกรายชื่อ)"
-        : "เช็คอินสำเร็จ"
-      : outcome?.code === "duplicate"
-        ? `เช็คอินไปแล้วเมื่อ ${formatBangkok(Date.parse(outcome.checkedInAt), "time")}`
-        : (outcome?.message ?? failure ?? "");
-  const institution = INSTITUTIONS.find((item) => item.id === person?.institution);
+  const {
+    toneClass,
+    icon: Icon,
+    title,
+    person,
+    details,
+    forceable,
+  } = describeResult(outcome, failure);
 
   return (
     <div
@@ -452,7 +235,7 @@ function Result({
       tabIndex={-1}
       className={cn(
         "fixed inset-0 z-50 flex cursor-pointer flex-col items-center justify-center gap-4 p-6 text-center",
-        TONES[tone],
+        toneClass,
       )}
       onClick={onDismiss}
       onKeyDown={(e) => {
@@ -474,22 +257,19 @@ function Result({
             {personName(person)}
             {person.nickname && ` (${person.nickname})`}
           </p>
-          <p className="text-lg opacity-90 wide-xl:text-2xl">
-            {[institution?.short, person.studentId, ...person.divisions.map((d) => d.name)]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
+          <p className="text-lg opacity-90 wide-xl:text-2xl">{details}</p>
         </div>
       )}
-      {outcome?.code === "not-listed" && outcome.canForce && (
+      {forceable && (
         <div className="flex gap-2">
           <LoadingButton
             variant="secondary"
             size="lg"
+            icon={UserPlus}
             loading={forcing}
             onClick={(e) => {
               e.stopPropagation();
-              onForce(outcome.person.userId);
+              onForce(forceable.userId);
             }}
           >
             เช็คอินนอกรายชื่อ

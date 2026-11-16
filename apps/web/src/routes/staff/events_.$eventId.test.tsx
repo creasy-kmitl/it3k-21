@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 
 import { ApiProvider } from "@/lib/api-context";
-import type { EventItem, EventsApi, Participant, ParticipantList } from "@/lib/events";
+import type {
+  CheckinOutcome,
+  EventItem,
+  EventsApi,
+  Participant,
+  ParticipantList,
+} from "@/lib/events";
 import { fakeApis, fakeEventsApi } from "@/test/query";
 import { renderAtRoot } from "@/test/router";
 
@@ -94,7 +100,10 @@ function setup(
   return renderAtRoot(() => (
     <QueryClientProvider client={client}>
       <ApiProvider value={fakeApis({ events })}>
-        <EventParticipantsPage eventId={eventId} />
+        <EventParticipantsPage
+          eventId={eventId}
+          decoderFactory={() => Promise.reject(new Error("no camera"))}
+        />
       </ApiProvider>
     </QueryClientProvider>
   ));
@@ -112,6 +121,7 @@ describe("/staff/events/$eventId", () => {
     // Viewers without rights get no buttons.
     expect(view.queryByRole("button", { name: /เช็คอิน Somchai/ })).toBeNull();
     expect(view.queryByRole("button", { name: /เปิด Kiosk/ })).toBeNull();
+    expect(view.queryByRole("button", { name: "สแกนเช็คอิน" })).toBeNull();
     expect(view.queryByRole("button", { name: "ส่งออก CSV" })).toBeNull();
 
     fireEvent.click(view.getByRole("button", { name: "ยังไม่เช็คอิน" }));
@@ -143,6 +153,76 @@ describe("/staff/events/$eventId", () => {
     fireEvent.click(await view.findByRole("button", { name: "เช็คอิน Somchai G" }));
     await waitFor(() => expect(calls).toEqual([["e-1", { userId: "u-1", method: "manual" }]]));
     expect(view.getByRole("button", { name: /เปิด Kiosk/ }).getAttribute("href")).toBe("/kiosk/e-1");
+  });
+
+  test("scan mode checks people in from a drawer and refreshes the list", async () => {
+    const calls: unknown[] = [];
+    let listed = 0;
+    const view = await setup(
+      { canCheckIn: true },
+      {
+        participants: async () => {
+          listed += 1;
+          return { items: PEOPLE, canCheckIn: true, canUndo: false, canExport: false };
+        },
+        checkIn: async (id, json): Promise<CheckinOutcome> => {
+          calls.push([id, json]);
+          return {
+            code: "checked-in",
+            person: PEOPLE[0] as Participant,
+            checkedInAt: NOW,
+            forced: false,
+          };
+        },
+      },
+    );
+    fireEvent.click(await view.findByRole("button", { name: "สแกนเช็คอิน" }));
+    const drawer = await view.findByRole("dialog", { name: "สแกนเช็คอิน" });
+    expect(within(drawer).getByText("เช็คอินแล้ว 2 / 3")).toBeTruthy();
+    expect(within(drawer).getByText("อุปกรณ์นี้ไม่มีกล้อง ใช้เครื่องสแกนหรือพิมพ์รหัสด้านล่าง")).toBeTruthy();
+
+    const before = listed;
+    const box = within(drawer).getByLabelText("รหัสผู้ใช้");
+    fireEvent.change(box, { target: { value: " u-1 " } });
+    fireEvent.submit(box.closest("form") as HTMLFormElement);
+
+    const result = await within(drawer).findByRole("status", { name: "เช็คอินสำเร็จ" });
+    expect(within(result).getByText("นายสมชาย ใจดี (ชาย)")).toBeTruthy();
+    expect(within(result).getByText("สจล. · 65070001 · ฟุตบอล")).toBeTruthy();
+    expect(calls).toEqual([["e-1", { userId: "u-1", method: "scan" }]]);
+    await waitFor(() => expect(listed).toBeGreaterThan(before));
+
+    fireEvent.click(within(result).getByRole("button", { name: "สแกนคนถัดไป" }));
+    expect(within(drawer).queryByRole("status", { name: "เช็คอินสำเร็จ" })).toBeNull();
+  });
+
+  test("scan mode lets a manager check in someone not on the list", async () => {
+    const calls: unknown[] = [];
+    const view = await setup(
+      { canCheckIn: true },
+      {
+        checkIn: async (_, json): Promise<CheckinOutcome> => {
+          calls.push(json);
+          const person = { ...(PEOPLE[0] as Participant), userId: json.userId, divisions: [] };
+          return json.force
+            ? { code: "checked-in", person, checkedInAt: NOW, forced: true }
+            : { code: "not-listed", person, canForce: true, message: "ไม่อยู่ในรายชื่อของกิจกรรมนี้" };
+        },
+      },
+    );
+    fireEvent.click(await view.findByRole("button", { name: "สแกนเช็คอิน" }));
+    const drawer = await view.findByRole("dialog", { name: "สแกนเช็คอิน" });
+    const box = within(drawer).getByLabelText("รหัสผู้ใช้");
+    fireEvent.change(box, { target: { value: "u-9" } });
+    fireEvent.submit(box.closest("form") as HTMLFormElement);
+
+    const result = await within(drawer).findByRole("status", { name: "ไม่อยู่ในรายชื่อของกิจกรรมนี้" });
+    fireEvent.click(within(result).getByRole("button", { name: "เช็คอินนอกรายชื่อ" }));
+    expect(await within(drawer).findByRole("status", { name: "เช็คอินแล้ว (นอกรายชื่อ)" })).toBeTruthy();
+    expect(calls).toEqual([
+      { userId: "u-9", method: "scan" },
+      { userId: "u-9", force: true, method: "scan" },
+    ]);
   });
 
   test("managers undo a check-in", async () => {
