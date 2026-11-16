@@ -3,6 +3,7 @@ import handler from "@tanstack/react-start/server-entry";
 import { createAxiomDrain } from "evlog/axiom";
 import { initWorkersLogger, withEvlog } from "evlog/workers";
 
+import { setServerBinding } from "./lib/server-binding";
 import { answerShortLink } from "./lib/short-link-proxy";
 
 /** Bindings this worker uses itself; see alchemy.run.ts. */
@@ -19,6 +20,9 @@ initWorkersLogger({
 
 export default withEvlog<WebEnv>(
   async (request, env, _ctx, log) => {
+    // Link previews (lib/og.ts) ask the API from the server render. `vp dev`
+    // on its own runs outside the Workers runtime, with no env at all.
+    setServerBinding(env?.SERVER);
     // Short links are served on this host but answered by the API.
     if (new URL(request.url).pathname.startsWith(SHORT_LINK_PATH)) {
       return answerShortLink(

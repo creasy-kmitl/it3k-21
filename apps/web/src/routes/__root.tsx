@@ -9,6 +9,7 @@ import { NavigationProgress } from "../components/navigation-progress";
 import NotFound from "../components/not-found";
 import { ViewModeBanner } from "../components/view-mode-banner";
 import { getOrigin } from "../functions/get-origin";
+import { type PageOg, loadPageOg } from "../lib/og";
 
 import appCss from "../index.css?url";
 
@@ -36,11 +37,55 @@ export function fontPreloads(matches: readonly { ssr?: boolean | "data-only" }[]
   }));
 }
 
-export const Route = createRootRouteWithContext<RouterAppContext>()({
-  loader: () => ({ origin: getOrigin() }),
-  head: ({ loaderData, matches }) => {
-    const ogImage = `${loaderData?.origin ?? ""}/og.png`;
+/**
+ * The page's title, description and link preview (Open Graph, X cards).
+ * `og` is the shared page's own preview (lib/og.ts); without it, the site's.
+ */
+export function siteMeta({
+  origin,
+  path,
+  og,
+}: {
+  origin: string;
+  path: string;
+  og: PageOg | null;
+}) {
+  const title = og ? `${og.title} · ${SITE_TITLE}` : SITE_TITLE;
+  const description = og?.description ?? SITE_DESCRIPTION;
+  // The site picture is drawn to the preview size; an event's cover is whatever was uploaded.
+  const image = og?.image ?? `${origin}/og.png`;
+  const imageSize = og?.image
+    ? []
+    : [
+        { property: "og:image:width", content: "1200" },
+        { property: "og:image:height", content: "630" },
+      ];
+  return [
+    { title },
+    { name: "description", content: description },
+    { property: "og:type", content: "website" },
+    { property: "og:site_name", content: SITE_TITLE },
+    { property: "og:title", content: title },
+    { property: "og:description", content: description },
+    { property: "og:url", content: og ? `${origin}${path}` : origin },
+    { property: "og:image", content: image },
+    ...imageSize,
+    { property: "og:image:alt", content: og ? og.title : `${SITE_TITLE} — ${SITE_DESCRIPTION}` },
+    { property: "og:locale", content: "th_TH" },
+    { name: "twitter:card", content: "summary_large_image" },
+    { name: "twitter:title", content: title },
+    { name: "twitter:description", content: description },
+    { name: "twitter:image", content: image },
+  ];
+}
 
+export const Route = createRootRouteWithContext<RouterAppContext>()({
+  loader: async ({ location }) => ({
+    origin: getOrigin(),
+    path: location.pathname,
+    og: await loadPageOg(location.pathname),
+  }),
+  head: ({ loaderData, matches }) => {
     return {
       meta: [
         {
@@ -50,25 +95,12 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
           name: "viewport",
           content: "width=device-width, initial-scale=1",
         },
-        {
-          title: SITE_TITLE,
-        },
-        { name: "description", content: SITE_DESCRIPTION },
-        { property: "og:type", content: "website" },
-        { property: "og:site_name", content: SITE_TITLE },
-        { property: "og:title", content: SITE_TITLE },
-        { property: "og:description", content: SITE_DESCRIPTION },
-        { property: "og:url", content: loaderData?.origin },
-        { property: "og:image", content: ogImage },
-        { property: "og:image:width", content: "1200" },
-        { property: "og:image:height", content: "630" },
-        { property: "og:image:alt", content: `${SITE_TITLE} — ${SITE_DESCRIPTION}` },
-        { property: "og:locale", content: "th_TH" },
+        ...siteMeta({
+          origin: loaderData?.origin ?? "",
+          path: loaderData?.path ?? "/",
+          og: loaderData?.og ?? null,
+        }),
         { name: "theme-color", content: "#c10007" },
-        { name: "twitter:card", content: "summary_large_image" },
-        { name: "twitter:title", content: SITE_TITLE },
-        { name: "twitter:description", content: SITE_DESCRIPTION },
-        { name: "twitter:image", content: ogImage },
       ],
       links: [
         {

@@ -1,7 +1,47 @@
 import { describe, expect, test } from "bun:test";
 import { PRELOAD_FONTS } from "@it3k/ui/lib/fonts";
 
-import { fontPreloads } from "./__root";
+import { fontPreloads, siteMeta } from "./__root";
+
+const content = (meta: ReturnType<typeof siteMeta>, key: string) =>
+  meta.find((tag) => ("property" in tag ? tag.property : "name" in tag ? tag.name : null) === key)
+    ?.content;
+
+describe("siteMeta", () => {
+  test("a page without a preview of its own shares the site's", () => {
+    const meta = siteMeta({ origin: "https://it3k.test", path: "/me", og: null });
+    expect(meta[0]).toEqual({ title: "IT3Kings" });
+    expect(content(meta, "og:image")).toBe("https://it3k.test/og.png");
+    expect(content(meta, "og:image:width")).toBe("1200");
+    expect(content(meta, "og:url")).toBe("https://it3k.test");
+  });
+
+  test("a shared event shows its own title, description and cover", () => {
+    const meta = siteMeta({
+      origin: "https://it3k.test",
+      path: "/events/opening",
+      og: { title: "พิธีเปิด", description: "ส. 5 ธ.ค.", image: "https://files.test/cover.png" },
+    });
+    expect(meta[0]).toEqual({ title: "พิธีเปิด · IT3Kings" });
+    expect(content(meta, "og:title")).toBe("พิธีเปิด · IT3Kings");
+    expect(content(meta, "description")).toBe("ส. 5 ธ.ค.");
+    expect(content(meta, "og:url")).toBe("https://it3k.test/events/opening");
+    expect(content(meta, "og:image")).toBe("https://files.test/cover.png");
+    expect(content(meta, "twitter:image")).toBe("https://files.test/cover.png");
+    // An uploaded cover's size is unknown, so none is claimed.
+    expect(content(meta, "og:image:width")).toBeUndefined();
+  });
+
+  test("an event without a cover falls back to the site picture", () => {
+    const meta = siteMeta({
+      origin: "https://it3k.test",
+      path: "/events",
+      og: { title: "กิจกรรม", description: "เปิดรับตั๋ว", image: null },
+    });
+    expect(content(meta, "og:image")).toBe("https://it3k.test/og.png");
+    expect(content(meta, "og:image:width")).toBe("1200");
+  });
+});
 
 describe("fontPreloads", () => {
   test("preloads the first-paint fonts on server-rendered pages", () => {
