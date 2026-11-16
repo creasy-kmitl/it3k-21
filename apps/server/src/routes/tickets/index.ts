@@ -41,7 +41,7 @@ const NOT_LISTED = "คุณไม่อยู่ในรายชื่อข
 const CHECKED_IN = "เช็คอินแล้ว ยกเลิกตั๋วไม่ได้";
 const NO_TICKET = "ไม่พบตั๋วนี้";
 
-/** At most this many open events are listed to claim. */
+/** At most this many events are listed. */
 const MAX_OPEN_EVENTS = 200;
 
 /** SQL: tickets the event has handed out. */
@@ -111,6 +111,55 @@ async function sportsOf(db: Database, eventIds: string[]) {
   return bySport;
 }
 
+/**
+ * Events as the participant pages show them, limited to those `userId` may
+ * see: any general event, a sport event that expects them, or one they hold a
+ * ticket to. `open` is whether a ticket can be claimed now.
+ */
+async function loadEventCards(db: Database, userId: string, where: SQL | undefined, now: Date) {
+  const holds = sql`exists (select 1 from ${eventTicket} where ${eventTicket.eventId} = ${event.id} and ${eventTicket.userId} = ${userId})`;
+  const rows = await db
+    .select({
+      event,
+      venue: { id: venue.id, name: venue.name, externalUrl: venue.externalUrl },
+      ticketCount: ticketCountOf(sql`${event.id}`),
+      claimed: sql<number>`${holds}`,
+    })
+    .from(event)
+    .leftJoin(venue, eq(venue.id, event.venueId))
+    .where(
+      and(
+        where,
+        sql`(${event.type} = 'general' or ${expectedAt(sql`${event.id}`, userId)} or ${holds})`,
+      ),
+    )
+    .orderBy(asc(event.startAt), asc(event.id))
+    .limit(MAX_OPEN_EVENTS);
+  const sports = await sportsOf(
+    db,
+    rows.map((row) => row.event.id),
+  );
+  return rows.map((row) => ({
+    id: row.event.id,
+    slug: row.event.slug,
+    type: row.event.type,
+    name: row.event.name,
+    description: row.event.description,
+    startAt: row.event.startAt.toISOString(),
+    endAt: row.event.endAt.toISOString(),
+    thumbnailUrl: row.event.thumbnailUrl,
+    sports: sports.get(row.event.id) ?? [],
+    venue: row.venue,
+    open: row.event.ticketsOpen && row.event.endAt.getTime() > now.getTime(),
+    capacity: row.event.ticketCapacity,
+    remaining:
+      row.event.ticketCapacity === null
+        ? null
+        : Math.max(0, row.event.ticketCapacity - Number(row.ticketCount)),
+    claimed: !!row.claimed,
+  }));
+}
+
 /** One ticket as its holder sees it. */
 async function loadTickets(db: Database, userId: string, where?: SQL) {
   const rows = await db
@@ -173,54 +222,42 @@ export const createTicketRoutes = (deps: RouteDeps) =>
     // Events the caller can claim a ticket to (or already holds one for),
     // still open and not over.
     .get("/events", async (c) => {
+      const now = new Date();
+      const items = await loadEventCards(
+        c.var.db,
+        c.var.user.id,
+        and(eq(event.ticketsOpen, true), gt(event.endAt, now)),
+        now,
+      );
+      return c.json({ items }, 200);
+    })
+
+    // One event's page: open or not, as long as the caller may see it (any
+    // general event, a sport event that expects them, or one they hold a
+    // ticket to), with their ticket when they have one. The ticket's code
+    // (the QR) is left out; only the ticket's own page shows it.
+    .get("/events/:id", validate("param", idParam), async (c) => {
       const db = c.var.db;
       const me = c.var.user.id;
-      const now = new Date();
-      const rows = await db
-        .select({
-          event,
-          venue: { id: venue.id, name: venue.name },
-          ticketCount: ticketCountOf(sql`${event.id}`),
-          claimed: sql<number>`exists (select 1 from ${eventTicket} where ${eventTicket.eventId} = ${event.id} and ${eventTicket.userId} = ${me})`,
-        })
-        .from(event)
-        .leftJoin(venue, eq(venue.id, event.venueId))
-        .where(
-          and(
-            eq(event.ticketsOpen, true),
-            gt(event.endAt, now),
-            sql`(${event.type} = 'general' or ${expectedAt(sql`${event.id}`, me)})`,
-          ),
-        )
-        .orderBy(asc(event.startAt), asc(event.id))
-        .limit(MAX_OPEN_EVENTS);
-      const sports = await sportsOf(
-        db,
-        rows.map((row) => row.event.id),
-      );
+      const [item] = await loadEventCards(db, me, byRef(c.req.valid("param").id), new Date());
+      if (!item) return c.json({ code: "missing" as const, message: NO_EVENT }, 404);
+      const [ticket] = await loadTickets(db, me, eq(eventTicket.eventId, item.id));
       return c.json(
         {
-          items: rows.map((row) => ({
-            id: row.event.id,
-            slug: row.event.slug,
-            type: row.event.type,
-            name: row.event.name,
-            description: row.event.description,
-            startAt: row.event.startAt.toISOString(),
-            endAt: row.event.endAt.toISOString(),
-            thumbnailUrl: row.event.thumbnailUrl,
-            sports: sports.get(row.event.id) ?? [],
-            venue: row.venue,
-            capacity: row.event.ticketCapacity,
-            remaining:
-              row.event.ticketCapacity === null
-                ? null
-                : Math.max(0, row.event.ticketCapacity - Number(row.ticketCount)),
-            claimed: !!row.claimed,
-          })),
+          ...item,
+          ticket: ticket ? { id: ticket.id, checkedInAt: ticket.checkedInAt } : null,
         },
         200,
       );
+    })
+
+    // The caller's ticket to one event (by id or slug), QR code included.
+    .get("/events/:id/ticket", validate("param", idParam), async (c) => {
+      const [ticket] = await loadTickets(c.var.db, c.var.user.id, byRef(c.req.valid("param").id));
+      if (!ticket) {
+        return c.json({ code: "no-ticket" as const, message: "ยังไม่ได้รับตั๋วกิจกรรมนี้" }, 404);
+      }
+      return c.json({ ticket }, 200);
     })
 
     // Claim a ticket. Claiming one already held returns it again.

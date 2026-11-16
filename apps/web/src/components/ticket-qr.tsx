@@ -1,4 +1,5 @@
 import { TICKET_QR_PREFIX } from "@it3k/db/event-rules";
+import { cn } from "@it3k/ui/lib/utils";
 import { useMemo } from "react";
 
 import { DEFAULT_DESIGN, type QrDesign, encodeQr, renderQrSvg, svgDataUrl } from "@/lib/qr";
@@ -16,7 +17,15 @@ const TICKET_DESIGN: QrDesign = {
 /** What a ticket's QR encodes. */
 export const ticketQrText = (code: string) => `${TICKET_QR_PREFIX}${code}`;
 
-export function TicketQr({ code, label }: { code: string; label: string }) {
+export function TicketQr({
+  code,
+  label,
+  className,
+}: {
+  code: string;
+  label: string;
+  className?: string;
+}) {
   const svg = useMemo(() => {
     const encoded = encodeQr(ticketQrText(code), TICKET_DESIGN.ecc);
     return encoded.ok ? renderQrSvg(encoded.qr, TICKET_DESIGN, 512) : null;
@@ -26,7 +35,10 @@ export function TicketQr({ code, label }: { code: string; label: string }) {
     <img
       src={svgDataUrl(svg)}
       alt={label}
-      className="aspect-square w-full max-w-64 rounded-lg bg-white [image-rendering:pixelated]"
+      className={cn(
+        "aspect-square w-full max-w-64 rounded-lg bg-white [image-rendering:pixelated]",
+        className,
+      )}
     />
   );
 }

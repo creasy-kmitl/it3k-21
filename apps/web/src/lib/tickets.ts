@@ -12,6 +12,10 @@ export type TicketList = InferResponseType<Client["index"]["$get"], 200>;
 export type Ticket = TicketList["items"][number];
 export type OpenEventList = InferResponseType<Client["events"]["$get"], 200>;
 export type OpenEvent = OpenEventList["items"][number];
+export type EventDetail = InferResponseType<Client["events"][":id"]["$get"], 200>;
+
+/** Where a ticket's own page lives: the event's slug, or its id when it has none. */
+export const ticketRef = (event: { id: string; slug: string | null }) => event.slug ?? event.id;
 
 /** Every ticket query lives under this key, so a claim or cancel refreshes them all. */
 export const TICKETS_KEY = ["tickets"] as const;
@@ -44,6 +48,17 @@ export function createTicketsApi(baseUrl: string, fetchImpl?: ClientRequestOptio
     },
     async openEvents() {
       const res = await client.events.$get();
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
+    async event(eventId: string) {
+      const res = await client.events[":id"].$get({ param: { id: eventId } });
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
+    /** The caller's ticket to one event, QR code included. */
+    async ticketFor(eventId: string) {
+      const res = await client.events[":id"].ticket.$get({ param: { id: eventId } });
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
