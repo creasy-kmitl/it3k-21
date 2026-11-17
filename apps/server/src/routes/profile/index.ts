@@ -14,6 +14,7 @@ import {
 } from "../../middleware/current-user";
 import { validate } from "../../middleware/validation";
 import { limitJsonBody } from "../../middleware/json-body-limit";
+import { type MailDeps, queueEmails } from "../../email/mailer";
 
 export function activeAccount() {
   return sql`(coalesce(${user.banned}, 0) = 0 or (${user.banExpires} is not null and ${user.banExpires} <= ${Date.now()}))`;
@@ -23,7 +24,7 @@ function ownedPhoto(id: string, ownerId: string) {
   return sql`exists (select 1 from ${uploadedFile} where ${uploadedFile.id} = ${id} and ${uploadedFile.ownerId} = ${ownerId} and ${uploadedFile.state} = 'ready' and ${uploadedFile.size} <= ${MAX_PHOTO_SIZE} and ${uploadedFile.contentType} in ('image/jpeg', 'image/png', 'image/webp'))`;
 }
 
-export const createProfileRoutes = (deps: RouteDeps) =>
+export const createProfileRoutes = (deps: RouteDeps & MailDeps) =>
   new Hono<CurrentUserEnv>()
     .use(requireJsonPosts)
     .use(requireUser(deps))
@@ -140,6 +141,12 @@ export const createProfileRoutes = (deps: RouteDeps) =>
       const roles = parseRoles(actor.role);
       const role = roles.length === 1 && roles[0] === "guest" ? "participant" : actor.role;
       const now = new Date();
+      // Only the first submit sends the summary email; later edits do not.
+      const [before] = await db
+        .select({ email: user.email, submittedAt: userProfile.submittedAt })
+        .from(user)
+        .leftJoin(userProfile, eq(userProfile.userId, user.id))
+        .where(eq(user.id, actor.id));
       try {
         await db.batch([
           abortUnless(
@@ -186,6 +193,26 @@ export const createProfileRoutes = (deps: RouteDeps) =>
         if (constraintError(error))
           return c.json({ message: "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่ก่อนบันทึก" }, 409);
         throw error;
+      }
+      if (before && !before.submittedAt) {
+        await queueEmails(c, deps, [
+          {
+            kind: "profile-submitted",
+            to: { email: before.email, name: `${values.firstName} ${values.lastName}` },
+            profile: {
+              prefix: values.prefix,
+              firstName: values.firstName,
+              lastName: values.lastName,
+              nickname: values.nickname,
+              phone: values.phone,
+              institution: values.institution,
+              medicalConditions: values.medicalConditions,
+              drugAllergies: values.drugAllergies,
+              foodAllergies: values.foodAllergies,
+              dietaryRestrictions: values.dietaryRestrictions,
+            },
+          },
+        ]);
       }
       return c.json({ revision: revision + 1 }, 200);
     });

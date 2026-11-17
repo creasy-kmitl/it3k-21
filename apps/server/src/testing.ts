@@ -14,7 +14,23 @@ import { createTestDb } from "@it3k/db/testing";
 export { defined } from "@it3k/db/testing";
 import { eq } from "drizzle-orm";
 
+import type { EmailJob } from "@it3k/email/jobs";
+import type { Mailer } from "./email/mailer";
 import type { RouteDeps } from "./middleware/current-user";
+
+/** Collects what routes queue instead of sending; set `failing` to make enqueue throw. */
+export function createFakeMailer() {
+  const jobs: EmailJob[] = [];
+  const mailer: Mailer & { jobs: EmailJob[]; failing: boolean } = {
+    jobs,
+    failing: false,
+    async enqueue(batch) {
+      if (mailer.failing) throw new Error("queue unavailable");
+      jobs.push(...batch);
+    },
+  };
+  return mailer;
+}
 
 const TEST_USER_HEADER = "x-test-user";
 const TEST_IMPERSONATOR_HEADER = "x-test-impersonated-by";
@@ -23,8 +39,9 @@ export const TEST_VIEW_AS_SECRET = "test-view-as-secret";
 
 export function createTestContext() {
   const { db, sqlite, hooks } = createTestDb();
+  const mail = createFakeMailer();
 
-  const deps: RouteDeps = {
+  const deps: RouteDeps & { mailer: Mailer } = {
     getSession: async (headers) => {
       const userId = headers.get(TEST_USER_HEADER);
       if (!userId) return null;
@@ -37,6 +54,7 @@ export function createTestContext() {
     },
     getDb: () => db,
     viewAsSecret: TEST_VIEW_AS_SECRET,
+    mailer: mail,
   };
 
   async function departmentId(name: string) {
@@ -134,7 +152,7 @@ export function createTestContext() {
     };
   }
 
-  return { db, sqlite, hooks, deps, departmentId, seedUser, seedParticipant, divisionId, as };
+  return { db, sqlite, hooks, deps, mail, departmentId, seedUser, seedParticipant, divisionId, as };
 }
 
 /** Parsed JSON body, typed loosely enough for `toEqual` assertions. */

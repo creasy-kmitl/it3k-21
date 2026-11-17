@@ -25,6 +25,7 @@ import {
   requireUser,
 } from "../../middleware/current-user";
 import { limitJsonBody } from "../../middleware/json-body-limit";
+import { type MailDeps, queueEmails, recipientOf } from "../../email/mailer";
 import { validate } from "../../middleware/validation";
 import { activeAccount } from "../profile";
 import {
@@ -65,7 +66,7 @@ function ownReviewAt(id: string, userId: string, version: number): SQL {
   return sql`exists (select 1 from ${sportRegistration} where ${sportRegistration.id} = ${id} and ${sportRegistration.userId} = ${userId} and ${sportRegistration.version} = ${version} and ${sportRegistration.status} = 'review')`;
 }
 
-export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps) =>
+export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps & MailDeps) =>
   new Hono<CurrentUserEnv>()
     .use(requireJsonPosts)
     .use(requireUser(deps))
@@ -194,6 +195,26 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps) =>
       }
       const [created] = await selectRegistrations(db).where(eq(sportRegistration.id, id));
       if (!created) throw new Error("Registration vanished");
+      const to = await recipientOf(db, me.id);
+      if (to) {
+        await queueEmails(c, deps, [
+          {
+            kind: "sport-registered",
+            to,
+            registration: {
+              sport: created.sport.name,
+              division: created.division.name,
+              gender: created.division.gender,
+              format: created.division.format,
+              institution: created.registration.institution,
+              status: created.registration.status,
+              shirtNumber: created.registration.shirtNumber,
+              badmintonRank: created.registration.badmintonRank,
+              ign: created.registration.ign,
+            },
+          },
+        ]);
+      }
       return c.json(
         { ...created.registration, division: created.division, sport: created.sport },
         201,

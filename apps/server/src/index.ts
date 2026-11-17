@@ -30,6 +30,11 @@ import { createViewAsRoutes } from "./routes/view-as";
 import { cleanupImpersonationSessions, handleAuthRequest } from "./routes/auth-audit";
 import { cleanupFiles, createFileRoutes, createPublicFileRoutes } from "./routes/files";
 import { createFileStore } from "./routes/files/storage";
+import { createEmailRoutes } from "./routes/emails";
+import { createQueueMailer, type MailDeps } from "./email/mailer";
+import { handleEmailBatch, type JobMessage } from "./email/consumer";
+import type { EmailJob } from "@it3k/email/jobs";
+import { createLogger } from "evlog";
 
 initLogger({
   // Stages share a dataset per tier, so the stage name is what separates
@@ -85,13 +90,17 @@ const deps: RouteDeps = {
   viewAsSecret: `${env.BETTER_AUTH_SECRET}:view-as`,
 };
 
+const mailDeps: MailDeps = { mailer: createQueueMailer(env.EMAIL_QUEUE) };
+/** Where links in emails point, and where uploaded images in them are served from. */
+const emailContext = { webOrigin: env.CORS_ORIGIN, apiOrigin: new URL(env.BETTER_AUTH_URL).origin };
+
 app.route("/api/departments", createDepartmentRoutes(deps));
 app.route("/api/users", createUserRoutes(deps));
 app.route("/api/view-as", createViewAsRoutes(deps));
 const fileDeps = { ...deps, getStore: () => createFileStore(env.UPLOADS), waitUntil };
 app.route("/api/files/public", createPublicFileRoutes(fileDeps));
 app.route("/api/files", createFileRoutes(fileDeps));
-app.route("/api/profile", createProfileRoutes(deps));
+app.route("/api/profile", createProfileRoutes({ ...deps, ...mailDeps }));
 app.route(
   "/api/leadership",
   createLeadershipRoutes({
@@ -113,11 +122,12 @@ const discordDeps: DiscordDeps = {
     return typeof data?.username === "string" ? { username: data.username } : null;
   },
 };
-app.route("/api/registrations", createRegistrationRoutes({ ...deps, ...discordDeps }));
-app.route("/api/athletes", createAthleteRoutes(deps));
+app.route("/api/registrations", createRegistrationRoutes({ ...deps, ...discordDeps, ...mailDeps }));
+app.route("/api/athletes", createAthleteRoutes({ ...deps, ...mailDeps }));
 app.route("/api/venues", createVenueRoutes(deps));
 app.route("/api/events", createEventRoutes(deps));
-app.route("/api/tickets", createTicketRoutes(deps));
+app.route("/api/tickets", createTicketRoutes({ ...deps, ...mailDeps }));
+app.route("/api/emails", createEmailRoutes({ ...deps, ...mailDeps, emailContext }));
 // Public: link previews (Open Graph) for event pages, fetched signed out.
 app.route("/api/public/events", createPublicEventRoutes(deps));
 
@@ -133,5 +143,21 @@ export default {
   async scheduled() {
     await cleanupFiles(getDb(), createFileStore(env.UPLOADS));
     await cleanupImpersonationSessions(getDb());
+  },
+  async queue(batch: MessageBatch<EmailJob>) {
+    const log = createLogger({ email: { queue: batch.queue, size: batch.messages.length } });
+    await handleEmailBatch(batch.messages as readonly JobMessage[], {
+      getDb,
+      ctx: emailContext,
+      send: (message) => env.EMAIL.send(message),
+      requeue: async (job, delaySeconds) => {
+        await env.EMAIL_QUEUE.send(job, { delaySeconds, contentType: "json" });
+      },
+      log: {
+        info: (message, fields) => log.info(message, fields),
+        warn: (message, fields) => log.warn(message, fields),
+      },
+    });
+    log.emit();
   },
 };

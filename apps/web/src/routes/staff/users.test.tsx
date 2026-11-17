@@ -49,6 +49,7 @@ function setup(
       canManageUsers: true,
       institution: null,
       sportAccess: { permissions: [], scope: { kind: "none" } },
+      emailAccess: null,
       viewingAs: false,
     }),
     list: async () => ({ items, page: 1, hasMore: false, canGrantAdmin }),

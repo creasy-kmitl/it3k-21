@@ -18,12 +18,17 @@ export type Capability =
   | "runSports"
   // Members work on athlete registrations; how far depends on their seat
   // and institution (policies/sports.ts).
-  | "registerAthletes";
+  | "registerAthletes"
+  // Every member may write and send staff emails, to anyone (policies/email.ts).
+  | "sendEmail"
+  // Seat holders may send staff emails; how far depends on their institution
+  // (policies/email.ts).
+  | "sendEmailAsLeader";
 
 export const DEPARTMENT_CAPABILITIES = {
   // manageAccounts: assign departments, seats and roles to any non-admin account.
-  "tech-live": ["manageAccounts", "manageShortLinks", "runSports"],
-  registration: ["manageAccounts", "registerAthletes"],
+  "tech-live": ["manageAccounts", "manageShortLinks", "runSports", "sendEmail"],
+  registration: ["manageAccounts", "registerAthletes", "sendEmailAsLeader"],
 } as const satisfies Record<ReservedDepartmentCode, readonly Capability[]>;
 
 function isReserved(code: string): code is ReservedDepartmentCode {

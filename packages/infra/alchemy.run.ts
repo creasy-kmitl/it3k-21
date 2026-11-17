@@ -73,6 +73,30 @@ export const uploads = Cloudflare.R2.Bucket("uploads", {
   forceDestroy: isPreviewStage,
 });
 
+/**
+ * Every stage sends from the same address. `mail.creasy.club` is onboarded to
+ * Email Sending once for the whole account (`wrangler email sending enable
+ * mail.creasy.club`), not per stage, so no stage can tear it down on destroy.
+ * Kept in sync with `EMAIL_FROM` in apps/server/src/email/mailer.ts.
+ */
+export const EMAIL_FROM = "noreply@mail.creasy.club";
+
+/**
+ * Under `alchemy dev` the binding is simulated: `send()` writes each message
+ * to `.alchemy/local/email` as a `.eml` and delivers nothing.
+ */
+export const email = Cloudflare.Email.SendEmail("EMAIL", {
+  allowedSenderAddresses: [EMAIL_FROM],
+});
+
+/**
+ * Routes put emails here and return; the server's `queue()` handler renders
+ * and sends them. A slow or failing send never holds up or fails the write
+ * that caused it, and a broadcast to a few thousand people is split into
+ * small batches instead of one request's worth of subrequests.
+ */
+export const emailQueue = Cloudflare.Queues.Queue("email-queue");
+
 // Local logs stay in the terminal unless Axiom is explicitly enabled.
 // Deployments always provision Axiom, regardless of the dev setting.
 export const axiomEnabled = Effect.gen(function* () {
@@ -179,6 +203,8 @@ export const server = Cloudflare.Worker("server", {
   env: {
     DB: db,
     UPLOADS: uploads,
+    EMAIL: email,
+    EMAIL_QUEUE: emailQueue,
     // The web worker is created after this one, so its URL can't be referenced
     // here without a cycle — deriving both from the stage breaks it. Without a
     // stage there is no public hostname yet, so point at the local dev port.
@@ -240,6 +266,17 @@ export default Alchemy.Stack(
   Effect.gen(function* () {
     const observabilityResources = yield* observability;
     const serverWorker = yield* server;
+    const queue = yield* emailQueue;
+    yield* Cloudflare.Queues.Consumer("email-consumer", {
+      queueId: queue.queueId,
+      scriptName: serverWorker.workerName,
+      settings: {
+        batchSize: 10,
+        maxRetries: 5,
+        maxWaitTimeMs: 2000,
+        retryDelay: 30,
+      },
+    });
     const webWorker = yield* Cloudflare.Website.Vite("web", {
       rootDir: "../../apps/web",
       compatibility: {

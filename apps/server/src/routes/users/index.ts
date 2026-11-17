@@ -27,6 +27,7 @@ import {
   managerIsAsRead,
 } from "../../policies/leadership";
 import { validate } from "../../middleware/validation";
+import { emailAccess } from "../../policies/email";
 import { canSport, sportAccessIsAsRead, sportAccessJson } from "../../policies/sports";
 import { usedBytes } from "../files";
 import { limitJsonBody } from "../../middleware/json-body-limit";
@@ -172,6 +173,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
           canManageUsers: isManager(actor),
           institution: view ? view.institution : account.institution,
           sportAccess: sportAccessJson(actor),
+          emailAccess: emailAccess(actor),
           viewingAs: actor.simulated,
         },
         200,

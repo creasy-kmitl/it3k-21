@@ -1,0 +1,32 @@
+{
+  "name": "@it3k/email",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./jobs": "./src/jobs.ts",
+    "./rich-text": "./src/rich-text.ts",
+    "./render": "./src/render.tsx"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "email:dev": "email dev --dir emails --port 3003"
+  },
+  "dependencies": {
+    "@it3k/db": "workspace:*",
+    "@react-email/components": "1.0.12",
+    "@react-email/render": "2.3.1",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@it3k/config": "workspace:*",
+    "@react-email/ui": "6.11.13",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react-email": "6.11.13",
+    "typescript": "catalog:"
+  }
+}
