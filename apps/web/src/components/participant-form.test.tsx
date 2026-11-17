@@ -218,7 +218,7 @@ for (const next of ["other", null] as const) {
       {},
       client,
     );
-    await view.findByRole("button", { name: "guest" });
+    await view.findByRole("button", { name: /guest/ });
     view.query.setQueryData(["private-medical-data"], "Private diagnosis");
     fireEvent.change(view.getByLabelText("ชื่อ"), { target: { value: "Pending edit" } });
     identity = next;
@@ -270,7 +270,7 @@ test("an account-mismatch response clears the form even before session refresh",
     },
     client,
   );
-  await view.findByRole("button", { name: "guest" });
+  await view.findByRole("button", { name: /guest/ });
   view.query.setQueryData(["private-medical-data"], "Private diagnosis");
   fireEvent.change(view.getByLabelText("ชื่อ"), { target: { value: "Pending edit" } });
   await act(async () => {
@@ -335,7 +335,7 @@ for (const failedSave of [false, true]) {
     );
     view.query.setQueryData(["private-medical-data"], "Medical draft");
     fireEvent.change(view.getByLabelText("โรคประจำตัว"), { target: { value: "Medical draft" } });
-    fireEvent.click(await view.findByRole("button", { name: "Student" }));
+    fireEvent.click(await view.findByRole("button", { name: /Student/ }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "ออกจากระบบ" }));
     await waitFor(() => expect(events).toEqual(["save"]));
     release();

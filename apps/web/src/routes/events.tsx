@@ -7,6 +7,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { CalendarRange, CircleCheck, Ticket as TicketIcon } from "lucide-react";
 import { useState } from "react";
 
+import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { Seats, useClaimTicket } from "@/components/event-claim";
 import { EventDateChip, EventWhen, EventWhere } from "@/components/event-when-where";
@@ -85,7 +86,7 @@ export function EventsView() {
       ) : open.isError ? (
         <ErrorState error={open.error} onRetry={open.refetch} title="โหลดกิจกรรมไม่สำเร็จ" />
       ) : items.length === 0 ? (
-        <EmptyState text="ตอนนี้ยังไม่มีกิจกรรมที่เปิดรับตั๋ว" />
+        <EmptyState icon={CalendarRange} description="ตอนนี้ยังไม่มีกิจกรรมที่เปิดรับตั๋ว" />
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -107,7 +108,8 @@ export function EventsView() {
           </div>
           {visible.length === 0 ? (
             <EmptyState
-              text={show === "mine" ? "ยังไม่ได้รับตั๋วกิจกรรมไหน" : "ไม่มีกิจกรรมประเภทนี้ที่เปิดรับตั๋ว"}
+              icon={show === "mine" ? TicketIcon : CalendarRange}
+              description={show === "mine" ? "ยังไม่ได้รับตั๋วกิจกรรมไหน" : "ไม่มีกิจกรรมประเภทนี้ที่เปิดรับตั๋ว"}
             />
           ) : (
             // Every row as tall as the tallest card, so all cards are one size.
@@ -121,15 +123,6 @@ export function EventsView() {
           )}
         </>
       )}
-    </div>
-  );
-}
-
-function EmptyState({ text }: { text: string }) {
-  return (
-    <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed p-12 text-center text-muted-foreground">
-      <CalendarRange className="size-10" aria-hidden />
-      <p>{text}</p>
     </div>
   );
 }

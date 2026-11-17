@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import type * as React from "react";
 
-import { NavMain, type NavMainGroup } from "@/components/nav-main";
+import { NavMain, type NavMainGroup, useCloseSidebarOnMobile } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
 import { useMe } from "@/lib/users";
 
@@ -34,6 +34,7 @@ export function AppSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar> & { userRole: string | null | undefined }) {
   const { data: me } = useMe();
+  const closeOnMobile = useCloseSidebarOnMobile();
   // Shown to anyone with a right in the sport system; the API enforces each one.
   const inSports = (me?.sportAccess.permissions.length ?? 0) > 0;
   const groups: NavMainGroup[] = [
@@ -90,7 +91,11 @@ export function AppSidebar({
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link to="/staff/dashboard" />}>
+            <SidebarMenuButton
+              size="lg"
+              render={<Link to="/staff/dashboard" />}
+              onClick={closeOnMobile}
+            >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                 <TrophyIcon className="size-4" />
               </div>

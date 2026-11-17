@@ -47,6 +47,14 @@ export function hasRole(role: string | null | undefined, target: Role) {
   return parseRoles(role).includes(target);
 }
 
+/** The one role to show for a stored (possibly comma-separated) role: the highest it holds. */
+export function primaryRole(role: string | null | undefined): Role {
+  const held = parseRoles(role);
+  return ROLE_RANK.find((r) => held.includes(r)) ?? DEFAULT_ROLE;
+}
+
+const ROLE_RANK: Role[] = ["admin", "staff", "athlete", "participant", "guest"];
+
 /** Staff workspace membership; profile and file access require only sign-in. */
 export function isMember(role: string | null | undefined) {
   return hasRole(role, "admin") || hasRole(role, "staff");

@@ -1,12 +1,12 @@
-import { isMember } from "@it3k/auth/permissions";
-import { Button } from "@it3k/ui/components/button";
+import { buttonVariants } from "@it3k/ui/components/button";
+import { cn } from "@it3k/ui/lib/utils";
 import { Link } from "@tanstack/react-router";
-import { CalendarRange, FolderOpen, Ticket } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { CalendarRange } from "lucide-react";
+import type { ReactNode } from "react";
+
 import { SignOutGuardProvider } from "@/lib/sign-out-guard";
-import { FileLibrary } from "./file-library";
-import UserMenu from "./user-menu";
 import { SessionBoundary } from "./session-boundary";
+import UserMenu from "./user-menu";
 
 export function ParticipantShell({
   children,
@@ -17,34 +17,32 @@ export function ParticipantShell({
   role: string;
   userId: string;
 }) {
-  const [files, setFiles] = useState(false);
   return (
     <SessionBoundary key={userId} userId={userId}>
       <SignOutGuardProvider>
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 sm:p-6">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
-            <Link to="/" className="text-xl font-semibold text-primary">
-              IT3Kings
-            </Link>
-            <nav className="flex flex-wrap items-center gap-2" aria-label="บัญชีผู้เข้าร่วม">
-              {isMember(role) && <Link to="/staff/dashboard">ระบบทีมงาน</Link>}
-              <Button variant="ghost" render={<Link to="/events" />} nativeButton={false}>
-                <CalendarRange data-icon="inline-start" />
-                กิจกรรม
-              </Button>
-              <Button variant="ghost" render={<Link to="/me/tickets" />} nativeButton={false}>
-                <Ticket data-icon="inline-start" />
-                ตั๋วของฉัน
-              </Button>
-              <Button variant="ghost" onClick={() => setFiles(true)}>
-                <FolderOpen data-icon="inline-start" />
-                ไฟล์ของฉัน
-              </Button>
-              <UserMenu />
-            </nav>
+        <div className="flex w-full flex-col">
+          <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+            <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
+              <Link to="/" className="text-xl font-bold tracking-tight text-primary">
+                IT3Kings
+              </Link>
+              <nav className="flex items-center gap-1 sm:gap-2" aria-label="บัญชีผู้เข้าร่วม">
+                <Link
+                  to="/events"
+                  aria-label="กิจกรรม"
+                  className={cn(
+                    buttonVariants({ variant: "ghost" }),
+                    "text-muted-foreground data-[status=active]:bg-muted data-[status=active]:text-foreground",
+                  )}
+                >
+                  <CalendarRange data-icon="inline-start" aria-hidden />
+                  <span className="hidden sm:inline">กิจกรรม</span>
+                </Link>
+                <UserMenu role={role} />
+              </nav>
+            </div>
           </header>
-          <main>{children}</main>
-          {files && <FileLibrary userId={userId} onClose={() => setFiles(false)} />}
+          <main className="mx-auto w-full max-w-7xl p-4 sm:p-6">{children}</main>
         </div>
       </SignOutGuardProvider>
     </SessionBoundary>

@@ -1,4 +1,4 @@
-import { type Role, hasRole } from "@it3k/auth/permissions";
+import { hasRole, primaryRole } from "@it3k/auth/permissions";
 import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
 import { INSTITUTION_IDS } from "@it3k/db/profile";
@@ -46,15 +46,6 @@ const adminInput = z.strictObject({ admin: z.boolean() });
 
 const institutionInput = z.strictObject({ institution: z.enum(INSTITUTION_IDS).nullable() });
 
-/** The single account role shown for a stored (possibly comma-separated) role. */
-function accountRole(role: string | null): Role {
-  if (hasRole(role, "admin")) return "admin";
-  if (hasRole(role, "staff")) return "staff";
-  if (hasRole(role, "athlete")) return "athlete";
-  if (hasRole(role, "participant")) return "participant";
-  return "guest";
-}
-
 function selectAccounts(db: Database) {
   return db
     .select({
@@ -79,7 +70,7 @@ function selectAccounts(db: Database) {
 type AccountRow = Awaited<ReturnType<ReturnType<typeof selectAccounts>["all"]>>[number];
 
 function toAccount(row: AccountRow, actor: CurrentUser) {
-  const role = accountRole(row.role);
+  const role = primaryRole(row.role);
   return {
     id: row.id,
     name: row.name,
@@ -158,7 +149,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
       // While viewing as someone, the nav shows who the admin is viewing as.
       const view = actor.simulated
         ? {
-            role: accountRole(actor.role),
+            role: primaryRole(actor.role),
             department: await viewedDepartment(c.var.db, actor.departmentId),
             seatRole: actor.leadershipRole,
             institution: actor.institution,

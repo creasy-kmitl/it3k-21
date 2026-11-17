@@ -91,6 +91,6 @@ describe("/me/tickets", () => {
     const dialog = await view.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "ยกเลิกตั๋ว" }));
     await waitFor(() => expect(cancelled).toEqual(["t-1"]));
-    expect(await view.findByRole("link", { name: "รับตั๋วได้ที่หน้ากิจกรรม" })).toBeTruthy();
+    expect(await view.findByRole("button", { name: "รับตั๋วได้ที่หน้ากิจกรรม" })).toBeTruthy();
   });
 });
