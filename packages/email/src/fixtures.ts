@@ -81,6 +81,7 @@ export const sampleTicketClaimed: TicketClaimedJob = {
     startAt: Date.UTC(2026, 11, 5, 10, 0),
     endAt: Date.UTC(2026, 11, 5, 12, 30),
     venue: "หอประชุมเจ้าพระยาสุรวงษ์ไวยวัฒน์",
+    code: "Zx3sQm9vT2kLp8RwYb4NcHd7Ue1Fa6Jg",
   },
 };
 

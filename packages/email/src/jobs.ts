@@ -68,6 +68,8 @@ export type TicketClaimedJob = {
     startAt: number;
     endAt: number | null;
     venue: string | null;
+    /** The ticket's secret code, drawn as its QR. Absent on jobs queued before the QR was added. */
+    code?: string;
   };
 };
 

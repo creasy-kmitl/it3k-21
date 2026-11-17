@@ -318,6 +318,7 @@ export const createTicketRoutes = (deps: RouteDeps & MailDeps) =>
               startAt: Date.parse(ticket.event.startAt),
               endAt: Date.parse(ticket.event.endAt),
               venue: ticket.venue?.name ?? null,
+              code: ticket.code,
             },
           },
         ]);

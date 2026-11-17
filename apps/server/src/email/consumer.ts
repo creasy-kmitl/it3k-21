@@ -1,7 +1,12 @@
 import type { Database } from "@it3k/db";
 import { emailCampaign } from "@it3k/db/schema/email";
 import type { CustomJob, EmailJob, Recipient } from "@it3k/email/jobs";
-import { type EmailContext, renderEmail, type RenderedEmail } from "@it3k/email/render";
+import {
+  type EmailContext,
+  type InlineAttachment,
+  renderEmail,
+  type RenderedEmail,
+} from "@it3k/email/render";
 import { richTextDocSchema } from "@it3k/email/rich-text";
 import { eq, sql } from "drizzle-orm";
 
@@ -14,6 +19,7 @@ export type OutgoingEmail = {
   subject: string;
   html: string;
   text: string;
+  attachments?: InlineAttachment[];
 };
 
 export type EmailLog = {
