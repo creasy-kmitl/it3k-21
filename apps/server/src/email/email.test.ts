@@ -158,6 +158,10 @@ describe("transactional emails", () => {
     expect(t.mail.jobs).toMatchObject([
       { kind: "ticket-claimed", ticket: { ref: "opening", eventName: "พิธีเปิด" } },
     ]);
+    // The email draws the same code the kiosk checks.
+    const [row] = await t.db.select({ code: eventTicket.code }).from(eventTicket);
+    const job = t.mail.jobs[0];
+    expect(job?.kind === "ticket-claimed" ? job.ticket.code : null).toBe(row?.code);
   });
 });
 
@@ -404,11 +408,11 @@ describe("queue consumer", () => {
     };
   }
 
-  const ticket: EmailJob = {
-    kind: "ticket-claimed",
+  const ticket = {
+    kind: "ticket-claimed" as const,
     to: { email: "a@example.com", name: "เอ" },
     ticket: { ref: "x", eventName: "งาน", startAt: Date.now(), endAt: null, venue: null },
-  };
+  } satisfies EmailJob;
 
   test("sends a transactional email from the brand address", async () => {
     const sent: OutgoingEmail[] = [];
@@ -421,6 +425,23 @@ describe("queue consumer", () => {
     });
     expect(sent[0]?.html).toContain("http://web.test/tickets/x");
     expect(sent[0]?.text.length).toBeGreaterThan(0);
+    expect(sent[0]?.attachments).toBeUndefined();
+  });
+
+  test("a ticket with a code goes out with its QR as an inline image", async () => {
+    const sent: OutgoingEmail[] = [];
+    const withCode: EmailJob = { ...ticket, ticket: { ...ticket.ticket, code: "A".repeat(32) } };
+    const { msg } = message(withCode);
+    await handleEmailBatch([msg], deps(async (email) => sent.push(email)).deps);
+    expect(sent[0]?.html).toContain('src="cid:ticket-qr"');
+    expect(sent[0]?.attachments).toMatchObject([
+      {
+        filename: "ticket-qr.png",
+        type: "image/png",
+        disposition: "inline",
+        contentId: "ticket-qr",
+      },
+    ]);
   });
 
   test("retries a rate limit and drops a suppressed recipient", async () => {
