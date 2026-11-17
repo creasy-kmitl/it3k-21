@@ -27,6 +27,7 @@ import {
 } from "../../middleware/current-user";
 import { limitJsonBody } from "../../middleware/json-body-limit";
 import { validate } from "../../middleware/validation";
+import { type MailDeps, queueEmails, recipientOf } from "../../email/mailer";
 import { byRef, expectedAt } from "../events/checkins";
 
 const idParam = z.strictObject({ id: z.string().min(1).max(128) });
@@ -207,7 +208,7 @@ async function loadTickets(db: Database, userId: string, where?: SQL) {
   }));
 }
 
-export const createTicketRoutes = (deps: RouteDeps) =>
+export const createTicketRoutes = (deps: RouteDeps & MailDeps) =>
   new Hono<CurrentUserEnv>()
     .use(requireJsonPosts)
     .use(requireUser(deps))
@@ -304,6 +305,23 @@ export const createTicketRoutes = (deps: RouteDeps) =>
       }
       const [ticket] = await loadTickets(db, me, eq(eventTicket.eventId, item.id));
       if (!ticket) throw new Error("Ticket vanished");
+      // Only a ticket this request created; a repeat claim answers 200 above.
+      const to = await recipientOf(db, me);
+      if (to) {
+        await queueEmails(c, deps, [
+          {
+            kind: "ticket-claimed",
+            to,
+            ticket: {
+              ref: ticket.event.slug ?? ticket.event.id,
+              eventName: ticket.event.name,
+              startAt: Date.parse(ticket.event.startAt),
+              endAt: Date.parse(ticket.event.endAt),
+              venue: ticket.venue?.name ?? null,
+            },
+          },
+        ]);
+      }
       return c.json({ ticket }, 201);
     })
 

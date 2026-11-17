@@ -14,6 +14,7 @@ import {
   CalendarCheckIcon,
   CalendarDaysIcon,
   LayoutDashboardIcon,
+  MailIcon,
   Link2Icon,
   MapPinnedIcon,
   MedalIcon,
@@ -77,6 +78,9 @@ export function AppSidebar({
       items: [
         { title: "QR Code", to: "/staff/qr-code", icon: <QrCodeIcon /> },
         { title: "ลิงก์สั้น", to: "/staff/links", icon: <Link2Icon /> },
+        ...(me?.emailAccess
+          ? [{ title: "ส่งอีเมล", to: "/staff/email", icon: <MailIcon /> } as const]
+          : []),
       ],
     },
   ];

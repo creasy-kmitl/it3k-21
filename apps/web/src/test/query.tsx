@@ -15,6 +15,7 @@ import type { RegistrationsApi } from "@/lib/registrations";
 import type { AthletesApi } from "@/lib/athletes";
 import type { EventsApi } from "@/lib/events";
 import type { VenuesApi } from "@/lib/venues";
+import type { EmailsApi } from "@/lib/emails";
 import type { TicketsApi } from "@/lib/tickets";
 import type { UsersApi } from "@/lib/users";
 
@@ -80,6 +81,18 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
     venues: apis.venues ?? fakeVenuesApi(),
     events: apis.events ?? fakeEventsApi(),
     tickets: apis.tickets ?? fakeTicketsApi(),
+    emails: apis.emails ?? fakeEmailsApi(),
+  };
+}
+
+export function fakeEmailsApi(overrides: Partial<EmailsApi> = {}): EmailsApi {
+  return {
+    audiences: unexpected("emails.audiences"),
+    recipients: unexpected("emails.recipients"),
+    preview: unexpected("emails.preview"),
+    send: unexpected("emails.send"),
+    history: unexpected("emails.history"),
+    ...overrides,
   };
 }
 

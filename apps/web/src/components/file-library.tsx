@@ -39,10 +39,15 @@ export function FileLibrary({
   userId,
   onClose,
   onSelect,
+  selectTitle = "เลือกรูปที่มั่นใจที่สุด",
+  selectHint = "ต้องเห็นใบหน้าชัดเจน ไม่สวมแมสก์ ไม่สวมแว่นตา",
 }: {
   userId: string;
   onClose: () => void;
   onSelect?: (file: LibraryFile) => void;
+  /** Dialog copy when picking a photo; the default is for the profile photo. */
+  selectTitle?: string;
+  selectHint?: string;
 }) {
   const { files } = useApis();
   const endSession = useEndSession();
@@ -140,10 +145,9 @@ export function FileLibrary({
     >
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-5xl">
         <DialogHeader>
-          <DialogTitle>{onSelect ? "เลือกรูปที่มั่นใจที่สุด" : "ไฟล์ของฉัน"}</DialogTitle>
+          <DialogTitle>{onSelect ? selectTitle : "ไฟล์ของฉัน"}</DialogTitle>
           <DialogDescription>
-            {onSelect ? "ต้องเห็นใบหน้าชัดเจน ไม่สวมแมสก์ ไม่สวมแว่นตา" : "จัดการไฟล์และนำลิงก์ไปใช้งาน"} ·
-            ไฟล์ที่อัปโหลดเปิดผ่านลิงก์สาธารณะได้
+            {onSelect ? selectHint : "จัดการไฟล์และนำลิงก์ไปใช้งาน"} · ไฟล์ที่อัปโหลดเปิดผ่านลิงก์สาธารณะได้
           </DialogDescription>
         </DialogHeader>
         <Tabs value={tab} onValueChange={(value) => setTab(String(value))}>

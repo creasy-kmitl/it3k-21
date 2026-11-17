@@ -31,6 +31,7 @@ import {
 import { limitJsonBody } from "../../middleware/json-body-limit";
 import { allowSport as allow } from "../../middleware/sport-permission";
 import { validate } from "../../middleware/validation";
+import { type MailDeps, queueEmails, recipientOf } from "../../email/mailer";
 import { canSport, inScope, sportAccess, sportAccessIsAsRead } from "../../policies/sports";
 import { PAGE_SIZE, containsAny } from "../leadership";
 import {
@@ -123,7 +124,7 @@ async function findInScope(db: Database, actor: CurrentUser, id: string) {
   return row ?? null;
 }
 
-export const createAthleteRoutes = (deps: RouteDeps) =>
+export const createAthleteRoutes = (deps: RouteDeps & MailDeps) =>
   new Hono<CurrentUserEnv>()
     .use(requireJsonPosts)
     .use(requireUser(deps))
@@ -220,6 +221,25 @@ export const createAthleteRoutes = (deps: RouteDeps) =>
         }
         const updated = await findInScope(db, actor, id);
         if (!updated) return c.json({ message: "ไม่พบการสมัครนี้" }, 404);
+        // The athlete hears about a decision, not about a reopen or a repeat.
+        if (status !== "review" && status !== row.registration.status) {
+          const to = await recipientOf(db, userId);
+          if (to) {
+            await queueEmails(c, deps, [
+              {
+                kind: "sport-reviewed",
+                to,
+                registration: {
+                  sport: updated.sport.name,
+                  division: updated.division.name,
+                  institution: updated.registration.institution,
+                  status,
+                  note: after.reviewNote,
+                },
+              },
+            ]);
+          }
+        }
         return c.json(toItem(updated), 200);
       },
     )
