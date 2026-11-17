@@ -2,8 +2,9 @@ import { Button } from "@it3k/ui/components/button";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { ArrowLeft, CircleCheck, Ticket as TicketIcon } from "lucide-react";
+import { ArrowLeft, CalendarRange, CircleCheck, Ticket as TicketIcon, TicketX } from "lucide-react";
 
+import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { EventDateChip, EventWhen, EventWhere } from "@/components/event-when-where";
 import { ParticipantShell } from "@/components/participant-shell";
@@ -64,16 +65,26 @@ export function TicketView({ eventRef }: { eventRef: string }) {
         </div>
       ) : held.isError ? (
         held.error instanceof ApiError && held.error.status === 404 ? (
-          <div className="flex flex-col items-center gap-4 rounded-3xl border border-dashed p-10 text-center">
-            <TicketIcon className="size-10 text-muted-foreground" aria-hidden />
-            <p className="text-muted-foreground">คุณยังไม่มีตั๋วกิจกรรมนี้</p>
-            <Button
-              render={<Link to="/events/$eventId" params={{ eventId: eventRef }} />}
-              nativeButton={false}
-            >
-              ไปหน้ากิจกรรม
-            </Button>
-          </div>
+          <EmptyState
+            icon={TicketX}
+            title="ไม่พบตั๋วนี้"
+            description="คุณยังไม่ได้รับตั๋วกิจกรรมนี้ หรือกิจกรรมนี้ไม่มีอยู่แล้ว"
+            action={
+              <>
+                <Button
+                  render={<Link to="/events/$eventId" params={{ eventId: eventRef }} />}
+                  nativeButton={false}
+                >
+                  <CalendarRange data-icon="inline-start" aria-hidden />
+                  ไปหน้ากิจกรรม
+                </Button>
+                <Button variant="outline" render={<Link to="/me/tickets" />} nativeButton={false}>
+                  <TicketIcon data-icon="inline-start" aria-hidden />
+                  ตั๋วของฉัน
+                </Button>
+              </>
+            }
+          />
         ) : (
           <ErrorState error={held.error} onRetry={held.refetch} title="โหลดตั๋วไม่สำเร็จ" />
         )

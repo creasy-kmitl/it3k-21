@@ -85,7 +85,7 @@ describe("/tickets/$slug", () => {
       },
       "concert",
     );
-    expect(await view.findByText("คุณยังไม่มีตั๋วกิจกรรมนี้")).toBeTruthy();
+    expect(await view.findByText("ไม่พบตั๋วนี้")).toBeTruthy();
     expect(view.getByRole("button", { name: "ไปหน้ากิจกรรม" }).getAttribute("href")).toBe(
       "/events/concert",
     );

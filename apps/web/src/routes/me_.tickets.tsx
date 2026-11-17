@@ -24,6 +24,7 @@ import { ArrowLeft, CalendarRange, CircleCheck, Ticket as TicketIcon } from "luc
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { EventDateChip, EventWhen, EventWhere } from "@/components/event-when-where";
 import { LoadingButton } from "@/components/loading-button";
@@ -90,12 +91,17 @@ export function TicketsView() {
         ) : mine.isError ? (
           <ErrorState error={mine.error} onRetry={mine.refetch} title="โหลดตั๋วไม่สำเร็จ" />
         ) : mine.data.items.length === 0 ? (
-          <p className="text-muted-foreground">
-            ยังไม่มีตั๋ว{" "}
-            <Link to="/events" className="text-primary underline-offset-4 hover:underline">
-              รับตั๋วได้ที่หน้ากิจกรรม
-            </Link>
-          </p>
+          <EmptyState
+            icon={TicketIcon}
+            title="ยังไม่มีตั๋ว"
+            description="รับตั๋วกิจกรรมที่เปิดอยู่ แล้วแสดง QR ของตั๋วที่จุดเช็คอินหน้างาน"
+            action={
+              <Button render={<Link to="/events" />} nativeButton={false}>
+                <CalendarRange data-icon="inline-start" aria-hidden />
+                รับตั๋วได้ที่หน้ากิจกรรม
+              </Button>
+            }
+          />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {mine.data.items.map((ticket) => (

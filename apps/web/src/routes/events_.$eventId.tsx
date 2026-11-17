@@ -8,6 +8,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   ArrowLeft,
   CalendarDays,
+  CalendarX,
   CircleCheck,
   ExternalLink,
   Lock,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { Seats, useClaimTicket } from "@/components/event-claim";
 import { EventDateChip } from "@/components/event-when-where";
@@ -76,9 +78,11 @@ export function EventView({ eventId }: { eventId: string }) {
       <div className="flex w-full flex-col gap-6">
         <BackToEvents />
         {detail.error instanceof ApiError && detail.error.status === 404 ? (
-          <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed p-12 text-center text-muted-foreground">
-            <p>ไม่พบกิจกรรมนี้ หรือกิจกรรมนี้ไม่ได้เปิดให้คุณรับตั๋ว</p>
-          </div>
+          <EmptyState
+            icon={CalendarX}
+            title="ไม่พบกิจกรรมนี้"
+            description="กิจกรรมนี้อาจถูกลบ หรือไม่ได้เปิดให้คุณรับตั๋ว"
+          />
         ) : (
           <ErrorState error={detail.error} onRetry={detail.refetch} title="โหลดกิจกรรมไม่สำเร็จ" />
         )}

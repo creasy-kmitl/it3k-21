@@ -60,7 +60,10 @@ export function createUsersApi(baseUrl: string, fetchImpl?: ClientRequestOptions
       return res.json();
     },
     async setStorage(id: string, storageLimit: number, expectedLimit: number) {
-      const res = await client[":id"].storage.$put({ param: { id }, json: { storageLimit, expectedLimit } });
+      const res = await client[":id"].storage.$put({
+        param: { id },
+        json: { storageLimit, expectedLimit },
+      });
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
@@ -72,10 +75,12 @@ export type UsersApi = ReturnType<typeof createUsersApi>;
 export const usersApi = createUsersApi(ENV.VITE_SERVER_URL);
 
 /** The signed-in account's role, department and seat, fresh from the server. */
-export function useMe(api: UsersApi = usersApi) {
+export function useMe(api: UsersApi = usersApi, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["users", "me"],
     queryFn: () => api.me(),
     staleTime: 60_000,
+    // The API answers members only; everyone else would get a 403.
+    enabled,
   });
 }
