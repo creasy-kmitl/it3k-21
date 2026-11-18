@@ -41,7 +41,7 @@ import {
 } from "../../policies/leadership";
 import { validate } from "../../middleware/validation";
 import { canManageDepartments } from "../../policies/departments";
-import { emailAccess } from "../../policies/email";
+import { canSendEmail } from "../../policies/email";
 import { canSport, sportAccessIsAsRead, sportAccessJson } from "../../policies/sports";
 import { usedBytes } from "../files";
 import { limitJsonBody } from "../../middleware/json-body-limit";
@@ -191,7 +191,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
           assignableKinds: assignableKinds(actor),
           institution: view ? view.institution : account.institution,
           sportAccess: sportAccessJson(actor),
-          emailAccess: emailAccess(actor),
+          canSendEmail: canSendEmail(actor),
           viewingAs: actor.simulated,
         },
         200,

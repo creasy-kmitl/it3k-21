@@ -160,10 +160,10 @@ Everything else is decided on the server, in `apps/server/src/policies/`:
 | Sports, events, venues; review and edit athletes | Full rights                                                                         |
 | Read athletes and run the kiosk                  | Full rights, Tech/Live staff and KMITL ทะเบียน staff                                 |
 | Read and export athletes of one institution      | ทะเบียน staff of that institution                                                    |
-| Staff emails                                     | See `policies/email.ts`                                                             |
+| Staff emails, to anyone                          | Admins, every Tech/Live member, and KMITL ทะเบียน heads and viceheads                |
 | Short links                                      | See [Short links](short-links.md)                                                   |
 
-`/api/users/me` returns the caller's flags (`canManageUsers`, `canManageDepartments`, `assignableKinds`, `sportAccess`, `emailAccess`) and list responses carry per-row flags such as `canEdit`, `canReveal` and `canSetStorage`. The web app only uses them to decide what to show.
+`/api/users/me` returns the caller's flags (`canManageUsers`, `canManageDepartments`, `canSendEmail`, `assignableKinds`, `sportAccess`) and list responses carry per-row flags such as `canEdit`, `canReveal` and `canSetStorage`. The web app only uses them to decide what to show.
 
 ### Sign-up and invitations
 

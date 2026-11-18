@@ -1,41 +1,40 @@
-// Who may write and send staff emails, and to whom. Every email route asks
+// Who may write and send staff emails. Senders reach anyone. Every email route asks
 // this file, never a department code, seat or institution directly.
 //
 //   admin                                             anyone
 //   member of a department with sendEmail             anyone
-//   sendEmailAsLeader, host institution, head/vice    anyone
-//   sendEmailAsLeader, other institution, head/vice   people of their own institution
+//   sendEmailAsLeader, head/vice (KMITL)              anyone
 //   everyone else                                     nobody
+//
+// Seats are KMITL's (mayHoldSeat): a seat holder of another institution, left
+// from before that rule, sends nothing. A seat holder without an institution
+// counts as KMITL's, as in policies/sports.ts.
 import { hasRole, isMember } from "@it3k/auth/permissions";
-import { HOST_INSTITUTION, type Institution } from "@it3k/db/profile";
+import { mayHoldSeat } from "@it3k/db/profile";
 
 import type { CurrentUser } from "../middleware/current-user";
 import { hasCapability } from "./department-capabilities";
 import { sportAccessIsAsRead } from "./sports";
-
-export type EmailScope = { kind: "all" } | { kind: "institution"; institution: Institution };
 
 export type EmailActor = Pick<
   CurrentUser,
   "role" | "leadershipRole" | "departmentCode" | "institution" | "banned"
 >;
 
-export function emailAccess(actor: EmailActor | null): EmailScope | null {
-  if (!actor || actor.banned) return null;
-  if (hasRole(actor.role, "admin")) return { kind: "all" };
-  if (!isMember(actor.role)) return null;
-  if (hasCapability(actor.departmentCode, "sendEmail")) return { kind: "all" };
-  if (!hasCapability(actor.departmentCode, "sendEmailAsLeader")) return null;
+export function canSendEmail(actor: EmailActor | null): boolean {
+  if (!actor || actor.banned) return false;
+  if (hasRole(actor.role, "admin")) return true;
+  if (!isMember(actor.role)) return false;
+  if (hasCapability(actor.departmentCode, "sendEmail")) return true;
+  if (!hasCapability(actor.departmentCode, "sendEmailAsLeader")) return false;
   // A seat always belongs to the account's own department.
-  if (!actor.leadershipRole || !actor.institution) return null;
-  if (actor.institution === HOST_INSTITUTION) return { kind: "all" };
-  return { kind: "institution", institution: actor.institution };
+  return actor.leadershipRole !== null && mayHoldSeat(actor.institution);
 }
 
 /**
  * SQL on the actor's own `user` row: the role, department, institution, seat
- * and ban that `emailAccess` read are unchanged. The sport policy checks the
+ * and ban that `canSendEmail` read are unchanged. The sport policy checks the
  * same five facts, so it is shared rather than repeated.
  */
-export const emailAccessIsAsRead: (actor: CurrentUser) => ReturnType<typeof sportAccessIsAsRead> =
+export const canSendEmailIsAsRead: (actor: CurrentUser) => ReturnType<typeof sportAccessIsAsRead> =
   sportAccessIsAsRead;

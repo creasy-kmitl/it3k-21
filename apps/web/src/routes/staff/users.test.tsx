@@ -90,7 +90,7 @@ function setup(
       assignableKinds,
       institution: null,
       sportAccess: { permissions: [], scope: { kind: "none" } },
-      emailAccess: null,
+      canSendEmail: false,
       viewingAs: false,
     }),
     list: async () => ({ items, page: 1, hasMore: false, canGrantAdmin, assignableKinds }),

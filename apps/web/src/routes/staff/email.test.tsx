@@ -9,7 +9,7 @@ import { Route, parseEmails, toAudience } from "./email";
 
 afterEach(cleanup);
 
-function me(emailAccess: Me["emailAccess"]): Me {
+function me(canSendEmail: boolean): Me {
   return {
     id: "me",
     role: "staff",
@@ -20,14 +20,13 @@ function me(emailAccess: Me["emailAccess"]): Me {
     assignableKinds: [],
     institution: null,
     sportAccess: { permissions: [], scope: { kind: "none" } },
-    emailAccess,
+    canSendEmail,
     viewingAs: false,
   };
 }
 
-function audiences(scope: EmailAudiences["scope"] = { kind: "all" }): EmailAudiences {
+function audiences(): EmailAudiences {
   return {
-    scope,
     institutions: ["kmitl", "kmutt", "kmutnb-bangkok", "kmutnb-prachinburi"],
     sports: [
       {
@@ -40,11 +39,11 @@ function audiences(scope: EmailAudiences["scope"] = { kind: "all" }): EmailAudie
   };
 }
 
-function setup(access: Me["emailAccess"], overrides: Partial<EmailsApi> = {}) {
+function setup(access: boolean, overrides: Partial<EmailsApi> = {}) {
   return renderRoute(Route, {
     users: fakeUsersApi({ me: async () => me(access) }),
     emails: fakeEmailsApi({
-      audiences: async () => audiences(access ?? undefined),
+      audiences: async () => audiences(),
       history: async () => ({ items: [] }),
       ...overrides,
     }),
@@ -112,13 +111,13 @@ describe("toAudience", () => {
 
 describe("EmailPage", () => {
   test("refuses accounts without the right to send", async () => {
-    setup(null);
+    setup(false);
     expect(await screen.findByText("คุณไม่มีสิทธิ์ส่งอีเมล")).toBeTruthy();
     expect(screen.queryByLabelText("หัวเรื่อง")).toBeNull();
   });
 
   test("asks for a subject and a body before previewing", async () => {
-    setup({ kind: "all" });
+    setup(true);
     const button = await screen.findByRole("button", { name: "ดูตัวอย่างและส่ง" });
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(button);
@@ -131,19 +130,16 @@ describe("EmailPage", () => {
   test("previews, confirms with the count, then sends what was written", async () => {
     const previewed: ComposeEmail[] = [];
     const sent: ComposeEmail[] = [];
-    setup(
-      { kind: "all" },
-      {
-        preview: async (json) => {
-          previewed.push(json);
-          return { recipientCount: 12, tooMany: false, html: "<p>ตัวอย่าง</p>" };
-        },
-        send: async (json) => {
-          sent.push(json);
-          return { id: "00000000-0000-4000-8000-000000000001", recipientCount: 12 };
-        },
+    setup(true, {
+      preview: async (json) => {
+        previewed.push(json);
+        return { recipientCount: 12, tooMany: false, html: "<p>ตัวอย่าง</p>" };
       },
-    );
+      send: async (json) => {
+        sent.push(json);
+        return { id: "00000000-0000-4000-8000-000000000001", recipientCount: 12 };
+      },
+    });
     fireEvent.change(await screen.findByLabelText("หัวเรื่อง"), { target: { value: "  แจ้งข่าว  " } });
     fireEvent.click(await screen.findByRole("button", { name: "นักกีฬา" }));
     await choose(screen.getByRole("combobox", { name: "กีฬา" }), "ฟุตบอล");
@@ -175,10 +171,7 @@ describe("EmailPage", () => {
   });
 
   test("cannot send when nobody matches", async () => {
-    setup(
-      { kind: "all" },
-      { preview: async () => ({ recipientCount: 0, tooMany: false, html: "<p></p>" }) },
-    );
+    setup(true, { preview: async () => ({ recipientCount: 0, tooMany: false, html: "<p></p>" }) });
     fireEvent.change(await screen.findByLabelText("หัวเรื่อง"), { target: { value: "x" } });
     await typeBody("y");
     const button = screen.getByRole("button", { name: "ดูตัวอย่างและส่ง" });
@@ -190,21 +183,14 @@ describe("EmailPage", () => {
     );
   });
 
-  test("an institution-scoped sender picks only accounts, never typed addresses", async () => {
-    setup(
-      { kind: "institution", institution: "kmutt" },
-      {
-        recipients: async (q) => ({
-          items: [{ id: "u-1", name: `คน ${q}`, email: "one@example.com", institution: "kmutt" }],
-        }),
-      },
-    );
-    fireEvent.click(await screen.findByRole("button", { name: "ผู้เข้าร่วม" }));
-    expect(await screen.findByText("ส่งได้เฉพาะคนใน มจธ.")).toBeTruthy();
-    expect(screen.queryByRole("group", { name: "สถาบัน" })).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "ระบุเอง" }));
-    expect(screen.queryByLabelText("อีเมลอื่น")).toBeNull();
+  test("a hand-picked audience takes accounts and typed addresses", async () => {
+    setup(true, {
+      recipients: async (q) => ({
+        items: [{ id: "u-1", name: `คน ${q}`, email: "one@example.com", institution: "kmutt" }],
+      }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "ระบุเอง" }));
+    expect(screen.getByLabelText("อีเมลอื่น")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("ค้นหาผู้รับ"), { target: { value: "ก" } });
     fireEvent.click(await screen.findByRole("button", { name: "เพิ่ม" }));
     expect(await screen.findByRole("button", { name: "เพิ่มแล้ว" })).toBeTruthy();
@@ -212,25 +198,22 @@ describe("EmailPage", () => {
   });
 
   test("lists past emails", async () => {
-    setup(
-      { kind: "all" },
-      {
-        history: async () => ({
-          items: [
-            {
-              id: "c-1",
-              subject: "ประกาศผล",
-              recipientCount: 30,
-              sentCount: 28,
-              failedCount: 2,
-              senderName: "Tech",
-              audienceKind: "athletes",
-              createdAt: "2026-11-16T03:00:00.000Z",
-            },
-          ],
-        }),
-      },
-    );
+    setup(true, {
+      history: async () => ({
+        items: [
+          {
+            id: "c-1",
+            subject: "ประกาศผล",
+            recipientCount: 30,
+            sentCount: 28,
+            failedCount: 2,
+            senderName: "Tech",
+            audienceKind: "athletes",
+            createdAt: "2026-11-16T03:00:00.000Z",
+          },
+        ],
+      }),
+    });
     expect(await screen.findByText("ประกาศผล")).toBeTruthy();
     expect(screen.getByText("(ไม่สำเร็จ 2)")).toBeTruthy();
   });

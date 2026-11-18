@@ -29,7 +29,8 @@ export const emailCampaign = sqliteTable(
     // Kept apart from `sent_by` so the record survives the account.
     senderName: text("sender_name").notNull(),
     impersonatedBy: text("impersonated_by"),
-    // Set when the sender could only reach their own institution.
+    // Set on campaigns from senders who could only reach their own institution,
+    // before seats were KMITL's only. No longer written.
     scopeInstitution: text("scope_institution", { enum: INSTITUTION_IDS }),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)

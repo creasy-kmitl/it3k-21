@@ -75,7 +75,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       items: [
         { title: "QR Code", to: "/staff/qr-code", icon: <QrCodeIcon /> },
         { title: "ลิงก์สั้น", to: "/staff/links", icon: <Link2Icon /> },
-        ...(me?.emailAccess
+        ...(me?.canSendEmail
           ? [{ title: "ส่งอีเมล", to: "/staff/email", icon: <MailIcon /> } as const]
           : []),
       ],
