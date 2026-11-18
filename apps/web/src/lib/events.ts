@@ -1,4 +1,4 @@
-import type { CheckinMethod, EventInput, EventType } from "@it3k/db/event-rules";
+import type { CheckinMethod, EventDraftInput, EventInput, EventType } from "@it3k/db/event-rules";
 import { hc } from "hono/client";
 import type { ClientRequestOptions, InferResponseType } from "hono/client";
 
@@ -11,16 +11,36 @@ type Client = ReturnType<typeof hc<EventRoutes>>;
 
 export type EventList = InferResponseType<Client["index"]["$get"], 200>;
 export type EventItem = EventList["items"][number];
+export type EventDetail = InferResponseType<Client[":id"]["$get"], 200>;
+export type EventTicketType = EventItem["ticketTypes"][number];
 export type EventFilters = { type?: EventType; endsAfter?: number };
 export type ParticipantList = InferResponseType<Client[":id"]["participants"]["$get"], 200>;
 export type Participant = ParticipantList["items"][number];
-export type Person = Omit<Participant, "expected" | "hasTicket" | "checkin">;
+export type Person = Omit<
+  Participant,
+  "expected" | "hasTicket" | "tickets" | "checkins" | "checkin"
+>;
+
+/** The ticket a check-in used: its type, and which of the holder's tickets it is. */
+export type CheckinTicket = { id: string; typeName: string; index: number; total: number };
 
 /** What the kiosk shows after a scan. */
 export type CheckinOutcome =
-  | { code: "checked-in"; person: Person; checkedInAt: string; forced: boolean }
-  | { code: "duplicate"; person: Person; checkedInAt: string; message: string }
-  | { code: "not-listed"; person: Person; canForce: boolean; message: string }
+  | {
+      code: "checked-in";
+      person: Person;
+      checkinId: string;
+      checkedInAt: string;
+      forced: boolean;
+      ticket: CheckinTicket | null;
+    }
+  | {
+      code: "duplicate";
+      person: Person;
+      checkedInAt: string;
+      message: string;
+      ticket: CheckinTicket | null;
+    }
   | { code: "no-ticket"; person: Person; canForce: boolean; message: string }
   | {
       code: "wrong-event";
@@ -37,7 +57,6 @@ export type ForceableOutcome = Extract<CheckinOutcome, { canForce: boolean }>;
 const OUTCOME_CODES = new Set([
   "checked-in",
   "duplicate",
-  "not-listed",
   "no-ticket",
   "wrong-event",
   "unknown",
@@ -71,7 +90,8 @@ export function createEventsApi(baseUrl: string, fetchImpl?: ClientRequestOption
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
-    async create(json: EventInput) {
+    /** A draft from a name and slug; the rest is set on its edit tab. */
+    async create(json: EventDraftInput) {
       const res = await client.index.$post({ json });
       if (!res.ok) throw await toApiError(res);
       return res.json();
@@ -103,8 +123,8 @@ export function createEventsApi(baseUrl: string, fetchImpl?: ClientRequestOption
           : `Request failed (${res.status})`;
       throw new ApiError(res.status, message, body);
     },
-    async undoCheckIn(id: string, userId: string) {
-      const res = await client[":id"].checkins[":userId"].$delete({ param: { id, userId } });
+    async undoCheckIn(id: string, checkinId: string) {
+      const res = await client[":id"].checkins[":checkinId"].$delete({ param: { id, checkinId } });
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },

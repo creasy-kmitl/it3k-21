@@ -1,4 +1,5 @@
 import { EVENT_TYPE_LABELS } from "@it3k/db/event-rules";
+import { docFromText, hasContent } from "@it3k/db/rich-text";
 import { Badge } from "@it3k/ui/components/badge";
 import { Button } from "@it3k/ui/components/button";
 import { Separator } from "@it3k/ui/components/separator";
@@ -25,12 +26,19 @@ import { Seats, useClaimTicket } from "@/components/event-claim";
 import { EventDateChip } from "@/components/event-when-where";
 import { LoadingButton } from "@/components/loading-button";
 import { ParticipantShell } from "@/components/participant-shell";
+import { RichTextView } from "@/components/rich-text-view";
 import { SportThumbnail } from "@/components/sport-art";
 import { useApis } from "@/lib/api-context";
 import { formatBangkok, formatRange } from "@/lib/bangkok-time";
 import { ApiError } from "@/lib/leadership";
 import { requireParticipantSession } from "@/lib/participant-auth";
-import { type EventDetail, TICKETS_KEY, ticketRef } from "@/lib/tickets";
+import {
+  CLAIM_REFUSALS,
+  type EventDetail,
+  type OpenTicketType,
+  TICKETS_KEY,
+  ticketRef,
+} from "@/lib/tickets";
 
 export const Route = createFileRoute("/events_/$eventId")({
   ssr: false,
@@ -91,6 +99,8 @@ export function EventView({ eventId }: { eventId: string }) {
   }
 
   const item = detail.data;
+  // Events saved before rich content keep their plain description.
+  const content = item.content ?? (item.description ? docFromText(item.description) : null);
   return (
     // Phones stack header, card, then details; wide screens put the card in
     // its own column beside both, sticky while the details scroll.
@@ -122,12 +132,12 @@ export function EventView({ eventId }: { eventId: string }) {
           label={item.name}
           className="hidden rounded-3xl border lg:block"
         />
-        {item.description ? (
+        {content && hasContent(content) ? (
           <section aria-labelledby="about-event" className="flex flex-col gap-2">
             <h2 id="about-event" className="text-lg font-semibold">
               รายละเอียด
             </h2>
-            <p className="leading-relaxed whitespace-pre-wrap">{item.description}</p>
+            <RichTextView doc={content} size="lg" />
           </section>
         ) : null}
       </div>
@@ -217,55 +227,178 @@ function Fact({
   );
 }
 
-/** The card's call to action. The QR itself lives only on the ticket's page. */
+/** The types a caller sees: those they may claim or already hold. */
+export const shownTypes = (item: EventDetail) =>
+  item.ticketTypes.filter((type) => type.eligible || type.held > 0);
+
+/**
+ * The card's call to action: the tickets the caller holds, then one row per
+ * ticket type with its seats and its own claim button. The QR itself lives
+ * only on the ticket page.
+ */
 function TicketAction({ item }: { item: EventDetail }) {
   const claim = useClaimTicket(item);
+  const types = shownTypes(item);
+  const claimable = item.open ? types.filter((type) => type.canClaim) : [];
+  const held = item.tickets;
+  const checkedIn = held.filter((ticket) => ticket.checkedInAt).length;
 
-  if (item.ticket) {
-    const checkedInAt = item.ticket.checkedInAt;
-    return (
-      <>
-        <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
-          <CircleCheck className="size-4" aria-hidden />
-          {checkedInAt
-            ? `เช็คอินแล้ว ${formatBangkok(Date.parse(checkedInAt), "time")}`
-            : "คุณมีตั๋วกิจกรรมนี้แล้ว"}
-        </p>
-        <Button
-          size="lg"
-          render={<Link to="/tickets/$slug" params={{ slug: ticketRef(item) }} />}
-          nativeButton={false}
-        >
-          <TicketIcon data-icon="inline-start" aria-hidden />
-          ดูตั๋ว
-        </Button>
-      </>
-    );
-  }
-
-  if (!item.open) {
-    return (
-      <Button size="lg" variant="secondary" disabled>
-        <Lock data-icon="inline-start" aria-hidden />
-        ปิดรับตั๋วแล้ว
-      </Button>
-    );
-  }
-
-  const soldOut = item.remaining === 0;
   return (
     <>
-      <Seats capacity={item.capacity} remaining={item.remaining} />
+      {held.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <CircleCheck className="size-4 shrink-0" aria-hidden />
+            {held.length === 1
+              ? held[0]?.checkedInAt
+                ? `เช็คอินแล้ว ${formatBangkok(Date.parse(held[0].checkedInAt), "time")}`
+                : "คุณมีตั๋วกิจกรรมนี้แล้ว"
+              : `คุณมีตั๋ว ${held.length} ใบ${checkedIn > 0 ? ` · เช็คอินแล้ว ${checkedIn} ใบ` : ""}`}
+          </p>
+          <Button
+            size="lg"
+            className="h-11"
+            render={<Link to="/tickets/$slug" params={{ slug: ticketRef(item) }} />}
+            nativeButton={false}
+          >
+            <TicketIcon data-icon="inline-start" aria-hidden />
+            {held.length > 1 ? "ดูตั๋วทั้งหมด" : "ดูตั๋ว"}
+          </Button>
+        </div>
+      )}
+
+      {!item.open ? (
+        held.length === 0 && (
+          <Button size="lg" variant="secondary" className="h-11" disabled>
+            <Lock data-icon="inline-start" aria-hidden />
+            ปิดรับตั๋วแล้ว
+          </Button>
+        )
+      ) : types.length === 0 ? (
+        held.length === 0 && (
+          <p className="text-sm text-muted-foreground">ยังไม่มีตั๋วที่เปิดให้คุณรับ</p>
+        )
+      ) : (
+        <>
+          {item.capacity !== null && types.length > 1 && (
+            <div className="flex flex-col gap-1">
+              <p className="text-xs font-medium text-muted-foreground">ที่นั่งรวมทั้งกิจกรรม</p>
+              <Seats capacity={item.capacity} remaining={item.remaining} />
+            </div>
+          )}
+          <ul aria-label="ประเภทตั๋ว" className="flex flex-col gap-3">
+            {types.map((type) => (
+              <li key={type.id}>
+                <TicketTypeRow
+                  type={type}
+                  single={types.length === 1}
+                  pending={claim.isPending && claim.variables?.id === type.id}
+                  disabled={claim.isPending}
+                  onClaim={() => claim.mutate({ id: type.id, name: type.name })}
+                />
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-muted-foreground">ยกเลิกตั๋วเองได้ก่อนเช็คอิน ที่นั่งจะคืนให้คนอื่น</p>
+        </>
+      )}
+
+      {/* On phones the card scrolls away, so the one ticket to take stays in reach. */}
+      {claimable.length === 1 && held.length === 0 && claimable[0] && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
+          <LoadingButton
+            icon={TicketIcon}
+            size="lg"
+            className="h-11 w-full"
+            loading={claim.isPending}
+            onClick={() => {
+              const type = claimable[0];
+              if (type) claim.mutate({ id: type.id, name: type.name });
+            }}
+          >
+            {types.length > 1 ? `รับตั๋ว ${claimable[0].name}` : "รับตั๋ว"}
+          </LoadingButton>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** What a type's button says when it cannot be pressed. */
+function refusedLabel(type: OpenTicketType) {
+  switch (type.refusal) {
+    case "full":
+      return "ตั๋วเต็มแล้ว";
+    case "limit":
+      return type.maxPerUser > 1 ? "รับครบแล้ว" : "รับแล้ว";
+    case "closed":
+    case "type-closed":
+      return "ปิดรับแล้ว";
+    default:
+      return "รับไม่ได้";
+  }
+}
+
+function TicketTypeRow({
+  type,
+  single,
+  pending,
+  disabled,
+  onClaim,
+}: {
+  type: OpenTicketType;
+  /** The only type: its name and box add nothing, so only seats and the button show. */
+  single: boolean;
+  pending: boolean;
+  disabled: boolean;
+  onClaim: () => void;
+}) {
+  const reason =
+    type.refusal && type.refusal !== "limit" && type.refusal !== "full"
+      ? CLAIM_REFUSALS[type.refusal]
+      : null;
+  const body = (
+    <>
+      {!single && (
+        <div className="flex flex-col gap-0.5">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
+            {type.name}
+            {type.held > 0 && (
+              <Badge variant="secondary">
+                มีแล้ว {type.maxPerUser > 1 ? `${type.held}/${type.maxPerUser}` : ""}
+              </Badge>
+            )}
+          </p>
+          {type.description && (
+            <p className="text-sm whitespace-pre-line text-muted-foreground">{type.description}</p>
+          )}
+        </div>
+      )}
+      {single && type.description && (
+        <p className="text-sm whitespace-pre-line text-muted-foreground">{type.description}</p>
+      )}
+      <Seats capacity={type.capacity} remaining={type.remaining} />
+      {type.maxPerUser > 1 && (
+        <p className="text-xs text-muted-foreground">รับได้สูงสุด {type.maxPerUser} ใบต่อคน</p>
+      )}
       <LoadingButton
         icon={TicketIcon}
         size="lg"
-        loading={claim.isPending}
-        disabled={soldOut}
-        onClick={() => claim.mutate()}
+        variant={type.canClaim ? "default" : "secondary"}
+        className="h-11 w-full"
+        loading={pending}
+        disabled={!type.canClaim || disabled}
+        aria-label={single ? undefined : `รับตั๋ว ${type.name}`}
+        onClick={onClaim}
       >
-        {soldOut ? "ตั๋วเต็มแล้ว" : "รับตั๋ว"}
+        {type.canClaim ? (type.held > 0 ? "รับเพิ่ม" : "รับตั๋ว") : refusedLabel(type)}
       </LoadingButton>
-      <p className="text-xs text-muted-foreground">ยกเลิกตั๋วเองได้ก่อนเช็คอิน ที่นั่งจะคืนให้คนอื่น</p>
+      {reason && <p className="text-xs text-muted-foreground">{reason}</p>}
     </>
+  );
+  return single ? (
+    <div className="flex flex-col gap-3">{body}</div>
+  ) : (
+    <div className="flex flex-col gap-3 rounded-2xl border p-4">{body}</div>
   );
 }

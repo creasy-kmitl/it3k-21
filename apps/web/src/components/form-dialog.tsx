@@ -122,12 +122,16 @@ export function FormDialog({
   pending,
   onClose,
   onSubmit,
+  submitLabel = "บันทึก",
+  submitIcon = Save,
   children,
 }: {
   title: string;
   /** Shown before the title, as the calendar's side panel does. */
   icon?: LucideIcon;
   description?: string;
+  submitLabel?: string;
+  submitIcon?: LucideIcon;
   pending: boolean;
   onClose: () => void;
   onSubmit: () => void;
@@ -156,8 +160,8 @@ export function FormDialog({
             <Button type="button" variant="ghost" onClick={onClose}>
               ยกเลิก
             </Button>
-            <LoadingButton type="submit" icon={Save} loading={pending}>
-              บันทึก
+            <LoadingButton type="submit" icon={submitIcon} loading={pending}>
+              {submitLabel}
             </LoadingButton>
           </DialogFooter>
         </form>

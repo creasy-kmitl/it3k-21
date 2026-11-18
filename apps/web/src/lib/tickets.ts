@@ -13,6 +13,8 @@ export type Ticket = TicketList["items"][number];
 export type OpenEventList = InferResponseType<Client["events"]["$get"], 200>;
 export type OpenEvent = OpenEventList["items"][number];
 export type EventDetail = InferResponseType<Client["events"][":id"]["$get"], 200>;
+export type OpenTicketType = OpenEvent["ticketTypes"][number];
+export type HeldTickets = InferResponseType<Client["events"][":id"]["ticket"]["$get"], 200>;
 
 /** Where a ticket's own page lives: the event's slug, or its id when it has none. */
 export const ticketRef = (event: { id: string; slug: string | null }) => event.slug ?? event.id;
@@ -20,16 +22,25 @@ export const ticketRef = (event: { id: string; slug: string | null }) => event.s
 /** Every ticket query lives under this key, so a claim or cancel refreshes them all. */
 export const TICKETS_KEY = ["tickets"] as const;
 
-/** Why a claim was refused, as the API reports it. */
-export type ClaimRefusal = "closed" | "full" | "not-listed" | "missing";
+/** Why a claim is or was refused, as the API reports it. */
+export const CLAIM_REFUSALS = {
+  closed: "กิจกรรมนี้ปิดรับตั๋วแล้ว",
+  "type-closed": "ตั๋วประเภทนี้ปิดรับแล้ว",
+  full: "ตั๋วประเภทนี้เต็มแล้ว",
+  limit: "รับตั๋วประเภทนี้ครบจำนวนแล้ว",
+  "not-listed": "เฉพาะนักกีฬาในรายชื่อของกิจกรรมนี้",
+  "not-eligible": "ตั๋วประเภทนี้ไม่ได้เปิดให้คุณรับ",
+  missing: "ไม่พบกิจกรรมหรือประเภทตั๋วนี้",
+} as const;
+export type ClaimRefusal = keyof typeof CLAIM_REFUSALS;
+
+const isRefusal = (code: string): code is ClaimRefusal => code in CLAIM_REFUSALS;
 
 export function claimRefusal(error: unknown): ClaimRefusal | null {
   if (!(error instanceof ApiError)) return null;
   const body = error.body;
   if (body && typeof body === "object" && "code" in body && typeof body.code === "string") {
-    return ["closed", "full", "not-listed", "missing"].includes(body.code)
-      ? (body.code as ClaimRefusal)
-      : null;
+    return isRefusal(body.code) ? body.code : null;
   }
   return null;
 }
@@ -56,14 +67,17 @@ export function createTicketsApi(baseUrl: string, fetchImpl?: ClientRequestOptio
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
-    /** The caller's ticket to one event, QR code included. */
-    async ticketFor(eventId: string) {
+    /** The caller's tickets to one event, QR codes included. */
+    async ticketsFor(eventId: string) {
       const res = await client.events[":id"].ticket.$get({ param: { id: eventId } });
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
-    async claim(eventId: string) {
-      const res = await client.events[":id"].$post({ param: { id: eventId }, json: {} });
+    async claim(eventId: string, ticketTypeId: string) {
+      const res = await client.events[":id"].$post({
+        param: { id: eventId },
+        json: { ticketTypeId },
+      });
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },

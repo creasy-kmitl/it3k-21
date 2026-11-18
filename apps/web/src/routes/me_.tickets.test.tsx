@@ -20,6 +20,7 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     code: "a".repeat(32),
     claimedAt: START,
     checkedInAt: null,
+    ticketType: { id: "tt-1", name: "ผู้ชมทั่วไป" },
     event: {
       id: "e-1",
       slug: "opening",

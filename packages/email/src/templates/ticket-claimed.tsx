@@ -33,6 +33,7 @@ export function TicketClaimedEmail({
   const t = job.ticket;
   const rows: InfoRow[] = [
     { label: "กิจกรรม", value: t.eventName },
+    ...(t.ticketTypeName ? [{ label: "ประเภทตั๋ว", value: t.ticketTypeName }] : []),
     { label: "วันเวลา", value: formatEventTime(t.startAt, t.endAt) },
   ];
   if (t.venue) rows.push({ label: "สถานที่", value: t.venue });

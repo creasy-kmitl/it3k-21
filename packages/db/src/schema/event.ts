@@ -10,8 +10,9 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-import { CHECKIN_METHODS, EVENT_TYPES } from "../event-rules";
+import { CHECKIN_METHODS, EVENT_TYPES, type TicketRole } from "../event-rules";
 import type { Institution } from "../profile";
+import type { RichTextDoc } from "../rich-text";
 import { user } from "./auth";
 import { sportDivision } from "./sport";
 
@@ -69,16 +70,22 @@ export const event = sqliteTable(
     // The event's address in links, e.g. `/kiosk/<slug>`; the id works too.
     // Null for events made before slugs, until they are next saved.
     slug: text("slug"),
+    // A plain-text summary of `content` for cards and link previews, written
+    // by the API on every save. Events from before rich text have only this.
     description: text("description"),
+    // The event page's body as a Tiptap document (`richTextDocSchema`).
+    content: text("content", { mode: "json" }).$type<RichTextDoc>(),
     startAt: integer("start_at", { mode: "timestamp_ms" }).notNull(),
     endAt: integer("end_at", { mode: "timestamp_ms" }).notNull(),
     // No ON DELETE: a venue with events cannot be deleted.
     venueId: text("venue_id").references(() => venue.id),
     // Null shows a generated illustration.
     thumbnailUrl: text("thumbnail_url"),
-    // Whether accounts may claim a ticket now; claiming also stops at endAt.
+    // Whether accounts may claim tickets now, of any type; claiming also
+    // stops at endAt. Each ticket type has its own switch as well.
     ticketsOpen: integer("tickets_open", { mode: "boolean" }).notNull().default(false),
-    // Most tickets the event hands out; null for no limit. Kept positive by
+    // Most tickets the event hands out across all its types; null for no
+    // limit. Kept positive by
     // `eventInput`, not a CHECK: adding one would rebuild the table, and on D1
     // that cascades deletes into check-ins.
     ticketCapacity: integer("ticket_capacity"),
@@ -140,24 +147,76 @@ export const eventCheckin = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    // The ticket this check-in used; null for one forced in without a ticket.
+    // Each ticket checks in once, so someone holding two tickets checks in
+    // twice.
+    ticketId: text("ticket_id").references(() => eventTicket.id, { onDelete: "cascade" }),
     checkedInBy: text("checked_in_by").references(() => user.id, { onDelete: "set null" }),
     method: text("method", { enum: CHECKIN_METHODS }).notNull(),
-    // Checked in although not on the event's list, by a catalog manager.
+    // Checked in without a ticket, by a catalog manager.
     forced: integer("forced", { mode: "boolean" }).notNull().default(false),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
   },
   (table) => [
-    uniqueIndex("event_checkin_event_user_uidx").on(table.eventId, table.userId),
+    uniqueIndex("event_checkin_ticket_uidx").on(table.ticketId),
+    // At most one ticketless check-in per person and event.
+    uniqueIndex("event_checkin_ticketless_uidx")
+      .on(table.eventId, table.userId)
+      .where(sql`${table.ticketId} IS NULL`),
+    index("event_checkin_event_user_idx").on(table.eventId, table.userId),
     index("event_checkin_user_id_idx").on(table.userId),
     check("event_checkin_method_check", sql`${table.method} IN (${inList(CHECKIN_METHODS)})`),
   ],
 );
 
 /**
- * One account's ticket to one event, claimed by the account itself. The QR
- * it shows holds `code`; cancelling a ticket deletes the row.
+ * A kind of ticket an event hands out, with its own seats, per-person limit
+ * and rules on who may claim it. Empty rule lists allow anyone; when several
+ * kinds of rule are set, a claimer must pass each kind.
+ */
+export const eventTicketType = sqliteTable(
+  "event_ticket_type",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => event.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    // Null for no limit.
+    capacity: integer("capacity"),
+    maxPerUser: integer("max_per_user").notNull().default(1),
+    open: integer("open", { mode: "boolean" }).notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    // Only athletes the (sport) event expects: approved, in its divisions
+    // and institutions.
+    listedOnly: integer("listed_only", { mode: "boolean" }).notNull().default(false),
+    allowedRoles: text("allowed_roles", { mode: "json" })
+      .$type<TicketRole[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    allowedInstitutions: text("allowed_institutions", { mode: "json" })
+      .$type<Institution[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    // Athletes with an approved registration in any division of these sports.
+    allowedSportIds: text("allowed_sport_ids", { mode: "json" })
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    ...timestamps(),
+  },
+  (table) => [index("event_ticket_type_event_id_idx").on(table.eventId)],
+);
+
+/**
+ * One ticket to one event, claimed by its holder. The QR it shows holds
+ * `code`; cancelling a ticket deletes the row. A ticket type may let one
+ * account hold several.
  */
 export const eventTicket = sqliteTable(
   "event_ticket",
@@ -171,6 +230,10 @@ export const eventTicket = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    // Null only in the database, for tickets older than ticket types until
+    // the backfill migration; the API always sets it. No ON DELETE: a type
+    // with tickets cannot be deleted.
+    ticketTypeId: text("ticket_type_id").references(() => eventTicketType.id),
     // Random and unguessable; what the kiosk looks a ticket up by.
     code: text("code").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
@@ -179,7 +242,8 @@ export const eventTicket = sqliteTable(
   },
   (table) => [
     uniqueIndex("event_ticket_code_uidx").on(table.code),
-    uniqueIndex("event_ticket_event_user_uidx").on(table.eventId, table.userId),
+    index("event_ticket_event_user_idx").on(table.eventId, table.userId),
+    index("event_ticket_type_user_idx").on(table.ticketTypeId, table.userId),
     index("event_ticket_user_id_idx").on(table.userId),
   ],
 );

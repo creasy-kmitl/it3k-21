@@ -127,6 +127,7 @@ function ResultCard({ scan, onDismiss }: { scan: ScanCheckIn; onDismiss: () => v
     title,
     person,
     details,
+    ticketLabel,
     forceable,
     forceLabel,
   } = describeResult(scan.outcome, scan.failure);
@@ -149,6 +150,11 @@ function ResultCard({ scan, onDismiss }: { scan: ScanCheckIn; onDismiss: () => v
             {person.nickname && ` (${person.nickname})`}
           </p>
           {details && <p className="text-sm opacity-90">{details}</p>}
+          {ticketLabel && (
+            <p className="mt-1 rounded-full bg-black/15 px-3 py-0.5 text-sm font-medium">
+              {ticketLabel}
+            </p>
+          )}
         </>
       )}
       <div className="mt-2 flex flex-wrap justify-center gap-2">

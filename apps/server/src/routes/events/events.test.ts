@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { eventDivision, venue } from "@it3k/db/schema/index";
+import { eventDivision, eventTicket, eventTicketType, venue } from "@it3k/db/schema/index";
 import { eq } from "drizzle-orm";
 
 import { createTestContext, defined, readJson } from "../../testing";
@@ -21,13 +21,32 @@ type EventBody = {
   venue: { id: string; name: string } | null;
   institutions: string[];
   divisions: { id: string; name: string; sportName: string; icon: string }[];
+  ticketTypes: { id: string; name: string; ticketCount: number; maxPerUser: number }[];
 };
+
+const doc = (...lines: string[]) => ({
+  type: "doc",
+  content: lines.map((text) => ({ type: "paragraph", content: [{ type: "text", text }] })),
+});
+
+const ticketType = (overrides: Record<string, unknown> = {}) => ({
+  name: "ทั่วไป",
+  description: "",
+  capacity: null,
+  maxPerUser: 1,
+  open: true,
+  listedOnly: false,
+  allowedRoles: [],
+  allowedInstitutions: [],
+  allowedSportIds: [],
+  ...overrides,
+});
 
 function sportEvent(overrides: Record<string, unknown> = {}) {
   return {
     type: "sport",
     name: "ฟุตบอลรอบแรก",
-    description: "",
+    content: null,
     startAt: DAY,
     endAt: DAY + 3 * HOUR,
     venueId,
@@ -36,6 +55,7 @@ function sportEvent(overrides: Record<string, unknown> = {}) {
     ticketCapacity: null,
     institutions: ["kmitl", "kmutt"],
     divisionIds: [football],
+    ticketTypes: [ticketType({ listedOnly: true })],
     ...overrides,
   };
 }
@@ -43,7 +63,7 @@ function sportEvent(overrides: Record<string, unknown> = {}) {
 const general = (overrides: Record<string, unknown> = {}) => ({
   type: "general",
   name: "พิธีเปิด",
-  description: "เปิดงาน",
+  content: doc("เปิดงาน"),
   startAt: DAY - 24 * HOUR,
   endAt: DAY - 22 * HOUR,
   venueId: null,
@@ -52,6 +72,7 @@ const general = (overrides: Record<string, unknown> = {}) => ({
   ticketCapacity: null,
   institutions: [],
   divisionIds: [],
+  ticketTypes: [ticketType()],
   ...overrides,
 });
 
@@ -77,33 +98,74 @@ async function send(userId: string, method: string, path: string, json?: unknown
   return { res, body: await readJson(res) };
 }
 
+/** Creates an event from its name and slug, then saves `full` over the draft. */
+async function make(full: Record<string, unknown>, who = "tech") {
+  const draft = await send(who, "POST", "/", {
+    name: full.name,
+    slug: (full.slug as string | undefined) ?? "",
+  });
+  if (draft.res.status !== 201) return draft;
+  const created = draft.body as unknown as EventBody;
+  const { slug: _slug, ...rest } = full;
+  return send(who, "PUT", `/${created.id}`, {
+    ...rest,
+    ticketTypes: (full.ticketTypes as Record<string, unknown>[]).map((type, index) =>
+      index === 0 ? { ...type, id: created.ticketTypes[0]?.id } : type,
+    ),
+    version: 1,
+  });
+}
+
 describe("creating", () => {
   test("only catalog managers create events", async () => {
-    for (const who of ["reg-staff", "reg-kmutt", "art"]) {
-      expect((await send(who, "POST", "/", sportEvent())).res.status).toBe(403);
+    for (const who of ["reg-staff", "reg-kmutt", "art", "athlete"]) {
+      expect((await send(who, "POST", "/", { name: "x", slug: "" })).res.status).toBe(403);
     }
-    expect((await send("athlete", "POST", "/", sportEvent())).res.status).toBe(403);
     for (const who of ["admin", "tech", "reg-head"]) {
-      expect((await send(who, "POST", "/", sportEvent())).res.status).toBe(201);
+      expect((await send(who, "POST", "/", { name: "x", slug: "" })).res.status).toBe(201);
     }
   });
 
-  test("returns the event with its venue, institutions and divisions", async () => {
-    const { res, body } = await send("tech", "POST", "/", sportEvent());
+  test("takes a name and slug and fills in a closed general draft", async () => {
+    const before = Date.now();
+    const { res, body } = await send("tech", "POST", "/", { name: "Opening", slug: "" });
     expect(res.status).toBe(201);
-    const created = body as unknown as EventBody;
-    expect(created).toMatchObject({
-      type: "sport",
+    expect(body).toMatchObject({
+      type: "general",
+      name: "Opening",
+      slug: "opening",
+      content: null,
       description: null,
-      thumbnailUrl: null,
+      ticketsOpen: false,
       version: 1,
+      institutions: [],
+      divisions: [],
+      ticketTypes: [{ name: "ทั่วไป", maxPerUser: 1, open: true, ticketCount: 0 }],
+    });
+    const start = Date.parse(body.startAt as string);
+    expect(start % HOUR).toBe(0);
+    expect(start).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(body.endAt as string) - start).toBe(2 * HOUR);
+    // Nothing but the name and slug.
+    expect((await send("tech", "POST", "/", { ...general(), slug: "" })).res.status).toBe(400);
+  });
+
+  test("a full save returns the venue, institutions, divisions and summary", async () => {
+    const { res, body } = await make(sportEvent({ content: doc("รอบแรก", "  เตะ  เวลา 9 โมง ") }));
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      type: "sport",
+      description: "รอบแรก\nเตะ เวลา 9 โมง",
+      content: doc("รอบแรก", "  เตะ  เวลา 9 โมง "),
+      thumbnailUrl: null,
+      version: 2,
       venue: { id: venueId, name: "สนามฟุตบอลกลาง" },
       institutions: ["kmitl", "kmutt"],
       divisions: [{ name: "ฟุตบอล", sportName: "กีฬาฟุตบอล", icon: "football" }],
     });
   });
 
-  test("checks times and what each type may link to", async () => {
+  test("checks times, links, content and ticket types", async () => {
     const bad = [
       sportEvent({ endAt: DAY }),
       sportEvent({ endAt: DAY + 32 * 24 * HOUR }),
@@ -113,27 +175,104 @@ describe("creating", () => {
       sportEvent({ institutions: ["harvard"] }),
       general({ institutions: ["kmitl"] }),
       general({ thumbnailUrl: "http://x.test/a.png" }),
+      general({ content: { type: "doc", content: [{ type: "codeBlock" }] } }),
+      general({ content: "<p>html</p>" }),
+      general({ ticketTypes: [ticketType(), ticketType({ name: " ทั่วไป " })] }),
+      general({ ticketTypes: [ticketType({ listedOnly: true })] }),
+      general({ ticketTypes: [ticketType({ capacity: 1, maxPerUser: 2 })] }),
+      general({ ticketTypes: [ticketType({ maxPerUser: 0 })] }),
+      general({ ticketTypes: [ticketType({ allowedRoles: ["root"] })] }),
+      general({ ticketsOpen: true, ticketTypes: [ticketType({ open: false })] }),
+      general({ ticketsOpen: true, ticketTypes: [] }),
     ];
     for (const json of bad) {
-      expect((await send("tech", "POST", "/", json)).res.status).toBe(400);
+      expect((await make(json)).res.status, JSON.stringify(json).slice(0, 200)).toBe(400);
     }
-    expect((await send("tech", "POST", "/", general())).res.status).toBe(201);
+    expect((await make(general())).res.status).toBe(200);
   });
 
   test("an unknown venue or division is refused", async () => {
-    const venueGone = await send("tech", "POST", "/", sportEvent({ venueId: "nope" }));
+    const venueGone = await make(sportEvent({ venueId: "nope" }));
     expect(venueGone.res.status).toBe(400);
     expect(venueGone.body.message).toBe("ไม่พบสถานที่หรือประเภทกีฬาที่เลือก กรุณาโหลดใหม่");
-    expect(
-      (await send("tech", "POST", "/", sportEvent({ divisionIds: ["nope"] }))).res.status,
-    ).toBe(400);
+    expect((await make(sportEvent({ divisionIds: ["nope"] }))).res.status).toBe(400);
+  });
+});
+
+describe("ticket types", () => {
+  test("are updated by id, added without one and removed when left out", async () => {
+    const { body } = await make(general());
+    const event = body as unknown as EventBody;
+    const first = defined(event.ticketTypes[0]);
+    const both = await send("tech", "PUT", `/${event.id}`, {
+      ...general({
+        ticketTypes: [
+          ticketType({ name: "VIP", capacity: 10, maxPerUser: 2, allowedRoles: ["staff"] }),
+          ticketType({ id: first.id, name: "ผู้ชม" }),
+        ],
+      }),
+      version: 2,
+    });
+    expect(both.res.status).toBe(200);
+    const types = (both.body as unknown as EventBody).ticketTypes;
+    expect(types.map((type) => type.name)).toEqual(["VIP", "ผู้ชม"]);
+    expect(types[1]?.id).toBe(first.id);
+    expect(types[0]).toMatchObject({ capacity: 10, maxPerUser: 2, allowedRoles: ["staff"] });
+
+    const vip = defined(types[0]).id;
+    const one = await send("tech", "PUT", `/${event.id}`, {
+      ...general({ ticketTypes: [ticketType({ id: vip, name: "VIP" })] }),
+      version: 3,
+    });
+    expect((one.body as unknown as EventBody).ticketTypes.map((type) => type.id)).toEqual([vip]);
+  });
+
+  test("a type with tickets cannot be removed, nor one from another event", async () => {
+    const { body } = await make(general());
+    const event = body as unknown as EventBody;
+    const typeId = defined(event.ticketTypes[0]).id;
+    await t.db
+      .insert(eventTicket)
+      .values({ eventId: event.id, ticketTypeId: typeId, userId: "art", code: "x".repeat(32) });
+    const removed = await send("tech", "PUT", `/${event.id}`, {
+      ...general({ ticketTypes: [ticketType({ name: "ใหม่" })] }),
+      version: 2,
+    });
+    expect(removed.res.status).toBe(409);
+    expect(removed.body.message).toBe("ลบประเภทตั๋วที่มีคนรับแล้วไม่ได้");
+
+    const other = await make(general({ name: "Other" }));
+    const stolen = await send("tech", "PUT", `/${(other.body as unknown as EventBody).id}`, {
+      ...general({ name: "Other", ticketTypes: [ticketType({ id: typeId })] }),
+      version: 2,
+    });
+    expect(stolen.res.status).toBe(409);
+    expect(await t.db.select().from(eventTicketType).where(eq(eventTicketType.id, typeId))).toHaveLength(1);
+  });
+
+  test("a ticket claimed meanwhile keeps its type from being removed", async () => {
+    const { body } = await make(general());
+    const event = body as unknown as EventBody;
+    const typeId = defined(event.ticketTypes[0]).id;
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run(
+        `insert into event_ticket (id, event_id, ticket_type_id, user_id, code) values ('raced', '${event.id}', '${typeId}', 'art', '${"y".repeat(32)}')`,
+      );
+    };
+    const removed = await send("tech", "PUT", `/${event.id}`, {
+      ...general({ ticketTypes: [ticketType({ name: "ใหม่" })] }),
+      version: 2,
+    });
+    expect(removed.res.status).toBe(409);
+    expect(removed.body.message).toBe("ลบประเภทตั๋วที่มีคนรับแล้วไม่ได้");
   });
 });
 
 describe("reading", () => {
   test("members list events in start order and filter them", async () => {
-    await send("tech", "POST", "/", sportEvent());
-    await send("tech", "POST", "/", general());
+    await make(sportEvent());
+    await make(general());
     const all = await send("art", "GET", "/");
     expect(all.res.status).toBe(200);
     expect((all.body.items as EventBody[]).map((item) => item.institutions)).toEqual([
@@ -150,7 +289,7 @@ describe("reading", () => {
   });
 
   test("reads one event", async () => {
-    const { body } = await send("tech", "POST", "/", sportEvent());
+    const { body } = await make(sportEvent());
     const one = await send("reg-staff", "GET", `/${body.id as string}`);
     expect(one.res.status).toBe(200);
     expect(one.body).toMatchObject({ id: body.id, canManage: false });
@@ -160,42 +299,42 @@ describe("reading", () => {
 
 describe("editing", () => {
   test("replaces the institutions and divisions, with a version guard", async () => {
-    const { body } = await send("tech", "POST", "/", sportEvent());
+    const { body } = await make(sportEvent());
     const id = body.id as string;
     const edited = await send("tech", "PUT", `/${id}`, {
       ...sportEvent({
         institutions: ["kmutnb-bangkok"],
         divisionIds: [basketball, football],
       }),
-      version: 1,
+      version: 2,
     });
     expect(edited.res.status).toBe(200);
-    expect(edited.body).toMatchObject({ version: 2, institutions: ["kmutnb-bangkok"] });
+    expect(edited.body).toMatchObject({ version: 3, institutions: ["kmutnb-bangkok"] });
     expect((edited.body as unknown as EventBody).divisions).toHaveLength(2);
 
-    const stale = await send("tech", "PUT", `/${id}`, { ...sportEvent(), version: 1 });
+    const stale = await send("tech", "PUT", `/${id}`, { ...sportEvent(), version: 2 });
     expect(stale.res.status).toBe(409);
 
-    const toGeneral = await send("tech", "PUT", `/${id}`, { ...general(), version: 2 });
+    const toGeneral = await send("tech", "PUT", `/${id}`, { ...general(), version: 3 });
     expect(toGeneral.res.status).toBe(200);
     expect(toGeneral.body).toMatchObject({ type: "general", institutions: [], divisions: [] });
   });
 
   test("an edit racing another one is refused", async () => {
-    const { body } = await send("tech", "POST", "/", sportEvent());
+    const { body } = await make(sportEvent());
     const id = body.id as string;
     t.hooks.beforeBatch = () => {
       t.sqlite.run(`update event set version = version + 1 where id = '${id}'`);
     };
-    const res = await send("tech", "PUT", `/${id}`, { ...sportEvent({ name: "x" }), version: 1 });
+    const res = await send("tech", "PUT", `/${id}`, { ...sportEvent({ name: "x" }), version: 2 });
     expect(res.res.status).toBe(409);
   });
 
   test("only catalog managers edit and delete", async () => {
-    const { body } = await send("tech", "POST", "/", sportEvent());
+    const { body } = await make(sportEvent());
     const id = body.id as string;
     expect(
-      (await send("reg-kmutt", "PUT", `/${id}`, { ...sportEvent(), version: 1 })).res.status,
+      (await send("reg-kmutt", "PUT", `/${id}`, { ...sportEvent(), version: 2 })).res.status,
     ).toBe(403);
     expect((await send("reg-staff", "DELETE", `/${id}`)).res.status).toBe(403);
     expect((await send("admin", "DELETE", `/${id}`)).res.status).toBe(200);
@@ -205,9 +344,23 @@ describe("editing", () => {
 });
 
 describe("slugs", () => {
-  const create = async (overrides: Record<string, unknown>) => {
-    const { res, body } = await send("tech", "POST", "/", sportEvent(overrides));
+  const create = async (overrides: { name?: string; slug?: string }) => {
+    const { res, body } = await send("tech", "POST", "/", {
+      name: overrides.name ?? "ฟุตบอลรอบแรก",
+      slug: overrides.slug ?? "",
+    });
     return { status: res.status, event: body as unknown as EventBody, body };
+  };
+  /** Saves the event as `sportEvent(overrides)`, with "" for its slug: made again. */
+  const remake = async (id: string, version: number, overrides: Record<string, unknown>) => {
+    const current = (await send("tech", "GET", `/${id}`)).body as unknown as EventBody;
+    const { body } = await send("tech", "PUT", `/${id}`, {
+      ...sportEvent({ ticketTypes: [ticketType({ id: current.ticketTypes[0]?.id, listedOnly: true })] }),
+      ...overrides,
+      slug: "",
+      version,
+    });
+    return body as unknown as EventBody;
   };
 
   test("a new event gets a slug from its name, with a suffix when taken", async () => {
@@ -225,15 +378,16 @@ describe("slugs", () => {
   test("a Thai name keeps its Latin part, or falls back to type and Bangkok date", async () => {
     expect((await create({ name: "ฟุตบอล IT3K ๒๕๖๙" })).event.slug).toBe("it3k-2569");
     // 2026-12-05 02:00 UTC is 09:00 in Bangkok.
-    expect((await create({ name: "ฟุตบอลรอบแรก" })).event.slug).toBe("sport-2026-12-05");
-    expect((await create({ name: "ฟุตบอลรอบสอง" })).event.slug).toBe("sport-2026-12-05-2");
-    const evening = await send(
-      "tech",
-      "POST",
-      "/",
-      general({ startAt: Date.UTC(2026, 11, 5, 18), endAt: Date.UTC(2026, 11, 5, 20) }),
-    );
-    expect((evening.body as unknown as EventBody).slug).toBe("general-2026-12-06");
+    const first = (await create({ name: "ฟุตบอลรอบแรก" })).event;
+    expect((await remake(first.id, 1, { name: "ฟุตบอลรอบแรก" })).slug).toBe("sport-2026-12-05");
+    const second = (await create({ name: "ฟุตบอลรอบสอง" })).event;
+    expect((await remake(second.id, 1, { name: "ฟุตบอลรอบสอง" })).slug).toBe("sport-2026-12-05-2");
+    const evening = (await create({ name: "พิธีปิด" })).event;
+    const general2 = await remake(evening.id, 1, {
+      ...general({ name: "พิธีปิด", startAt: Date.UTC(2026, 11, 5, 18), endAt: Date.UTC(2026, 11, 5, 20) }),
+      ticketTypes: [ticketType({ id: evening.ticketTypes[0]?.id })],
+    });
+    expect(general2.slug).toBe("general-2026-12-06");
   });
 
   test("a typed slug is used as it is, and refused when taken", async () => {
@@ -276,8 +430,12 @@ describe("slugs", () => {
     expect(event.slug).toBe("semi-final");
     await create({ slug: "taken" });
 
+    const typeId = event.ticketTypes[0]?.id;
     const put = (version: number, overrides: Record<string, unknown>) =>
-      send("tech", "PUT", `/${event.id}`, { ...sportEvent(overrides), version });
+      send("tech", "PUT", `/${event.id}`, {
+        ...sportEvent({ ticketTypes: [ticketType({ id: typeId, listedOnly: true })], ...overrides }),
+        version,
+      });
     // Omitted: kept, even though the name changed.
     const kept = await put(1, { name: "Grand Final" });
     expect(kept.body).toMatchObject({ slug: "semi-final", version: 2 });
@@ -298,7 +456,10 @@ describe("slugs", () => {
     const { event } = await create({ name: "Old Event" });
     t.sqlite.run(`update event set slug = null where id = '${event.id}'`);
     const { body } = await send("tech", "PUT", `/${event.id}`, {
-      ...sportEvent({ name: "Old Event" }),
+      ...sportEvent({
+        name: "Old Event",
+        ticketTypes: [ticketType({ id: event.ticketTypes[0]?.id, listedOnly: true })],
+      }),
       version: 1,
     });
     expect(body).toMatchObject({ slug: "old-event" });
@@ -332,7 +493,10 @@ describe("slugs", () => {
       t.sqlite.run(`update event set slug = 'later' where id = 'other'`);
     };
     const edit = await send("tech", "PUT", `/${event.id}`, {
-      ...sportEvent({ slug: "later" }),
+      ...sportEvent({
+        slug: "later",
+        ticketTypes: [ticketType({ id: event.ticketTypes[0]?.id, listedOnly: true })],
+      }),
       version: 1,
     });
     expect(edit.res.status).toBe(409);

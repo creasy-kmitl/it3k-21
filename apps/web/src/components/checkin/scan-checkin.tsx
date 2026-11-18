@@ -18,7 +18,7 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from "react"
 import { LoadingButton } from "@/components/loading-button";
 import { useApis } from "@/lib/api-context";
 import { formatBangkok } from "@/lib/bangkok-time";
-import type { CheckinOutcome, Person } from "@/lib/events";
+import type { CheckinOutcome, CheckinTicket, Person } from "@/lib/events";
 import {
   type Decoder,
   canUseCamera,
@@ -139,7 +139,9 @@ const TONES = {
  */
 export const resultKey = (outcome: CheckinOutcome | null, failure: string | null) =>
   outcome
-    ? `${outcome.code}:${"person" in outcome ? outcome.person.userId : ""}`
+    ? `${outcome.code}:${"person" in outcome ? outcome.person.userId : ""}:${
+        "ticket" in outcome ? (outcome.ticket?.id ?? "") : ""
+      }`
     : `failure:${failure}`;
 
 /** How to show a check-in result: its colour, icon, headline and the person. */
@@ -168,8 +170,26 @@ export function describeResult(outcome: CheckinOutcome | null, failure: string |
         .join(" · ")
     : "";
   const forceable = outcome && "canForce" in outcome && outcome.canForce ? outcome.person : null;
-  const forceLabel = outcome?.code === "not-listed" ? "เช็คอินนอกรายชื่อ" : "เช็คอินโดยไม่มีตั๋ว";
-  return { tone, toneClass: TONES[tone], icon, title, person, details, forceable, forceLabel };
+  const forceLabel = "เช็คอินโดยไม่มีตั๋ว";
+  const ticket = outcome && "ticket" in outcome ? outcome.ticket : null;
+  return {
+    tone,
+    toneClass: TONES[tone],
+    icon,
+    title,
+    person,
+    details,
+    ticketLabel: ticket ? ticketLabel(ticket) : null,
+    forceable,
+    forceLabel,
+  };
+}
+
+/** "ผู้ชมทั่วไป · ใบที่ 2/3", or just the type for someone holding one ticket. */
+export function ticketLabel(ticket: CheckinTicket) {
+  return ticket.total > 1
+    ? `${ticket.typeName} · ใบที่ ${ticket.index}/${ticket.total}`
+    : ticket.typeName;
 }
 
 /** The camera preview, scanning frames while it runs, with a switch for multi-camera devices. */

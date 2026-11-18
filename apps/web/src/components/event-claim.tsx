@@ -4,25 +4,18 @@ import { toast } from "sonner";
 
 import { useApis } from "@/lib/api-context";
 import { toastError } from "@/lib/errors";
-import { TICKETS_KEY, claimRefusal } from "@/lib/tickets";
+import { CLAIM_REFUSALS, TICKETS_KEY, claimRefusal } from "@/lib/tickets";
 
-const REFUSALS = {
-  closed: "กิจกรรมนี้ปิดรับตั๋วแล้ว",
-  full: "ตั๋วกิจกรรมนี้เต็มแล้ว",
-  "not-listed": "คุณไม่อยู่ในรายชื่อของกิจกรรมนี้",
-  missing: "ไม่พบกิจกรรมนี้",
-} as const;
-
-/** Claims a ticket to `event`, then refreshes every ticket query. */
+/** Claims one ticket of a type to `event`, then refreshes every ticket query. */
 export function useClaimTicket(event: { id: string; name: string }) {
   const { tickets } = useApis();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => tickets.claim(event.id),
-    onSuccess: () => toast.success(`รับตั๋ว ${event.name} แล้ว`),
+    mutationFn: (type: { id: string; name: string }) => tickets.claim(event.id, type.id),
+    onSuccess: (_data, type) => toast.success(`รับตั๋ว ${type.name} · ${event.name} แล้ว`),
     onError: (error) => {
       const refusal = claimRefusal(error);
-      if (refusal) toast.error(REFUSALS[refusal]);
+      if (refusal) toast.error(CLAIM_REFUSALS[refusal]);
       else toastError(error, "รับตั๋วไม่สำเร็จ");
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: TICKETS_KEY }),

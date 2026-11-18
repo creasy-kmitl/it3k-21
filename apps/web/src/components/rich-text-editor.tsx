@@ -1,5 +1,5 @@
 import { PHOTO_TYPES } from "@it3k/db/profile";
-import type { RichTextDoc } from "@it3k/email/rich-text";
+import type { RichTextDoc } from "@it3k/db/rich-text";
 import { Button } from "@it3k/ui/components/button";
 import { Input } from "@it3k/ui/components/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@it3k/ui/components/popover";
@@ -67,6 +67,7 @@ function ToolButton({
       type="button"
       variant={active ? "secondary" : "ghost"}
       size="icon-sm"
+      className="size-9 shrink-0 sm:size-8"
       aria-label={label}
       title={label}
       aria-pressed={active}
@@ -124,6 +125,7 @@ function LinkButton({ editor, active }: { editor: Editor; active: boolean }) {
             type="button"
             variant={active ? "secondary" : "ghost"}
             size="icon-sm"
+            className="size-9 shrink-0 sm:size-8"
             aria-label="ลิงก์"
             title="ลิงก์"
             aria-pressed={active}
@@ -168,11 +170,16 @@ function LinkButton({ editor, active }: { editor: Editor; active: boolean }) {
   );
 }
 
+const EMAIL_HINT =
+  "วางหรือลากรูปมาใส่ได้เลย รูปจะเก็บไว้ในไฟล์ของคุณ ถ้าลบไฟล์ทีหลัง รูปในอีเมลที่ส่งไปแล้วจะหายด้วย";
+
 /**
- * The rich-text body of a staff email. It produces Tiptap JSON limited to what
- * `@it3k/email/rich-text` accepts: code, alignment and h1 are turned off here.
- * Images are uploaded to the sender's own files and inserted by their public
- * URL, by pasting, dropping, or picking from the file library.
+ * A rich-text body: a staff email's, or an event page's. It produces Tiptap
+ * JSON limited to what `@it3k/db/rich-text` accepts: code, alignment and h1
+ * are turned off here. Images are uploaded to the writer's own files and
+ * inserted by their public URL, by pasting, dropping, or picking from the
+ * file library. The toolbar scrolls sideways on narrow screens and stays in
+ * view while a long body scrolls.
  */
 export function RichTextEditor({
   userId,
@@ -180,12 +187,22 @@ export function RichTextEditor({
   onChange,
   disabled,
   placeholder = "เขียนเนื้อหาอีเมล…",
+  label = "เนื้อหาอีเมล",
+  hint = EMAIL_HINT,
+  imageSelectTitle = "เลือกรูปสำหรับอีเมล",
+  id,
 }: {
   userId: string;
   value: RichTextDoc;
   onChange: (doc: RichTextDoc) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** The editing area's accessible name. */
+  label?: string;
+  hint?: string;
+  imageSelectTitle?: string;
+  /** Put on the editing area, so a `<label htmlFor>` can point at it. */
+  id?: string;
 }) {
   const { files } = useApis();
   const [library, setLibrary] = useState(false);
@@ -256,7 +273,8 @@ export function RichTextEditor({
     editorProps: {
       attributes: {
         class: "tiptap-email min-h-64 px-4 py-3 outline-none",
-        "aria-label": "เนื้อหาอีเมล",
+        "aria-label": label,
+        ...(id ? { id } : {}),
         role: "textbox",
         "aria-multiline": "true",
       },
@@ -300,14 +318,14 @@ export function RichTextEditor({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-lg border bg-background focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
+        "overflow-clip rounded-lg border bg-background focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
         disabled && "opacity-60",
       )}
     >
       <div
         role="toolbar"
         aria-label="จัดรูปแบบ"
-        className="flex flex-wrap items-center gap-0.5 border-b bg-muted/40 px-1.5 py-1"
+        className="sticky top-0 z-10 flex flex-nowrap items-center gap-0.5 overflow-x-auto border-b bg-muted px-1.5 py-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible"
       >
         {editor && state && (
           <>
@@ -323,7 +341,7 @@ export function RichTextEditor({
               disabled={!state.canRedo}
               onClick={() => editor.chain().focus().redo().run()}
             />
-            <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+            <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
             <ToolButton
               icon={Heading2}
               label="หัวข้อ"
@@ -336,7 +354,7 @@ export function RichTextEditor({
               active={state.h3}
               onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
             />
-            <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+            <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
             <ToolButton
               icon={Bold}
               label="ตัวหนา"
@@ -362,7 +380,7 @@ export function RichTextEditor({
               onClick={() => editor.chain().focus().toggleStrike().run()}
             />
             <LinkButton editor={editor} active={state.link} />
-            <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+            <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
             <ToolButton
               icon={List}
               label="รายการ"
@@ -386,7 +404,7 @@ export function RichTextEditor({
               label="เส้นคั่น"
               onClick={() => editor.chain().focus().setHorizontalRule().run()}
             />
-            <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+            <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
             <ToolButton
               icon={ImagePlus}
               label="แทรกรูป"
@@ -409,14 +427,12 @@ export function RichTextEditor({
         </div>
       )}
       <EditorContent editor={editor} />
-      <p className="border-t bg-muted/40 px-4 py-1.5 text-xs text-muted-foreground">
-        วางหรือลากรูปมาใส่ได้เลย รูปจะเก็บไว้ในไฟล์ของคุณ ถ้าลบไฟล์ทีหลัง รูปในอีเมลที่ส่งไปแล้วจะหายด้วย
-      </p>
+      <p className="border-t bg-muted/40 px-4 py-1.5 text-xs text-muted-foreground">{hint}</p>
       {library && editor && (
         <FileLibrary
           userId={userId}
           onClose={() => setLibrary(false)}
-          selectTitle="เลือกรูปสำหรับอีเมล"
+          selectTitle={imageSelectTitle}
           selectHint="รองรับ JPG, PNG และ WebP"
           onSelect={(file) => {
             setLibrary(false);

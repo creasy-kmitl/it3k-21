@@ -23,9 +23,14 @@ html {
   }
 }
 
-/* The staff email editor, drawn close to how the email itself renders. */
+/*
+ * Rich text: the staff email and event editors (drawn close to how an email
+ * renders) and event pages that show the result. `.rich-text-lg` reads
+ * better as page body text.
+ */
 @layer components {
-  .tiptap-email {
+  .tiptap-email,
+  .rich-text {
     @apply text-sm leading-relaxed text-foreground;
 
     & > * + * {
@@ -58,12 +63,25 @@ html {
     & img {
       @apply h-auto max-w-full rounded-lg;
     }
+    & > :first-child {
+      @apply mt-0;
+    }
     & img.ProseMirror-selectednode {
       @apply ring-2 ring-ring;
     }
     & p.is-editor-empty:first-child::before {
       @apply pointer-events-none float-left h-0 text-muted-foreground;
       content: attr(data-placeholder);
+    }
+  }
+  .rich-text-lg {
+    @apply text-base leading-7;
+
+    & h2 {
+      @apply mt-6 text-2xl;
+    }
+    & h3 {
+      @apply mt-5 text-lg;
     }
   }
 }
