@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Run everything from the repo root with Bun (`bun@1.4.2`, lockfile `bun.lock`). Task running, lint and format go through Vite+ (`vp`).
 
 - Install: `bun install --frozen-lockfile` (its `postinstall` runs Varlock codegen for `apps/web`, `apps/server` and `packages/db`)
-- Dev: `bun run dev` runs `alchemy dev` in `packages/infra`, which starts both workers locally: web on `localhost:3001` and API on `localhost:3000`, with a local miniflare D1. Run only one `alchemy dev` at a time, because a second one rewrites `VITE_SERVER_URL` to `:3002`.
+- Dev: `bun run dev` runs `alchemy dev` in `packages/infra`, which starts every worker locally: web on `localhost:3001`, API on `localhost:3000` and docs on `localhost:3004`, with a local miniflare D1. Run only one `alchemy dev` at a time, because a second one rewrites `VITE_SERVER_URL` to `:3002`.
 - Tests: `bun test` (all), `bun test apps/server/src/routes/users` (one directory), `bun test -t "pattern"` (by name). Root `bunfig.toml` preloads `apps/web/src/test/dom.ts` (jsdom globals) for every test file.
 - Lint: `bun run lint` (Vite+/oxlint) and `bun run lint:biome` (Biome runs lint only; its formatter is disabled). CI runs both, plus `check-types`. CI does not run `bun test`, so run the tests yourself.
 - Types: `bun run check-types` (per workspace; for `web` this runs `vp build` first so the route tree exists)
@@ -24,12 +24,13 @@ Bun workspace monorepo. Everything runs on Cloudflare Workers and is provisioned
 
 - `apps/server`: Hono API worker. `src/index.ts` wires evlog (Axiom drain), CORS, and Better Auth at `/api/auth/*`, then mounts resource routers from `src/routes/<resource>/index.ts` under `/api/<resource>`. Emails are queued on `EMAIL_QUEUE` and sent through Cloudflare Email (`src/email/`).
 - `apps/web`: TanStack Start (React 19, TanStack Router + Query) worker. File routes are in `src/routes`. Signed-in pages live under `/staff`, a client-only layout (`ssr: false`) that sends non-members away. The UI copy is in Thai.
+- `apps/docs`: the user guide, a Fumadocs site on TanStack Start (its own worker). Pages are Thai MDX in `content/docs/`, ordered by each folder's `meta.json`, with sections for participants, staff and developers. It holds no data and only links back to web through `VITE_WEB_URL`. Colours come from `@it3k/ui/tokens.css` (shared with web's `globals.css`) through Fumadocs' `shadcn.css` preset; page text uses the `font-content` stack (IBM Plex Sans Thai Looped), navigation the web's Inter + IBM Plex Sans Thai. Search uses Fumadocs' default multilingual tokenizer (`Intl.Segmenter`), so do not set an Orama `language`: Thai has no spaces between words.
 - `packages/auth`: Better Auth factory (`createAuth(env, db)`) with Google sign-in (Discord is only linked by athletes, never used to sign in), the admin plugin and the oAuthProxy plugin. `permissions.ts` defines the account roles `guest` (default for new sign-ins), `participant`, `athlete`, `staff` and `admin`. Roles are stored as a comma-separated string; use `parseRoles`, `hasRole` and `isMember`.
 - **Sign-up gate** (`packages/auth/src/signup.ts`): a first Google sign-in creates an account on its own only for a verified address on `SELF_SIGNUP_DOMAINS` (`kmitl.ac.th`, `kmutt.ac.th`, `kmutnb.ac.th` and their subdomains, in `packages/db/src/profile.ts`). Any other address needs an open row in the `invitation` table (`/api/invitations`, sent by email). The invitation sets the new account's role, department, institution and seat.
 - `packages/db`: Drizzle over D1 (`createDb({ DB })`). Schema is in `src/schema/` (auth, department, leadership, invitation, profile, sport, event, calendar, short-link, qr-preset, email) and migrations are in `src/migrations/`. Alchemy applies the migrations on deploy.
 - `packages/email`: react-email templates (`src/templates/`), the queued job types (`jobs.ts`) and `render.tsx`. `bun run email:dev` previews `emails/`.
 - `packages/ui`: shared shadcn/ui primitives and global styles, imported as `@it3k/ui/components/<name>`. App-local imports in web use `@/…`.
-- `packages/infra/alchemy.run.ts`: the one stack. It defines the D1 database, the server worker (bindings include `DB`, auth secrets, `CORS_ORIGIN`, Axiom), the web worker (`VITE_SERVER_URL`, `VITE_DEPLOY_ENV`), custom hostnames per stage and PR preview comments. Worker env types are inferred from this file (`apps/server/cloudflare-env.d.ts`), and server code reads bindings via `cloudflare:workers`.
+- `packages/infra/alchemy.run.ts`: the one stack. It defines the D1 database, the server worker (bindings include `DB`, auth secrets, `CORS_ORIGIN`, Axiom), the web worker (`VITE_SERVER_URL`, `VITE_DEPLOY_ENV`), the docs worker (`VITE_WEB_URL`), custom hostnames per stage and PR preview comments. Worker env types are inferred from this file (`apps/server/cloudflare-env.d.ts`), and server code reads bindings via `cloudflare:workers`.
 
 ### Server patterns
 
@@ -59,6 +60,6 @@ Bun workspace monorepo. Everything runs on Cloudflare Workers and is provisioned
 ## Environments and deployment
 
 - Branches: `prod` is the default branch and deploys to stage `prod`. Pushes to `main` deploy `staging`, and each PR deploys a `pr-<n>` preview that is destroyed when the PR closes (`sweep-previews.yml` catches leftovers). Push work to `main`; changes reach `prod` only through a PR.
-- Hostnames (`it3k[-<stage>].creasy.club`, `it3k-api[-<stage>].creasy.club`) are assigned only in CI (`GITHUB_ACTIONS`). Local deploys stay on workers.dev.
+- Hostnames (`it3k[-<stage>].creasy.club`, `it3k-api[-<stage>].creasy.club`, `it3k-docs[-<stage>].creasy.club`) are assigned only in CI (`GITHUB_ACTIONS`). Local deploys stay on workers.dev.
 - Google OAuth: previews sign in through staging via Better Auth `oAuthProxy`. prod, staging and localhost each own a registered redirect URI, so the proxy does nothing for them. Keep dev, staging and prod on the same code path instead of gating features by stage.
 - CI refuses to deploy `staging` or `prod` if that stage has no Alchemy state, to avoid creating a duplicate D1 database. To rebuild a stage on purpose, set the repo variable `ALLOW_FRESH_STAGE` for one run.

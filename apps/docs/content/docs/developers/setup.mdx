@@ -1,0 +1,37 @@
+---
+title: ติดตั้งและรันในเครื่อง
+description: เตรียมโปรเจกต์และเปิดทุกแอปในเครื่องของคุณ
+icon: Terminal
+---
+
+โปรเจกต์เป็น Bun workspace monorepo รันทุกคำสั่งจาก root ของ repo
+
+```bash
+bun install --frozen-lockfile
+bun run dev
+```
+
+`bun run dev` รัน `alchemy dev` ซึ่งเปิดทุก worker พร้อมกัน
+
+| แอป                  | URL                     |
+| -------------------- | ----------------------- |
+| API (`apps/server`)  | `http://localhost:3000` |
+| เว็บ (`apps/web`)    | `http://localhost:3001` |
+| คู่มือ (`apps/docs`) | `http://localhost:3004` |
+
+<Callout type="warn">
+  รัน `alchemy dev` ได้ครั้งละตัวเดียว ตัวที่สองจะเปลี่ยน `VITE_SERVER_URL` ไปที่ `:3002`
+</Callout>
+
+## ตรวจโค้ด
+
+```bash
+bun run lint
+bun run lint:biome
+bun run check-types
+bun test
+```
+
+## เขียนคู่มือ
+
+หน้าคู่มืออยู่ที่ `apps/docs/content/docs/` เป็นไฟล์ MDX ลำดับเมนูกำหนดด้วย `meta.json` ในแต่ละโฟลเดอร์
