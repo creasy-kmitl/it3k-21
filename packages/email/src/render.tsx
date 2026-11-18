@@ -10,6 +10,7 @@ import { ProfileSubmittedEmail, profileSubmittedSubject } from "./templates/prof
 import { SportRegisteredEmail, sportRegisteredSubject } from "./templates/sport-registered";
 import { SportReviewedEmail, sportReviewedSubject } from "./templates/sport-reviewed";
 import { TicketClaimedEmail, ticketClaimedSubject } from "./templates/ticket-claimed";
+import { InvitationEmail, invitationSubject } from "./templates/invitation";
 
 export type { EmailContext } from "./components/layout";
 
@@ -72,6 +73,8 @@ function element(
         ],
       };
     }
+    case "invitation":
+      return { subject: invitationSubject(), node: <InvitationEmail job={email} ctx={ctx} /> };
     case "custom":
       // Staff write the whole subject themselves, so it goes out unchanged.
       return { subject: email.subject, node: <CustomEmailTemplate email={email} ctx={ctx} /> };

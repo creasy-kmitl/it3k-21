@@ -27,6 +27,7 @@ import { ChevronLeft, ChevronRight, Pencil, Search, UserCog, UserRoundCogIcon } 
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { InvitationsPanel } from "@/components/invitations-panel";
 import { LoadingButton } from "@/components/loading-button";
 import { type FilterControl, useFilters, useSearchText } from "@/hooks/use-filters";
 import type { LeadershipApi, LeadershipDepartment } from "@/lib/leadership";
@@ -116,6 +117,7 @@ export function UsersPage({
   onImpersonate?: (userId: string) => Promise<void>;
 }) {
   const { users: api, leadership: seats } = useApis();
+  const me = useMe(api);
   // Changing a filter starts from page 1 again.
   const [filters, setFilters] = useFilters(control);
   const q = filters.q ?? "";
@@ -157,6 +159,8 @@ export function UsersPage({
         title="ผู้ใช้"
         description="กำหนดสถานะ Guest, ผู้เข้าร่วม, นักกีฬา, Staff หรือหัวหน้าฝ่าย และพื้นที่จัดเก็บไฟล์"
       />
+
+      {me.data?.canManageUsers && <InvitationsPanel departments={departments.data ?? []} />}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Select
@@ -267,6 +271,7 @@ export function UsersPage({
           account={editing}
           departments={departments.data ?? []}
           canGrantAdmin={accounts.data?.canGrantAdmin ?? false}
+          assignableKinds={accounts.data?.assignableKinds ?? []}
           api={api}
           seats={seats}
           onClose={() => setEditing(null)}
@@ -357,6 +362,7 @@ function EditAccountDialog({
   account,
   departments,
   canGrantAdmin,
+  assignableKinds,
   api,
   seats,
   onClose,
@@ -364,6 +370,8 @@ function EditAccountDialog({
   account: Account;
   departments: LeadershipDepartment[];
   canGrantAdmin: boolean;
+  /** What the caller may make this account; its current status stays listed. */
+  assignableKinds: Status[];
   api: UsersApi;
   seats: LeadershipApi;
   onClose: () => void;
@@ -396,7 +404,7 @@ function EditAccountDialog({
     mutationFn: async () => {
       // Set quota before an assignment that may revoke the caller's own rights.
       let saved = savedAccount;
-      if (storageLimit !== saved.storageLimit) {
+      if (account.canSetStorage && storageLimit !== saved.storageLimit) {
         saved = await api.setStorage(account.id, storageLimit, saved.storageLimit);
         setSavedAccount(saved);
       }
@@ -441,7 +449,9 @@ function EditAccountDialog({
     { value: NO_INSTITUTION, label: "ไม่ระบุ" },
     ...INSTITUTIONS.map((i) => ({ value: i.id, label: i.short })),
   ];
-  const statusItems = STATUSES.map((value) => ({ value, label: ROLE_BADGES[value].label }));
+  const statusItems = STATUSES.filter(
+    (value) => value === initialStatus || assignableKinds.includes(value),
+  ).map((value) => ({ value, label: ROLE_BADGES[value].label }));
   const departmentItems = departments.map((d) => ({
     value: d.id,
     label: <DepartmentLabel department={d} />,
@@ -544,30 +554,34 @@ function EditAccountDialog({
               <FieldLabel htmlFor="account-admin">Admin</FieldLabel>
             </Field>
           )}
-          <Field data-invalid={!validStorage}>
-            <FieldLabel htmlFor="account-storage">พื้นที่จัดเก็บสูงสุด (GB)</FieldLabel>
-            <Input
-              id="account-storage"
-              type="number"
-              min="0"
-              step="any"
-              value={storageGB}
-              aria-invalid={!validStorage}
-              onChange={(event) => setStorageGB(event.target.value)}
-            />
-            <FieldDescription>
-              ใช้แล้ว {fileSize(account.storageUsed)} · ค่าเริ่มต้น 1 GB · กำหนด 0 เพื่อหยุดอัปโหลดใหม่
-            </FieldDescription>
-            {validStorage && storageLimit < account.storageUsed && (
-              <FieldDescription>ไฟล์เดิมยังอยู่ จะอัปโหลดเพิ่มได้เมื่อใช้พื้นที่ต่ำกว่าโควตา</FieldDescription>
-            )}
-          </Field>
+          {account.canSetStorage && (
+            <Field data-invalid={!validStorage}>
+              <FieldLabel htmlFor="account-storage">พื้นที่จัดเก็บสูงสุด (GB)</FieldLabel>
+              <Input
+                id="account-storage"
+                type="number"
+                min="0"
+                step="any"
+                value={storageGB}
+                aria-invalid={!validStorage}
+                onChange={(event) => setStorageGB(event.target.value)}
+              />
+              <FieldDescription>
+                ใช้แล้ว {fileSize(account.storageUsed)} · ค่าเริ่มต้น 1 GB · กำหนด 0 เพื่อหยุดอัปโหลดใหม่
+              </FieldDescription>
+              {validStorage && storageLimit < account.storageUsed && (
+                <FieldDescription>ไฟล์เดิมยังอยู่ จะอัปโหลดเพิ่มได้เมื่อใช้พื้นที่ต่ำกว่าโควตา</FieldDescription>
+              )}
+            </Field>
+          )}
         </FieldGroup>
         <AlertDialogFooter>
           <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
           <LoadingButton
             loading={save.isPending}
-            disabled={!validStorage || (needsDepartment && departmentId === "")}
+            disabled={
+              (account.canSetStorage && !validStorage) || (needsDepartment && departmentId === "")
+            }
             onClick={() => save.mutate()}
           >
             บันทึก

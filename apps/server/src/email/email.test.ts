@@ -120,7 +120,7 @@ describe("transactional emails", () => {
   });
 
   test("a review decision queues the result once, and reopening sends nothing", async () => {
-    await t.seedUser("tech", { department: "Tech/Live" });
+    await t.seedUser("tech", { department: "Tech/Live", seat: "head" });
     await t.seedParticipant("a1", "kmitl");
     const divisionId = await t.divisionId("athletics-100m-male");
     await t.db
@@ -199,11 +199,12 @@ describe("/api/emails", () => {
     audience: { kind: "participants", institutions },
   });
 
-  test("only admins, Tech/Live and registration leaders may send", async () => {
-    for (const who of ["admin", "tech", "reg-kmitl-head", "reg-kmutt-head"]) {
+  test("only admins, Tech/Live and KMITL registration leaders may send", async () => {
+    for (const who of ["admin", "tech", "reg-kmitl-head"]) {
       expect((await app.request("/audiences", t.as(who))).status).toBe(200);
     }
-    for (const who of ["reg-staff", "art", "guest"]) {
+    // reg-kmutt-head holds a seat from before seats were KMITL's only.
+    for (const who of ["reg-staff", "reg-kmutt-head", "art", "guest"]) {
       expect((await app.request("/audiences", t.as(who))).status).toBe(403);
       expect((await send(who, participants())).status).toBe(403);
     }
@@ -232,32 +233,14 @@ describe("/api/emails", () => {
     ]);
   });
 
-  test("leaders of another institution reach only their own people", async () => {
-    const own = await send("reg-kmutt-head", participants());
-    expect(own.status).toBe(201);
-    expect((await readJson(own)).recipientCount).toBe(2);
-    const [campaign] = await t.db.select().from(emailCampaign);
-    expect(defined(campaign).scopeInstitution).toBe("kmutt");
-
-    expect((await send("reg-kmutt-head", participants(["kmitl"]))).status).toBe(403);
-    expect(
-      (
-        await send("reg-kmutt-head", {
-          ...participants(),
-          audience: { kind: "manual", userIds: [], emails: ["someone@example.com"] },
-        })
-      ).status,
-    ).toBe(403);
-    expect(
-      (
-        await send("reg-kmutt-head", {
-          ...participants(),
-          audience: { kind: "manual", userIds: ["p-kmitl"], emails: [] },
-        })
-      ).status,
-    ).toBe(403);
-    // The host institution's leaders reach everyone.
-    expect((await readJson(await send("reg-kmitl-head", participants()))).recipientCount).toBe(3);
+  test("registration leaders reach everyone, typed addresses included", async () => {
+    const res = await send("reg-kmitl-head", participants());
+    expect((await readJson(res)).recipientCount).toBe(3);
+    const manual = await send("reg-kmitl-head", {
+      ...participants(),
+      audience: { kind: "manual", userIds: ["p-kmutt"], emails: ["someone@example.com"] },
+    });
+    expect((await readJson(manual)).recipientCount).toBe(2);
   });
 
   test("audiences pick athletes by status and ticket holders by event", async () => {
@@ -338,9 +321,9 @@ describe("/api/emails", () => {
   test("losing the seat between the check and the write refuses the send", async () => {
     t.hooks.beforeBatch = () => {
       t.hooks.beforeBatch = undefined;
-      t.sqlite.run("delete from leadership where user_id = 'reg-kmutt-head'");
+      t.sqlite.run("delete from leadership where user_id = 'reg-kmitl-head'");
     };
-    expect((await send("reg-kmutt-head", participants())).status).toBe(409);
+    expect((await send("reg-kmitl-head", participants())).status).toBe(409);
     expect(await t.db.select().from(emailCampaign)).toEqual([]);
     expect(t.mail.jobs).toEqual([]);
   });
@@ -351,21 +334,18 @@ describe("/api/emails", () => {
     expect(await t.db.select().from(emailCampaign)).toEqual([]);
   });
 
-  test("history shows institution-scoped senders only their institution's emails", async () => {
+  test("history shows every sender everything sent", async () => {
     await send("tech", participants());
-    await send("reg-kmutt-head", participants());
-    const all = await readJson(await app.request("/", t.as("admin")));
-    expect(all.items).toHaveLength(2);
-    const own = await readJson(await app.request("/", t.as("reg-kmutt-head")));
-    expect(own.items).toMatchObject([
-      { senderName: "User reg-kmutt-head", audienceKind: "participants" },
-    ]);
+    await send("reg-kmitl-head", participants());
+    for (const who of ["admin", "reg-kmitl-head"]) {
+      expect((await readJson(await app.request("/", t.as(who)))).items).toHaveLength(2);
+    }
   });
 
-  test("hand-picking searches accounts within reach", async () => {
-    const res = await app.request("/recipients?q=Athlete", t.as("reg-kmutt-head"));
+  test("hand-picking searches every account", async () => {
+    const res = await app.request("/recipients?q=Athlete", t.as("reg-kmitl-head"));
     const body = (await res.json()) as { items: { id: string }[] };
-    expect(body.items.map((item) => item.id).sort()).toEqual(["p-kmutt", "p-kmutt-2"]);
+    expect(body.items.map((item) => item.id).sort()).toEqual(["p-kmitl", "p-kmutt", "p-kmutt-2"]);
   });
 
   test("banned accounts are skipped", async () => {

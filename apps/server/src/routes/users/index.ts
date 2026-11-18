@@ -1,9 +1,10 @@
 import { hasRole, primaryRole } from "@it3k/auth/permissions";
 import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
-import { INSTITUTION_IDS } from "@it3k/db/profile";
+import { HOST_INSTITUTION, INSTITUTION_IDS } from "@it3k/db/profile";
 import { department, departmentAppearance } from "@it3k/db/schema/department";
-import { LEADERSHIP_ROLES, leadership, leadershipSocial } from "@it3k/db/schema/leadership";
+import { leadership, leadershipSocial } from "@it3k/db/schema/leadership";
+import { DEPARTMENT_KINDS, roleForKind } from "@it3k/db/invitation-rules";
 import { type SQL, and, eq, notExists, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -19,15 +20,28 @@ import {
   requireMember,
   requireUser,
 } from "../../middleware/current-user";
-import { PAGE_SIZE, containsAny, seatIsAsRead, userQuery } from "../leadership";
 import {
+  NOT_HOST_SEAT,
+  PAGE_SIZE,
+  containsAny,
+  mayHoldSeat,
+  mayHoldSeatSql,
+  seatIsAsRead,
+  userQuery,
+} from "../leadership";
+import {
+  assignableKinds,
+  assignerIsAsRead,
+  canAssign,
   canChangeAccount,
   canGrantAdmin,
+  hasFullAssignRights,
   isManager,
   managerIsAsRead,
 } from "../../policies/leadership";
 import { validate } from "../../middleware/validation";
-import { emailAccess } from "../../policies/email";
+import { canManageDepartments } from "../../policies/departments";
+import { canSendEmail } from "../../policies/email";
 import { canSport, sportAccessIsAsRead, sportAccessJson } from "../../policies/sports";
 import { usedBytes } from "../files";
 import { limitJsonBody } from "../../middleware/json-body-limit";
@@ -37,7 +51,7 @@ const idParam = z.strictObject({ id: z.string().min(1) });
 const assignmentInput = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.enum(["guest", "participant", "athlete"]) }),
   z.strictObject({
-    kind: z.enum(["staff", ...LEADERSHIP_ROLES]),
+    kind: z.enum(DEPARTMENT_KINDS),
     departmentId: z.string().trim().min(1),
   }),
 ]);
@@ -89,9 +103,11 @@ function toAccount(row: AccountRow, actor: CurrentUser) {
           })
         : null,
     seatRole: row.seatRole,
-    // Only admins may change an admin's account.
-    canEdit: isManager(actor) && canChangeAccount(actor, row.role),
+    // Only admins may change an admin's account; guest-only staff may change
+    // only accounts that are neither members nor seat holders.
+    canEdit: canAssign(actor, "guest", { role: row.role, seatRole: row.seatRole }),
     canSetInstitution: canSport(actor, "users.setInstitution") && canChangeAccount(actor, row.role),
+    canSetStorage: hasFullAssignRights(actor) && canChangeAccount(actor, row.role),
     // An admin acting as themselves may act as any other non-admin account.
     canImpersonate: canImpersonate(actor, row),
   };
@@ -126,6 +142,14 @@ async function findAccount(db: Database, id: string, actor: CurrentUser) {
   const [row] = await selectAccounts(db).where(eq(user.id, id));
   return row ? toAccount(row, actor) : null;
 }
+
+/** Storage quotas: admins and the heads and viceheads of Tech/Live and ทะเบียน. */
+const fullRightsOnly = createMiddleware<CurrentUserEnv>(async (c, next) => {
+  if (!hasFullAssignRights(c.var.user)) {
+    return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
+  }
+  await next();
+});
 
 const managerOnly = createMiddleware<CurrentUserEnv>(async (c, next) => {
   if (!isManager(c.var.user)) {
@@ -162,9 +186,12 @@ export const createUserRoutes = (deps: RouteDeps) =>
           department: view ? view.department : account.department,
           seatRole: view ? view.seatRole : account.seatRole,
           canManageUsers: isManager(actor),
+          canManageDepartments: canManageDepartments(actor),
+          // Kinds the caller may give, on the users page and in invitations.
+          assignableKinds: assignableKinds(actor),
           institution: view ? view.institution : account.institution,
           sportAccess: sportAccessJson(actor),
-          emailAccess: emailAccess(actor),
+          canSendEmail: canSendEmail(actor),
           viewingAs: actor.simulated,
         },
         200,
@@ -187,6 +214,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
           page,
           hasMore: rows.length > PAGE_SIZE,
           canGrantAdmin: canGrantAdmin(c.var.user),
+          assignableKinds: assignableKinds(c.var.user),
         },
         200,
       );
@@ -209,7 +237,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
         const actor = c.var.user;
 
         const [target] = await db
-          .select({ id: user.id, name: user.name, role: user.role })
+          .select({ id: user.id, name: user.name, role: user.role, institution: user.institution })
           .from(user)
           .where(eq(user.id, id));
         if (!target) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
@@ -235,7 +263,13 @@ export const createUserRoutes = (deps: RouteDeps) =>
           })
           .from(leadership)
           .where(eq(leadership.userId, id));
+        if (!canAssign(actor, input.kind, { role: target.role, seatRole: current?.role ?? null })) {
+          return c.json({ message: "คุณกำหนดบทบาทนี้ให้บัญชีนี้ไม่ได้" }, 403);
+        }
         const seatRole = input.kind === "head" || input.kind === "vicehead" ? input.kind : null;
+        if (seatRole && !mayHoldSeat(target.institution)) {
+          return c.json({ message: NOT_HOST_SEAT }, 400);
+        }
         const keepsSeat =
           current !== undefined &&
           current.departmentId === departmentId &&
@@ -257,6 +291,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
         // seat to take over was found by them, so both are rechecked as read.
         const unchanged = and(
           eq(user.role, target.role),
+          seatRole ? mayHoldSeatSql() : undefined,
           current
             ? seatIsAsRead(db, { ...current, userId: id })
             : notExists(
@@ -272,20 +307,18 @@ export const createUserRoutes = (deps: RouteDeps) =>
           // anything read above changed. Seats are freed before one is taken so
           // the one-seat-per-account and one-holder-per-seat indexes hold.
           await db.batch([
-            abortUnless(db, actor.id, managerIsAsRead(actor)),
+            abortUnless(db, actor.id, assignerIsAsRead(actor)),
             abortUnless(db, id, unchanged ?? sql`1`),
             db
               .update(user)
               .set({
                 departmentId,
                 // Seats are not account roles: a head or vicehead is staff.
-                role: isAdmin
-                  ? target.role
-                  : input.kind === "guest" ||
-                      input.kind === "participant" ||
-                      input.kind === "athlete"
-                    ? input.kind
-                    : "staff",
+                role: isAdmin ? target.role : roleForKind(input.kind),
+                // Seats are KMITL's; mayHoldSeat refused any other institution above.
+                ...(seatRole
+                  ? { institution: sql`coalesce(${user.institution}, ${HOST_INSTITUTION})` }
+                  : {}),
               })
               .where(eq(user.id, id)),
             ...(current && !keepsSeat
@@ -333,7 +366,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
 
     .put(
       "/:id/storage",
-      managerOnly,
+      fullRightsOnly,
       validate("param", idParam),
       validate(
         "json",
@@ -353,7 +386,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
           return c.json({ message: "เฉพาะผู้ดูแลระบบที่แก้ไขบัญชีของผู้ดูแลระบบได้" }, 403);
         try {
           await db.batch([
-            abortUnless(db, actor.id, managerIsAsRead(actor)),
+            abortUnless(db, actor.id, assignerIsAsRead(actor)),
             abortUnless(
               db,
               id,
@@ -384,15 +417,36 @@ export const createUserRoutes = (deps: RouteDeps) =>
         if (!canSport(actor, "users.setInstitution")) {
           return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
         }
-        const [target] = await db.select({ role: user.role }).from(user).where(eq(user.id, id));
+        const [target] = await db
+          .select({ role: user.role, seat: leadership.id })
+          .from(user)
+          .leftJoin(leadership, eq(leadership.userId, user.id))
+          .where(eq(user.id, id));
         if (!target) return c.json({ message: "ไม่พบผู้ใช้นี้" }, 404);
         if (!canChangeAccount(actor, target.role)) {
           return c.json({ message: "เฉพาะผู้ดูแลระบบที่แก้ไขบัญชีของผู้ดูแลระบบได้" }, 403);
         }
+        // Heads and viceheads are KMITL's; another institution would unseat them silently.
+        const leavesHost = institution !== HOST_INSTITUTION;
+        if (leavesHost && target.seat) return c.json({ message: NOT_HOST_SEAT }, 400);
         try {
           await db.batch([
             abortUnless(db, actor.id, sportAccessIsAsRead(actor)),
-            abortUnless(db, id, eq(user.role, target.role) ?? sql`0`),
+            abortUnless(
+              db,
+              id,
+              and(
+                eq(user.role, target.role),
+                leavesHost
+                  ? notExists(
+                      db
+                        .select({ id: leadership.id })
+                        .from(leadership)
+                        .where(eq(leadership.userId, id)),
+                    )
+                  : undefined,
+              ) ?? sql`0`,
+            ),
             db.update(user).set({ institution }).where(eq(user.id, id)),
           ]);
         } catch (error) {

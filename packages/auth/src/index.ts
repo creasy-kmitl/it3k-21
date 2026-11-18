@@ -7,6 +7,7 @@ import { admin } from "better-auth/plugins/admin";
 import { oAuthProxy } from "better-auth/plugins/oauth-proxy";
 
 import { DEFAULT_ROLE, ac, roles } from "./permissions";
+import { acceptOnSignup, invitedDefaults, refuseSignup } from "./signup";
 
 export type AuthConfig = {
   BETTER_AUTH_URL: string;
@@ -76,7 +77,9 @@ export const IMPERSONATION_FORBIDDEN = "IMPERSONATION_FORBIDDEN";
 /** Discord is only ever linked to an account that signed in with Google. */
 export const DISCORD = "discord";
 
-export function discordEnabled(env: Pick<AuthConfig, "DISCORD_CLIENT_ID" | "DISCORD_CLIENT_SECRET">) {
+export function discordEnabled(
+  env: Pick<AuthConfig, "DISCORD_CLIENT_ID" | "DISCORD_CLIENT_SECRET">,
+) {
   return !!env.DISCORD_CLIENT_ID && !!env.DISCORD_CLIENT_SECRET;
 }
 
@@ -137,6 +140,33 @@ export function createAuth(
       }),
     },
     databaseHooks: {
+      user: {
+        create: {
+          // An invited address starts as what the invitation says (refuseSignup
+          // in validateUserInfo already let it through). The admin plugin's own
+          // hook only fills in the role when this one has not.
+          before: async (user) => {
+            const invited = await invitedDefaults(database, user.email);
+            if (!invited) return;
+            return { data: { ...user, ...invited } };
+          },
+          after: async (user, ctx) => {
+            try {
+              const accepted = await acceptOnSignup(database, user);
+              if (!accepted) return;
+              const seatTaken =
+                (accepted.kind === "head" || accepted.kind === "vicehead") && !accepted.seat;
+              if (seatTaken) {
+                ctx?.context.logger.warn("invited seat was taken; account stays staff", accepted);
+              }
+            } catch (error) {
+              // The account exists with the invited role either way; leaving the
+              // invitation open only means it can be revoked later.
+              ctx?.context.logger.error("could not mark invitation accepted", error);
+            }
+          },
+        },
+      },
       session: {
         update: {
           // A session is refreshed to a fresh seven-day expiry once it is a day
@@ -174,12 +204,17 @@ export function createAuth(
     },
     user: {
       // Discord only links to an account; signing up or in with it is refused.
-      validateUserInfo: ({ source }) => {
+      validateUserInfo: async ({ user, source }) => {
         if (source.oauth?.providerId === DISCORD && source.action !== "link-account") {
           return {
             error: "discord_sign_in_disabled",
             errorDescription: "เข้าสู่ระบบด้วย Google แล้วเชื่อม Discord จากหน้าสมัครกีฬา",
           };
+        }
+        // A first sign-in needs an institution address or an invitation.
+        // Accounts an admin creates directly are exempt.
+        if (source.action === "create-user" && source.method !== "admin") {
+          return (await refuseSignup(database, user)) ?? undefined;
         }
       },
       additionalFields: {

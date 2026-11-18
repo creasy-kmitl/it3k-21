@@ -38,13 +38,12 @@ import {
 } from "../../middleware/current-user";
 import { validate } from "../../middleware/validation";
 import { notBanned } from "../../policies/actor-sql";
-import { type EmailScope, emailAccess, emailAccessIsAsRead } from "../../policies/email";
+import { canSendEmail, canSendEmailIsAsRead } from "../../policies/email";
 import { containsAny } from "../leadership";
 
 export type EmailDeps = RouteDeps & MailDeps & { emailContext: EmailContext };
 
 const FORBIDDEN = "คุณไม่มีสิทธิ์ส่งอีเมล";
-const OUT_OF_SCOPE = "ส่งได้เฉพาะคนในสถาบันของคุณ";
 const STALE = "สิทธิ์ของคุณเปลี่ยนไประหว่างส่ง กรุณาโหลดหน้าใหม่";
 
 /** Room for a long body with many images, still far below the Worker's limits. */
@@ -65,30 +64,18 @@ const personInstitution = sql<
   string | null
 >`coalesce(${user.institution}, nullif(json_extract(${userProfile.values}, '$.institution'), ''))`;
 
-/** The institutions to send to, or a refusal when the sender asked for more than they may reach. */
-function institutionsFor(scope: EmailScope, asked: Institution[]): Institution[] | null {
-  if (scope.kind === "all") return asked;
-  if (asked.some((institution) => institution !== scope.institution)) return null;
-  return [scope.institution];
-}
-
 function institutionFilter(column: SQLWrapper, list: Institution[]) {
   return list.length ? inArray(column, list) : undefined;
 }
 
 type Resolved = { recipients: Recipient[] } | { error: string; status: 400 | 403 | 404 };
 
-/** Everyone the audience names, within the sender's reach, one entry per address. */
-async function resolveRecipients(
-  db: Database,
-  scope: EmailScope,
-  audience: EmailAudience,
-): Promise<Resolved> {
+/** Everyone the audience names, one entry per address. */
+async function resolveRecipients(db: Database, audience: EmailAudience): Promise<Resolved> {
   let rows: Recipient[] = [];
   switch (audience.kind) {
     case "participants": {
-      const institutions = institutionsFor(scope, audience.institutions);
-      if (!institutions) return { error: OUT_OF_SCOPE, status: 403 };
+      const institutions = audience.institutions;
       rows = await db
         .select({ email: user.email, name: user.name })
         .from(user)
@@ -103,8 +90,7 @@ async function resolveRecipients(
       break;
     }
     case "athletes": {
-      const institutions = institutionsFor(scope, audience.institutions);
-      if (!institutions) return { error: OUT_OF_SCOPE, status: 403 };
+      const institutions = audience.institutions;
       rows = await db
         .selectDistinct({ email: user.email, name: user.name })
         .from(sportRegistration)
@@ -124,8 +110,7 @@ async function resolveRecipients(
       break;
     }
     case "ticket-holders": {
-      const institutions = institutionsFor(scope, audience.institutions);
-      if (!institutions) return { error: OUT_OF_SCOPE, status: 403 };
+      const institutions = audience.institutions;
       const [found] = await db
         .select({ id: event.id })
         .from(event)
@@ -146,28 +131,12 @@ async function resolveRecipients(
       break;
     }
     case "manual": {
-      if (scope.kind === "institution" && audience.emails.length) {
-        // A typed address has no institution to check against.
-        return { error: "พิมพ์อีเมลเองได้เฉพาะผู้ที่ส่งถึงทุกสถาบันได้", status: 403 };
-      }
       if (audience.userIds.length) {
         const people = await db
-          .select({
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            institution: personInstitution,
-          })
+          .select({ email: user.email, name: user.name })
           .from(user)
-          .leftJoin(userProfile, eq(userProfile.userId, user.id))
           .where(and(inArray(user.id, audience.userIds), notBanned()));
-        if (
-          scope.kind === "institution" &&
-          people.some((person) => person.institution !== scope.institution)
-        ) {
-          return { error: OUT_OF_SCOPE, status: 403 };
-        }
-        rows = people.map(({ email, name }) => ({ email, name }));
+        rows = people;
       }
       rows.push(...audience.emails.map((email) => ({ email, name: null })));
       break;
@@ -225,21 +194,19 @@ async function prepare(
   deps: EmailDeps,
   input: Compose,
 ): Promise<
-  | { scope: EmailScope; doc: RichTextDoc; recipients: Recipient[] }
-  | { error: string; status: 400 | 403 | 404 }
+  { doc: RichTextDoc; recipients: Recipient[] } | { error: string; status: 400 | 403 | 404 }
 > {
-  const scope = emailAccess(c.var.user);
-  if (!scope) return { error: FORBIDDEN, status: 403 };
+  if (!canSendEmail(c.var.user)) return { error: FORBIDDEN, status: 403 };
   const checked = await checkContent(c.var.db, input.content, deps.emailContext.apiOrigin);
   if ("error" in checked) return checked;
-  const resolved = await resolveRecipients(c.var.db, scope, input.audience);
+  const resolved = await resolveRecipients(c.var.db, input.audience);
   if ("error" in resolved) return resolved;
-  return { scope, doc: checked.doc, recipients: resolved.recipients };
+  return { doc: checked.doc, recipients: resolved.recipients };
 }
 
-/** Only senders with an email scope get past this. */
+/** Only those who may send emails get past this. */
 const requireEmailAccess = async (c: Context<CurrentUserEnv>, next: () => Promise<void>) => {
-  if (!emailAccess(c.var.user)) return c.json({ message: FORBIDDEN }, 403);
+  if (!canSendEmail(c.var.user)) return c.json({ message: FORBIDDEN }, 403);
   await next();
 };
 
@@ -276,11 +243,9 @@ export const createEmailRoutes = (deps: EmailDeps) =>
           .orderBy(desc(event.startAt))
           .limit(200),
       ]);
-      const scope = emailAccess(c.var.user);
-      if (!scope) return c.json({ message: FORBIDDEN }, 403);
+      if (!canSendEmail(c.var.user)) return c.json({ message: FORBIDDEN }, 403);
       return c.json(
         {
-          scope,
           institutions: INSTITUTION_IDS,
           sports: sports.map((item) => ({
             ...item,
@@ -294,10 +259,9 @@ export const createEmailRoutes = (deps: EmailDeps) =>
       );
     })
 
-    // Accounts to hand-pick, within the sender's reach.
+    // Accounts to hand-pick.
     .get("/recipients", validate("query", recipientsQuery), async (c) => {
-      const scope = emailAccess(c.var.user);
-      if (!scope) return c.json({ message: FORBIDDEN }, 403);
+      if (!canSendEmail(c.var.user)) return c.json({ message: FORBIDDEN }, 403);
       const { q } = c.req.valid("query");
       const people = await c.var.db
         .select({ id: user.id, name: user.name, email: user.email, institution: personInstitution })
@@ -308,9 +272,6 @@ export const createEmailRoutes = (deps: EmailDeps) =>
             or(containsAny([user.name], q), containsAny([user.email], q)),
             notBanned(),
             sql`${user.email} not like 'abort-unless:%'`,
-            scope.kind === "institution"
-              ? sql`${personInstitution} = ${scope.institution}`
-              : undefined,
           ),
         )
         .orderBy(asc(user.name))
@@ -348,7 +309,7 @@ export const createEmailRoutes = (deps: EmailDeps) =>
       const input = c.req.valid("json");
       const ready = await prepare(c, deps, input);
       if ("error" in ready) return c.json({ message: ready.error }, ready.status);
-      const { recipients, scope } = ready;
+      const { recipients } = ready;
       if (recipients.length === 0) return c.json({ message: "ไม่มีผู้รับในกลุ่มที่เลือก" }, 400);
       if (recipients.length > MAX_EMAIL_RECIPIENTS) {
         return c.json(
@@ -359,7 +320,7 @@ export const createEmailRoutes = (deps: EmailDeps) =>
       const id = crypto.randomUUID();
       try {
         await db.batch([
-          abortUnless(db, actor.id, emailAccessIsAsRead(actor)),
+          abortUnless(db, actor.id, canSendEmailIsAsRead(actor)),
           db.insert(emailCampaign).values({
             id,
             subject: input.subject,
@@ -369,7 +330,6 @@ export const createEmailRoutes = (deps: EmailDeps) =>
             sentBy: actor.id,
             senderName: actor.name,
             impersonatedBy: actor.impersonatedBy,
-            scopeInstitution: scope.kind === "institution" ? scope.institution : null,
           }),
         ]);
       } catch (error) {
@@ -396,11 +356,9 @@ export const createEmailRoutes = (deps: EmailDeps) =>
       return c.json({ id, recipientCount: recipients.length }, 201);
     })
 
-    // What has been sent: everything for a sender who reaches everyone,
-    // otherwise what was sent to their own institution.
+    // What has been sent.
     .get("/", async (c) => {
-      const scope = emailAccess(c.var.user);
-      if (!scope) return c.json({ message: FORBIDDEN }, 403);
+      if (!canSendEmail(c.var.user)) return c.json({ message: FORBIDDEN }, 403);
       const rows = await c.var.db
         .select({
           id: emailCampaign.id,
@@ -413,11 +371,6 @@ export const createEmailRoutes = (deps: EmailDeps) =>
           createdAt: emailCampaign.createdAt,
         })
         .from(emailCampaign)
-        .where(
-          scope.kind === "institution"
-            ? eq(emailCampaign.scopeInstitution, scope.institution)
-            : undefined,
-        )
         .orderBy(desc(emailCampaign.createdAt))
         .limit(50);
       return c.json(

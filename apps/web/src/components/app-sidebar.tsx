@@ -1,4 +1,3 @@
-import { can } from "@it3k/auth/permissions";
 import {
   Sidebar,
   SidebarContent,
@@ -29,10 +28,7 @@ import { NavMain, type NavMainGroup, useCloseSidebarOnMobile } from "@/component
 import { NavUser } from "@/components/nav-user";
 import { useMe } from "@/lib/users";
 
-export function AppSidebar({
-  userRole,
-  ...props
-}: React.ComponentProps<typeof Sidebar> & { userRole: string | null | undefined }) {
+export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const { data: me } = useMe();
   const closeOnMobile = useCloseSidebarOnMobile();
   // Shown to anyone with a right in the sport system; the API enforces each one.
@@ -52,7 +48,7 @@ export function AppSidebar({
         ...(me?.canManageUsers
           ? [{ title: "ผู้ใช้", to: "/staff/users", icon: <UserCogIcon /> } as const]
           : []),
-        ...(can(userRole, { department: ["read"] })
+        ...(me?.canManageDepartments
           ? [{ title: "ฝ่าย", to: "/staff/departments", icon: <Building2Icon /> } as const]
           : []),
       ],
@@ -79,7 +75,7 @@ export function AppSidebar({
       items: [
         { title: "QR Code", to: "/staff/qr-code", icon: <QrCodeIcon /> },
         { title: "ลิงก์สั้น", to: "/staff/links", icon: <Link2Icon /> },
-        ...(me?.emailAccess
+        ...(me?.canSendEmail
           ? [{ title: "ส่งอีเมล", to: "/staff/email", icon: <MailIcon /> } as const]
           : []),
       ],

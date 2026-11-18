@@ -39,10 +39,41 @@ export type Institution = (typeof INSTITUTION_IDS)[number];
 /** The host institution: its registration leaders run the sport system with Tech/Live. */
 export const HOST_INSTITUTION: Institution = "kmitl";
 
+/** Heads and viceheads are KMITL's; an account without an institution becomes KMITL's on taking a seat. */
+export function mayHoldSeat(institution: string | null) {
+  return institution === null || institution === HOST_INSTITUTION;
+}
+
+/**
+ * Institution email domains (and their subdomains, such as email.kmutnb.ac.th).
+ * A Google account on one of these may sign in for the first time on its own;
+ * any other address needs an invitation (packages/auth).
+ */
+export const SELF_SIGNUP_DOMAINS = ["kmitl.ac.th", "kmutt.ac.th", "kmutnb.ac.th"] as const;
+
+function emailDomain(email: string) {
+  const at = email.lastIndexOf("@");
+  return at < 0
+    ? ""
+    : email
+        .slice(at + 1)
+        .trim()
+        .toLowerCase();
+}
+
+function onDomain(domain: string, base: string) {
+  return domain === base || domain.endsWith(`.${base}`);
+}
+
+export function isSelfSignupEmail(email: string) {
+  const domain = emailDomain(email);
+  return SELF_SIGNUP_DOMAINS.some((base) => onDomain(domain, base));
+}
+
 export function suggestedInstitution(email: string) {
-  const domain = email.toLowerCase().split("@")[1] ?? "";
-  if (domain === "kmitl.ac.th" || domain.endsWith(".kmitl.ac.th")) return "kmitl";
-  if (domain === "kmutt.ac.th" || domain.endsWith(".kmutt.ac.th")) return "kmutt";
+  const domain = emailDomain(email);
+  if (onDomain(domain, "kmitl.ac.th")) return "kmitl";
+  if (onDomain(domain, "kmutt.ac.th")) return "kmutt";
   return "";
 }
 

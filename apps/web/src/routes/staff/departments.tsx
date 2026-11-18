@@ -1,4 +1,3 @@
-import { can } from "@it3k/auth/permissions";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -44,22 +43,21 @@ import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
 import { type Department, type DepartmentInput, departmentsApi } from "@/lib/departments";
 import { DEPARTMENT_CODE_MAX_LENGTH, DEPARTMENT_CODE_PATTERN } from "@it3k/db/department-codes";
-import { isSignedOut } from "@/lib/leadership";
+import { ApiError, isSignedOut } from "@/lib/leadership";
 import { toastError } from "@/lib/errors";
 
 export const Route = createFileRoute("/staff/departments")({
   component: RouteComponent,
-  beforeLoad: ({ context }) => {
-    if (!can(context.session.data?.user.role, { department: ["read"] })) {
-      throw redirect({ to: "/staff/dashboard" });
-    }
-  },
   // Not a query, so the router's 401 handling does not see it: sign in and come back.
+  // The API decides who runs this page (admins and ทะเบียน KMITL leaders): a 403 goes home.
   loader: async ({ location }) => {
     try {
       return await departmentsApi.list();
     } catch (error) {
       if (isSignedOut(error)) throw redirect({ to: "/login", search: { to: location.href } });
+      if (error instanceof ApiError && error.status === 403) {
+        throw redirect({ to: "/staff/dashboard" });
+      }
       throw error;
     }
   },
@@ -67,13 +65,11 @@ export const Route = createFileRoute("/staff/departments")({
 
 function RouteComponent() {
   const departments = Route.useLoaderData();
-  const { session } = Route.useRouteContext();
   const router = useRouter();
-  const user = session.data?.user;
-
-  const canCreate = can(user?.role, { department: ["create"] });
-  const canDelete = can(user?.role, { department: ["delete"] });
-  const canEdit = can(user?.role, { department: ["update"] });
+  // Everyone the API lets read departments may also create, edit and delete them.
+  const canCreate = true;
+  const canDelete = true;
+  const canEdit = true;
 
   async function run(action: () => Promise<unknown>, success: string) {
     try {

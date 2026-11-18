@@ -29,9 +29,10 @@ async function openMenu(role: string, viewedRole?: string) {
         department: { id: "d-1", name: "Tech/Live", icon: "tv", color: "blue" },
         seatRole: "head",
         canManageUsers: false,
+        canManageDepartments: false,
         institution: null,
         sportAccess: { permissions: [] },
-        emailAccess: false,
+        canSendEmail: false,
         viewingAs: false,
       }) as never,
   });

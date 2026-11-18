@@ -44,7 +44,7 @@ This runs `alchemy dev`, which starts the web app on http://localhost:3001 and t
 
 ### Becoming an admin
 
-No code creates the first admin. Sign in once, then set `role` to `admin` on your row in the `user` table. Locally, run `bun run db:local:studio` to open Drizzle Studio on the dev database (run `bun run dev` at least once first). After that, admins can promote other accounts from `/staff/users`.
+No code creates the first admin. Sign in once with a Google account on one of the institution domains (`kmitl.ac.th`, `kmutt.ac.th`, `kmutnb.ac.th`); any other address is refused until someone invites it (see [Sign-up and invitations](#sign-up-and-invitations)). Then set `role` to `admin` on your row in the `user` table. Locally, run `bun run db:local:studio` to open Drizzle Studio on the dev database (run `bun run dev` at least once first). After that, admins can promote other accounts from `/staff/users`.
 
 ## Scripts
 
@@ -65,6 +65,7 @@ Run these from the repository root.
 | `bun run db:generate`     | Generate a migration from `packages/db/src/schema`                         |
 | `bun run db:local`        | Run drizzle-kit against the local dev D1                                   |
 | `bun run db:local:studio` | Open Drizzle Studio on the local dev D1                                    |
+| `bun run email:dev`       | Preview the email templates in `packages/email/emails`                     |
 | `bun run env:generate`    | Regenerate `src/env.ts` from the `.env.schema` files                       |
 | `bun run deploy`          | Deploy with Alchemy (**changes real infrastructure**)                      |
 | `bun run destroy`         | Destroy an Alchemy stage (**changes real infrastructure**)                 |
@@ -78,7 +79,7 @@ bun test -t "reveal"                       # by test name
 ```
 
 - The root `bunfig.toml` preloads `apps/web/src/test/dom.ts`, which installs jsdom globals before React loads, so every test file can render components.
-- **Server tests** call `app.request(...)` against the real routers. `createTestContext()` in `apps/server/src/testing.ts` gives you `seedUser(id, { role, department, seat })`, and `as(userId, { method, json })` builds a request signed in as that user.
+- **Server tests** call `app.request(...)` against the real routers. `createTestContext()` in `apps/server/src/testing.ts` gives you `seedUser(id, { role, department, seat, institution, banned, name })`, `seedParticipant(id, institution)`, a fake mailer whose queued jobs are in `t.mail.jobs`, and `as(userId, { method, json })`, which builds a request signed in as that user.
 - **Database:** `packages/db/src/testing.ts` provides a D1 implementation backed by `bun:sqlite`. It applies every real migration, including the department seed. `hooks.beforeBatch` lets a test change data between a route's reads and its write batch, which is how the race-condition tests work.
 - **Web tests** sit next to the code as `*.test.tsx`. The router ignores those files, so they never become routes. Helpers for Query, the router and fake APIs are in `apps/web/src/test/`.
 
@@ -100,17 +101,31 @@ browser ─▶ web worker (TanStack Start)
 
 `apps/server/src/index.ts` sets up evlog, CORS and Better Auth, then mounts one router per resource.
 
-| Prefix             | Endpoints                                                                                                                        |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/departments` | `GET /`, `GET /:id`, `POST /`, `PATCH /:id`, `DELETE /:id`, `PATCH /:id/code`, `PUT` and `DELETE /:id/members/:userId`           |
-| `/api/users`       | `GET /me`, `GET /`, `PUT /:id/assignment`, `PUT /:id/admin`                                                                      |
-| `/api/leadership`  | `GET /`, `GET /departments`, `GET /users`, `GET /:id`, `POST /`, `PATCH /:id`, `POST /:id/reveal`, `DELETE /:id`                 |
-| `/api/calendar`    | `GET` and `POST /items`, `GET`, `PATCH` and `DELETE /items/:id`, `GET /people`, `GET /notifications`, `POST /notifications/read` |
+| Prefix               | What it serves                                                                                  |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| `/api/departments`   | Departments and their members                                                                   |
+| `/api/users`         | `/me` (the caller's rights), the account list, assignment, admin, institution and storage quota |
+| `/api/invitations`   | Invitations for addresses outside the institution domains: list, create, resend, revoke         |
+| `/api/view-as`       | Admins previewing the app as a role, department and institution                                 |
+| `/api/leadership`    | Head and vicehead seats, the account picker, and audited contact reveal                         |
+| `/api/profile`       | The signed-in account's own profile: read, save a draft, submit                                 |
+| `/api/files`         | Uploads to R2 with per-account quotas; `/api/files/public` serves public files                  |
+| `/api/calendar`      | Team calendar items, people and notifications                                                   |
+| `/api/links`         | Short links (see [Short links](short-links.md)); `/l/<slug>` answers visits                     |
+| `/api/qr-presets`    | Shared QR designs                                                                               |
+| `/api/sports`        | Sports and divisions                                                                            |
+| `/api/registrations` | An athlete's own sport registrations                                                            |
+| `/api/athletes`      | Staff review, edit and export of registrations                                                  |
+| `/api/venues`        | Venues                                                                                          |
+| `/api/events`        | Events, participants and check-in                                                               |
+| `/api/tickets`       | Event tickets                                                                                   |
+| `/api/emails`        | Staff emails to chosen audiences                                                                |
+| `/api/public/events` | Signed-out event data for link previews                                                         |
 
 Every router follows the same conventions:
 
 - **Dependency seam.** Each router is a factory, `createXRoutes(deps)`, where `deps` is `{ getSession, getDb }`. Production passes in the Better Auth session and D1. Tests pass in a header-based fake session and the in-memory database.
-- **Authorization is read from the database on every request.** `requireUser` (`src/middleware/current-user.ts`) loads the caller's role, department, seat and ban state fresh, and `requireMember` rejects guests and athletes. The rules themselves live in `src/policies/` (`leadership.ts`, `calendar.ts`).
+- **Authorization is read from the database on every request.** `requireUser` (`src/middleware/current-user.ts`) loads the caller's role, department, seat and ban state fresh, and `requireMember` rejects guests and athletes. The rules themselves live in `src/policies/`, one file per area (see [Roles and permissions](#roles-and-permissions)).
 - **CSRF.** Session cookies are `SameSite=None`, so `requireJsonPosts` rejects any POST that is not `application/json`.
 - **Race-safe writes.** A route reads state, checks it, then writes everything in one `db.batch([...])`, which D1 runs as a single transaction. The batch starts with `abortUnless(db, userId, condition)`, which makes the whole batch fail if the caller's rights changed after the check. `constraintError()` turns that failure into a `"stale"` response. Calendar items also carry a `version` that every write increments, so an edit based on an old read is refused.
 - **Validation.** `validate(target, zodSchema)` returns `400 { message, issues }` when the input is invalid.
@@ -125,11 +140,38 @@ Every router follows the same conventions:
 
 ### Roles and permissions
 
-`packages/auth/src/permissions.ts` defines the Better Auth access control. Roles are stored as a comma-separated string, so always read them through `parseRoles`, `hasRole`, `isMember` or `can`. Heads and viceheads get no Better Auth grants. Their rights come from their `leadership` seat, through the server's policies.
+`packages/auth/src/permissions.ts` defines the account roles: `guest` (the default), `participant`, `athlete`, `staff` and `admin`. Roles are stored as a comma-separated string, so always read them through `parseRoles`, `hasRole` or `isMember`. `staff` and `admin` are members, who may use `/staff`.
+
+Everything else is decided on the server, in `apps/server/src/policies/`:
+
+- **Seats.** Heads and viceheads are rows in the `leadership` table, not roles. Seats are KMITL's only: an account of another institution can be staff but cannot hold a seat, and an account with no institution becomes KMITL's when it takes one. A seat held from before that rule grants no leader rights.
+- **Department capabilities.** Only the reserved department codes grant rights, through `DEPARTMENT_CAPABILITIES` in `policies/department-capabilities.ts`: `tech-live` (Tech/Live) and `registration` (ทะเบียน). Policies ask for a capability, never a code.
+- **Who may do what.**
+
+| Area                                             | Who                                                                                 |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Give any role except admin, manage seats         | Admins, and the KMITL heads and viceheads of Tech/Live and ทะเบียน ("full rights")   |
+| Give `guest` to a non-member, invite guests      | Other Tech/Live and ทะเบียน staff                                                    |
+| Edit a seat's nickname, phone and socials        | Full rights, and the seat's own holder                                              |
+| See a leader's contact (audited)                 | Admins and every leader see all; staff see their own department's head and vicehead |
+| Storage quotas                                   | Full rights                                                                         |
+| An account's institution                         | Admins, KMITL Tech/Live members, and Tech/Live or ทะเบียน leaders                    |
+| Departments: create, edit, delete, members       | Admins, and KMITL ทะเบียน heads and viceheads                                        |
+| Sports, events, venues; review and edit athletes | Full rights                                                                         |
+| Read athletes and run the kiosk                  | Full rights, Tech/Live staff and KMITL ทะเบียน staff                                 |
+| Read and export athletes of one institution      | ทะเบียน staff of that institution                                                    |
+| Staff emails, to anyone                          | Admins, every Tech/Live member, and KMITL ทะเบียน heads and viceheads                |
+| Short links                                      | See [Short links](short-links.md)                                                   |
+
+`/api/users/me` returns the caller's flags (`canManageUsers`, `canManageDepartments`, `canSendEmail`, `assignableKinds`, `sportAccess`) and list responses carry per-row flags such as `canEdit`, `canReveal` and `canSetStorage`. The web app only uses them to decide what to show.
+
+### Sign-up and invitations
+
+A first Google sign-in creates an account on its own only for a verified address on `kmitl.ac.th`, `kmutt.ac.th` or `kmutnb.ac.th`, subdomains included (`SELF_SIGNUP_DOMAINS` in `packages/db/src/profile.ts`). Any other address is sent back to `/login?error=invite_required` unless it has an open invitation. Invitations are made on `/staff/users`, emailed through the queue, and expire after 14 days. When the invited address signs in, the invitation sets its role, department and institution, and gives it a head or vicehead seat if that seat is still free (`packages/auth/src/signup.ts`). A head or vicehead invitation is always KMITL's.
 
 ## Database and migrations
 
-1. Edit the schema in `packages/db/src/schema/` (`auth`, `department`, `leadership`, `calendar`).
+1. Edit the schema in `packages/db/src/schema/` (`auth`, `department`, `leadership`, `invitation`, `profile`, `sport`, `event`, `calendar`, `short-link`, `qr-preset`, `email`).
 2. Run `bun run db:generate` to write a new migration folder in `packages/db/src/migrations/`.
 3. Alchemy applies pending migrations on `alchemy dev` and on every deploy.
 

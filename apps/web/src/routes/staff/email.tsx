@@ -332,7 +332,6 @@ function AudiencePicker({
   onChange: (value: AudienceDraft) => void;
 }) {
   const set = (patch: Partial<AudienceDraft>) => onChange({ ...value, ...patch });
-  const scope = options.scope;
   const sport = options.sports.find((item) => item.id === value.sportId);
   const sportItems = [
     { value: null, label: "ทุกกีฬา" },
@@ -341,11 +340,7 @@ function AudiencePicker({
   const eventItems = options.events.map((item) => ({ value: item.id, label: item.name }));
 
   const institutions =
-    value.kind === "manual" ? null : scope.kind === "institution" ? (
-      <p className="text-sm text-muted-foreground">
-        ส่งได้เฉพาะคนใน {institutionName(scope.institution)}
-      </p>
-    ) : (
+    value.kind === "manual" ? null : (
       <Row label="สถาบัน">
         <TogglePills
           label="สถาบัน"
@@ -452,17 +447,15 @@ function AudiencePicker({
           <Row label="ผู้ใช้ในระบบ">
             <PeoplePicker people={value.people} onChange={(people) => set({ people })} />
           </Row>
-          {scope.kind === "all" && (
-            <Row label="อีเมลอื่น" htmlFor="email-extra">
-              <Textarea
-                id="email-extra"
-                value={value.emails}
-                onChange={(event) => set({ emails: event.target.value })}
-                placeholder="คั่นแต่ละอีเมลด้วยจุลภาคหรือขึ้นบรรทัดใหม่"
-                rows={3}
-              />
-            </Row>
-          )}
+          <Row label="อีเมลอื่น" htmlFor="email-extra">
+            <Textarea
+              id="email-extra"
+              value={value.emails}
+              onChange={(event) => set({ emails: event.target.value })}
+              placeholder="คั่นแต่ละอีเมลด้วยจุลภาคหรือขึ้นบรรทัดใหม่"
+              rows={3}
+            />
+          </Row>
         </>
       )}
 
@@ -614,7 +607,7 @@ export function EmailPage() {
   const apis = useApis();
   const queryClient = useQueryClient();
   const me = useMe(apis.users);
-  const allowed = !!me.data?.emailAccess;
+  const allowed = !!me.data?.canSendEmail;
   const audiences = useQuery({
     queryKey: [...EMAILS_KEY, "audiences"],
     queryFn: () => apis.emails.audiences(),

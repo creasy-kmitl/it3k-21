@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   sampleContext,
   sampleCustom,
+  sampleInvitation,
   sampleProfileSubmitted,
   sampleSportApproved,
   sampleSportRegistered,
@@ -51,6 +52,17 @@ describe("renderEmail", () => {
     const out = await renderEmail(sampleTicketClaimed, sampleContext);
     expect(out.html).toContain(`${sampleContext.webOrigin}/tickets/opening-ceremony`);
     expect(out.text).toContain("17:00–19:30 น.");
+  });
+
+  test("invitation names the role, department and the address to sign in with", async () => {
+    const out = await renderEmail(sampleInvitation, sampleContext);
+    expect(out.subject).toBe("คุณได้รับคำเชิญเข้าใช้งาน · IT3Kings");
+    expect(out.html).toContain(`${sampleContext.webOrigin}/login`);
+    expect(out.html).toContain("Tech/Live");
+    expect(out.html).toContain("สมชาย ใจดี");
+    expect(out.html).toContain("วิทยาเขตกรุงเทพฯ");
+    expect(out.text).toContain("friend@gmail.com");
+    expect(out.text).toContain("2 ธันวาคม 2569");
   });
 
   test("custom email keeps the staff subject and renders the document", async () => {

@@ -35,6 +35,7 @@ const summary = {
   displayName: "A",
   canEdit: false,
   canDelete: false,
+  canReveal: true,
 };
 
 describe("leadership client", () => {

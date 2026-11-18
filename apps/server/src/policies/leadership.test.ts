@@ -1,6 +1,19 @@
 import { describe, expect, test } from "bun:test";
 
-import { type Action, type Actor, allowed, canGrantAdmin, isManager } from "./leadership";
+import { hasRole } from "@it3k/auth/permissions";
+import { ASSIGN_KINDS } from "@it3k/db/invitation-rules";
+
+import {
+  type Action,
+  type Actor,
+  allowed,
+  assignableKinds,
+  canRevealContact,
+  canAssign,
+  canGrantAdmin,
+  hasFullAssignRights,
+  isManager,
+} from "./leadership";
 
 const actor = (overrides: Partial<Actor> = {}): Actor => ({
   id: "me",
@@ -59,12 +72,12 @@ describe("leadership policy", () => {
     });
   }
 
-  test("staff of Tech/Live or ทะเบียน are managers", () => {
+  test("staff of Tech/Live or ทะเบียน manage accounts, but not seats", () => {
     for (const departmentCode of ["tech-live", "registration"] as const) {
       const who = actor({ role: "staff", departmentCode });
       expect(isManager(who)).toBe(true);
       for (const action of MANAGE) {
-        expect(allowed(who, action, other)).toBe(true);
+        expect(allowed(who, action, other)).toBe(false);
       }
     }
   });
@@ -89,18 +102,27 @@ describe("leadership policy", () => {
     expect(canGrantAdmin(actor({ role: "admin", banned: true }))).toBe(false);
   });
 
-  test("staff may only reveal contacts", () => {
+  test("staff manage no seat", () => {
     const who = actor();
     for (const action of MANAGE) {
       expect(allowed(who, action, self)).toBe(false);
     }
-    expect(allowed(who, "reveal", other)).toBe(true);
   });
 
-  test("every signed-in, unbanned user may reveal", () => {
-    for (const who of [actor(), actor({ leadershipRole: "head" }), actor({ role: "admin" })]) {
-      expect(allowed(who, "reveal", other)).toBe(true);
-    }
+  test("admins and leaders see every seat's contact; staff only their own department's", () => {
+    const at = (overrides: Partial<Actor>, departmentId: string | null = "art") => ({
+      ...actor(overrides),
+      departmentId,
+    });
+    expect(canRevealContact(at({ role: "admin" }, null), "pr")).toBe(true);
+    expect(canRevealContact(at({ leadershipRole: "head" }), "pr")).toBe(true);
+    expect(canRevealContact(at({ leadershipRole: "vicehead" }), "pr")).toBe(true);
+    expect(canRevealContact(at({}), "art")).toBe(true);
+    expect(canRevealContact(at({}), "pr")).toBe(false);
+    expect(canRevealContact(at({ departmentCode: "tech-live" }), "pr")).toBe(false);
+    expect(canRevealContact(at({}, null), "art")).toBe(false);
+    expect(canRevealContact(at({ role: "guest" }), "art")).toBe(false);
+    expect(canRevealContact(at({ role: "admin", banned: true }), "art")).toBe(false);
   });
 
   test("anonymous and banned actors are denied everything", () => {
@@ -122,4 +144,67 @@ describe("leadership policy", () => {
     expect(isManager(who)).toBe(false);
     expect(allowed(who, "update", self)).toBe(false);
   });
+});
+
+describe("assignment rights", () => {
+  const ALL = [...ASSIGN_KINDS];
+  const member = { role: "staff", seatRole: null };
+  const seated = { role: "staff", seatRole: "head" as const };
+  const plain = { role: "guest", seatRole: null };
+  const admin = { role: "admin", seatRole: null };
+
+  const full: [string, Actor][] = [
+    ["admin", actor({ role: "admin" })],
+    ["tech-live head", actor({ leadershipRole: "head", departmentCode: "tech-live" })],
+    ["tech-live vicehead", actor({ leadershipRole: "vicehead", departmentCode: "tech-live" })],
+    ["registration head", actor({ leadershipRole: "head", departmentCode: "registration" })],
+    [
+      "registration vicehead",
+      actor({ leadershipRole: "vicehead", departmentCode: "registration" }),
+    ],
+  ];
+  for (const [label, who] of full) {
+    test(`${label} gives every kind, to anyone but admins`, () => {
+      expect(hasFullAssignRights(who)).toBe(true);
+      expect(assignableKinds(who)).toEqual(ALL);
+      for (const target of [member, seated, plain]) {
+        expect(canAssign(who, "head", target)).toBe(true);
+        expect(canAssign(who, "guest", target)).toBe(true);
+      }
+      expect(canAssign(who, "staff", admin)).toBe(hasRole(who.role, "admin"));
+    });
+  }
+
+  for (const code of ["tech-live", "registration"]) {
+    test(`${code} staff only make non-members guests`, () => {
+      const who = actor({ departmentCode: code });
+      expect(hasFullAssignRights(who)).toBe(false);
+      expect(assignableKinds(who)).toEqual(["guest"]);
+      expect(canAssign(who, "guest")).toBe(true);
+      expect(canAssign(who, "staff")).toBe(false);
+      expect(canAssign(who, "guest", plain)).toBe(true);
+      expect(canAssign(who, "guest", { role: "athlete,participant", seatRole: null })).toBe(true);
+      expect(canAssign(who, "athlete", plain)).toBe(false);
+      expect(canAssign(who, "guest", member)).toBe(false);
+      expect(canAssign(who, "guest", seated)).toBe(false);
+      expect(canAssign(who, "guest", admin)).toBe(false);
+    });
+  }
+
+  const none: [string, Actor][] = [
+    ["other-department head", actor({ leadershipRole: "head", departmentCode: null })],
+    ["other-department staff", actor({ departmentCode: "art" })],
+    ["guest", actor({ role: "guest", departmentCode: "tech-live" })],
+    [
+      "banned tech-live head",
+      actor({ leadershipRole: "head", departmentCode: "tech-live", banned: true }),
+    ],
+  ];
+  for (const [label, who] of none) {
+    test(`${label} gives nothing`, () => {
+      expect(assignableKinds(who)).toEqual([]);
+      expect(canAssign(who, "guest")).toBe(false);
+      expect(canAssign(who, "guest", plain)).toBe(false);
+    });
+  }
 });

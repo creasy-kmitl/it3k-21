@@ -31,6 +31,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   access_denied: "คุณปฏิเสธการให้สิทธิ์กับ Google",
   banned_user: "บัญชีนี้ถูกระงับการใช้งาน",
   signup_disabled: "บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าใช้งาน",
+  invite_required: "อีเมลนี้ต้องได้รับคำเชิญก่อนเข้าใช้งาน ใช้อีเมลสถาบัน หรือติดต่อฝ่าย Tech/Live หรือทะเบียน",
   account_not_linked: "อีเมลนี้ถูกใช้กับวิธีเข้าสู่ระบบอื่นแล้ว",
   account_already_linked_to_different_user: "บัญชี Google นี้ถูกผูกกับผู้ใช้อื่นแล้ว",
   email_not_verified: "อีเมลของบัญชี Google นี้ยังไม่ได้รับการยืนยัน",
