@@ -76,7 +76,10 @@ function MePage() {
       </ParticipantShell>
     );
   const { account, profile: values } = me.data;
-  const institution = INSTITUTIONS.find((item) => item.id === values?.institution);
+  // The account's institution wins over the profile's (staff may have changed it).
+  const institution = INSTITUTIONS.find(
+    (item) => item.id === (me.data.institution ?? values?.institution),
+  );
   const details = values
     ? [
         { label: "คำนำหน้า", value: values.prefix, icon: IdCard },

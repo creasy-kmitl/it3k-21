@@ -152,14 +152,16 @@ export function ParticipantForm({
     accountId: data.account.id,
     api: profile,
   }).current;
-  const [initial] = useState<ProfileValues>(
-    () =>
-      data.draft ??
+  // Once set, only ทะเบียน staff and Tech/Live or ทะเบียน leaders change the institution.
+  const lockedInstitution = data.institution;
+  const [initial] = useState<ProfileValues>(() => {
+    const values = data.draft ??
       data.profile ?? {
         ...EMPTY_PROFILE,
         institution: suggestedInstitution(data.account.email),
-      },
-  );
+      };
+    return lockedInstitution ? { ...values, institution: lockedInstitution } : values;
+  });
   useEffect(() => {
     let mounted = true;
     const controller = new DraftSaver(
@@ -440,10 +442,11 @@ export function ParticipantForm({
                             field.handleChange(item?.id ?? "");
                             field.handleBlur();
                           }}
-                          disabled={submitting}
+                          disabled={submitting || !!lockedInstitution}
                         >
                           <ComboboxInput
                             id="institution"
+                            disabled={submitting || !!lockedInstitution}
                             aria-invalid={invalid}
                             aria-required
                             aria-describedby="institution-requirement"
@@ -479,8 +482,9 @@ export function ParticipantForm({
                           </ComboboxContent>
                         </Combobox>
                         <FieldDescription>
-                          แนะนำจากอีเมล Google ของคุณ คุณเปลี่ยนสถาบันได้เสมอ · มจพ.
-                          กรุณาเลือกวิทยาเขตด้วยตนเอง
+                          {lockedInstitution
+                            ? "เปลี่ยนสถาบันเองไม่ได้แล้ว หากไม่ถูกต้อง ติดต่อฝ่ายทะเบียน"
+                            : "แนะนำจากอีเมล Google ของคุณ · มจพ. กรุณาเลือกวิทยาเขตด้วยตนเอง · ตรวจสอบให้ถูกต้อง เมื่อส่งข้อมูลแล้วจะเปลี่ยนเองไม่ได้"}
                         </FieldDescription>
                         {invalid && <FieldError errors={field.state.meta.errors} />}
                       </Field>

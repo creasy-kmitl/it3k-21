@@ -86,9 +86,9 @@ describe("who may invite", () => {
 
 describe("institution", () => {
   test("those who may set an account's institution may set it on an invitation", async () => {
-    // Admins, KMITL's Tech/Live members and Tech/Live or ทะเบียน leaders.
-    await t.seedUser("tech-kmitl", { department: "Tech/Live", institution: "kmitl" });
-    for (const who of ["admin", "tech-kmitl", "reg-vice"]) {
+    // Admins, KMITL's ทะเบียน staff and Tech/Live or ทะเบียน leaders.
+    await t.seedUser("reg-kmitl", { department: "ทะเบียน", institution: "kmitl" });
+    for (const who of ["admin", "reg-kmitl", "reg-vice"]) {
       const { res, body } = await invite(who, {
         email: `${who}@gmail.com`,
         kind: "guest",
@@ -102,18 +102,21 @@ describe("institution", () => {
       "kmutnb-bangkok",
       "kmutnb-bangkok",
     ]);
-    const list = await send<{ canSetInstitution: boolean }>("tech-kmitl", "GET", "/");
+    const list = await send<{ canSetInstitution: boolean }>("reg-kmitl", "GET", "/");
     expect(list.body.canSetInstitution).toBe(true);
   });
 
   test("other inviters may invite, but without an institution", async () => {
-    // Tech/Live staff outside KMITL and ทะเบียน staff do not set institutions.
-    const denied = await invite("tech-staff", {
-      email: "a@gmail.com",
-      kind: "guest",
-      institution: "kmutt",
-    });
-    expect(denied.res.status).toBe(403);
+    // Tech/Live staff, even KMITL's, and ทะเบียน staff outside KMITL do not set institutions.
+    await t.seedUser("tech-kmitl", { department: "Tech/Live", institution: "kmitl" });
+    for (const who of ["tech-staff", "tech-kmitl"]) {
+      const denied = await invite(who, {
+        email: `${who}@gmail.com`,
+        kind: "guest",
+        institution: "kmutt",
+      });
+      expect(denied.res.status).toBe(403);
+    }
     const ok = await invite("reg-staff", {
       email: "b@gmail.com",
       kind: "guest",
@@ -159,12 +162,12 @@ describe("institution", () => {
   });
 
   test("a change to the inviter's sport rights meanwhile rolls the invitation back", async () => {
-    await t.seedUser("tech-kmitl", { department: "Tech/Live", institution: "kmitl" });
+    await t.seedUser("reg-kmitl", { department: "ทะเบียน", institution: "kmitl" });
     t.hooks.beforeBatch = () => {
       t.hooks.beforeBatch = undefined;
-      t.sqlite.run("update user set institution = 'kmutt' where id = 'tech-kmitl'");
+      t.sqlite.run("update user set institution = 'kmutt' where id = 'reg-kmitl'");
     };
-    const { res } = await invite("tech-kmitl", {
+    const { res } = await invite("reg-kmitl", {
       email: "a@gmail.com",
       kind: "guest",
       institution: "kmitl",

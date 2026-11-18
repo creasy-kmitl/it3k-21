@@ -4,9 +4,9 @@
 //
 //   admin                                              everything, every institution
 //   runSports or registerAthletes, head/vice (KMITL)   everything, every institution
-//   runSports, staff                                   kiosk and reading athletes, every institution;
-//                                                      KMITL staff also set accounts' institutions
-//   registerAthletes, KMITL staff                      kiosk and reading athletes, every institution
+//   runSports, staff                                   kiosk and reading athletes, every institution
+//   registerAthletes, KMITL staff                      kiosk and reading athletes, every institution;
+//                                                      also set accounts' institutions
 //   registerAthletes, any other institution            read and export its own athletes
 //   registerAthletes without an institution            nothing
 //
@@ -55,7 +55,9 @@ const STAFF: SportAccess = {
   can: new Set(["kiosk.operate", "athletes.read"]),
   scope: { kind: "all" },
 };
-const TECH_KMITL_STAFF: SportAccess = {
+// Account holders cannot change their own institution once it is set
+// (routes/profile); KMITL's ทะเบียน staff can, along with full rights.
+const REG_KMITL_STAFF: SportAccess = {
   can: new Set(["kiosk.operate", "athletes.read", "users.setInstitution"]),
   scope: { kind: "all" },
 };
@@ -69,10 +71,10 @@ export function sportAccess(actor: SportActor | null): SportAccess {
   if (!runs && !registers) return NONE;
   // A seat always belongs to the account's own department.
   if (actor.leadershipRole && mayHoldSeat(actor.institution)) return FULL;
-  if (runs) return actor.institution === HOST_INSTITUTION ? TECH_KMITL_STAFF : STAFF;
+  if (runs) return STAFF;
   // Without an institution nobody can tell whose athletes they may see.
   if (!actor.institution) return NONE;
-  if (actor.institution === HOST_INSTITUTION) return STAFF;
+  if (actor.institution === HOST_INSTITUTION) return REG_KMITL_STAFF;
   return {
     can: new Set(["athletes.read", "athletes.export"]),
     scope: { kind: "institution", institution: actor.institution },

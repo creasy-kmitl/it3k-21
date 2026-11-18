@@ -378,11 +378,11 @@ describe("institution", () => {
   const setInstitution = (who: string, id: string, institution: string | null) =>
     send<Record<string, unknown>>(who, "PUT", `/${id}/institution`, { institution });
 
-  test("admins, KMITL's Tech/Live members and Tech/Live or ทะเบียน leaders set it", async () => {
+  test("admins, KMITL's ทะเบียน staff and Tech/Live or ทะเบียน leaders set it", async () => {
     await t.seedUser("reg-head", { seat: "head", department: "ทะเบียน", institution: "kmitl" });
-    await t.seedUser("tech-kmitl", { department: "Tech/Live", institution: "kmitl" });
+    await t.seedUser("reg-kmitl", { department: "ทะเบียน", institution: "kmitl" });
     // tech-head and reg-vice have no institution: a seat counts as KMITL's.
-    for (const who of ["admin", "tech-kmitl", "tech-head", "reg-head", "reg-vice"]) {
+    for (const who of ["admin", "reg-kmitl", "tech-head", "reg-head", "reg-vice"]) {
       const { res, body } = await setInstitution(who, "art-staff", "kmutt");
       expect(res.status).toBe(200);
       expect(body).toMatchObject({ institution: "kmutt", canSetInstitution: true });
@@ -391,12 +391,20 @@ describe("institution", () => {
     expect((await setInstitution("admin", "art-staff", null)).body.institution).toBeNull();
   });
 
-  test("ทะเบียน staff, other institutions and Tech/Live staff outside KMITL cannot", async () => {
-    await t.seedUser("reg-staff", { department: "ทะเบียน", institution: "kmitl" });
+  test("Tech/Live staff, other institutions' ทะเบียน and other departments cannot", async () => {
+    await t.seedUser("reg-staff", { department: "ทะเบียน", institution: "kmutt" });
     // A seat held from before seats were KMITL's only.
     await t.seedUser("reg-kmutt", { seat: "head", department: "ทะเบียน", institution: "kmutt" });
+    await t.seedUser("tech-kmitl", { department: "Tech/Live", institution: "kmitl" });
     await t.seedUser("tech-kmutt", { department: "Tech/Live", institution: "kmutt" });
-    for (const who of ["reg-staff", "reg-kmutt", "tech-staff", "tech-kmutt", "art-staff"]) {
+    for (const who of [
+      "reg-staff",
+      "reg-kmutt",
+      "tech-staff",
+      "tech-kmitl",
+      "tech-kmutt",
+      "art-staff",
+    ]) {
       expect((await setInstitution(who, "guest", "kmitl")).res.status).toBe(403);
     }
     expect((await stored("guest"))?.institution).toBeNull();
@@ -415,7 +423,10 @@ describe("institution", () => {
     await t.seedUser("reg-staff", { department: "ทะเบียน", institution: "kmitl" });
     expect((await send("reg-staff", "GET", "/me")).body).toMatchObject({
       institution: "kmitl",
-      sportAccess: { permissions: ["athletes.read", "kiosk.operate"], scope: { kind: "all" } },
+      sportAccess: {
+        permissions: ["athletes.read", "kiosk.operate", "users.setInstitution"],
+        scope: { kind: "all" },
+      },
     });
   });
 });
