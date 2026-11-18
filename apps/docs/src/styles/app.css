@@ -1,0 +1,47 @@
+@import "tailwindcss";
+/* Maps Fumadocs' colours onto the shadcn variables, which tokens.css sets to the main web's palette. */
+@import "fumadocs-ui/css/shadcn.css";
+@import "fumadocs-ui/css/preset.css";
+@import "@it3k/ui/tokens.css";
+
+/* The main web's fonts: Inter for Latin, IBM Plex Sans Thai for Thai. */
+@import "@fontsource-variable/inter";
+@import "@fontsource/ibm-plex-sans-thai/400.css";
+@import "@fontsource/ibm-plex-sans-thai/500.css";
+@import "@fontsource/ibm-plex-sans-thai/600.css";
+@import "@fontsource/ibm-plex-sans-thai/700.css";
+/* Looped Thai for the guide's own text: easier to read in long passages. */
+@import "@fontsource/ibm-plex-sans-thai-looped/400.css";
+@import "@fontsource/ibm-plex-sans-thai-looped/500.css";
+@import "@fontsource/ibm-plex-sans-thai-looped/600.css";
+@import "@fontsource/ibm-plex-sans-thai-looped/700.css";
+
+@theme {
+  /* Same stack as packages/ui globals.css, so navigation looks like the web. */
+  --font-sans: "Inter Variable", "IBM Plex Sans Thai", ui-sans-serif, system-ui, sans-serif;
+  /* `font-content`: page text (DocsBody, DocsDescription in routes/docs/$.tsx). */
+  --font-content:
+    "Inter Variable", "IBM Plex Sans Thai Looped", ui-sans-serif, system-ui, sans-serif;
+
+  /* The web's radius scale (`--radius` is 0.625rem in tokens.css). */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+}
+
+/* The active page is drawn in the primary colour; the web's sidebars use their
+ * own, brighter red for that, which keeps it readable in dark mode. */
+#nd-sidebar {
+  --color-fd-primary: var(--sidebar-primary);
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}

@@ -34,12 +34,18 @@ const hostnames = (() => {
   if (!process.env.GITHUB_ACTIONS) return undefined;
   const stage = process.env.ALCHEMY_STAGE;
   if (!stage) return undefined;
-  if (stage === "prod") return { web: `it3k.${ZONE}`, api: `it3k-api.${ZONE}` };
+  if (stage === "prod") {
+    return { web: `it3k.${ZONE}`, api: `it3k-api.${ZONE}`, docs: `it3k-docs.${ZONE}` };
+  }
   const slug = stage
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-  return { web: `it3k-${slug}.${ZONE}`, api: `it3k-api-${slug}.${ZONE}` };
+  return {
+    web: `it3k-${slug}.${ZONE}`,
+    api: `it3k-api-${slug}.${ZONE}`,
+    docs: `it3k-docs-${slug}.${ZONE}`,
+  };
 })();
 
 /**
@@ -302,6 +308,25 @@ export default Alchemy.Stack(
       workersDev: !hostnames,
     });
 
+    // The user guide (Fumadocs). It holds no data and calls no API; it only
+    // links back to the web worker of the same stage.
+    const docsWorker = yield* Cloudflare.Website.Vite("docs", {
+      rootDir: "../../apps/docs",
+      compatibility: {
+        flags: ["nodejs_compat"],
+      },
+      env: {
+        VITE_WEB_URL: webWorker.url.as<string>(),
+      },
+      dev: {
+        // 3002 is where a second `alchemy dev` lands; 3003 is the email preview.
+        port: 3004,
+      },
+      domain: hostnames?.docs ?? null,
+      // See `workersDev` on the server worker.
+      workersDev: !hostnames,
+    });
+
     // Keeping the logical id stable means each push edits the same comment
     // instead of piling a new one onto the PR.
     if (process.env.PULL_REQUEST) {
@@ -313,6 +338,7 @@ export default Alchemy.Stack(
 
 **Web:** ${webWorker.url}
 **API:** ${serverWorker.url}
+**Docs:** ${docsWorker.url}
 
 Stage \`${process.env.ALCHEMY_STAGE}\` — built from commit ${process.env.GITHUB_SHA?.slice(0, 7)}.
 
@@ -324,6 +350,7 @@ _This comment updates automatically with each push, and the stage is destroyed w
     return {
       web: webWorker.url,
       server: serverWorker.url,
+      docs: docsWorker.url,
       axiomDataset: observabilityResources.runtimeEnv.AXIOM_DATASET,
     };
   }),

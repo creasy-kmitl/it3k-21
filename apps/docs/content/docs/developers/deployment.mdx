@@ -1,0 +1,17 @@
+---
+title: การ deploy
+description: branch, stage และ hostname ของแต่ละสภาพแวดล้อม
+icon: Rocket
+---
+
+ทุกอย่างรันบน Cloudflare Workers และสร้างด้วย Alchemy (`packages/infra/alchemy.run.ts`) ผ่าน GitHub Actions
+
+| เหตุการณ์   | Stage     | เว็บ                       | คู่มือ                          |
+| ----------- | --------- | -------------------------- | ------------------------------- |
+| push `prod` | `prod`    | `it3k.creasy.club`         | `it3k-docs.creasy.club`         |
+| push `main` | `staging` | `it3k-staging.creasy.club` | `it3k-docs-staging.creasy.club` |
+| เปิด PR     | `pr-<n>`  | `it3k-pr-<n>.creasy.club`  | `it3k-docs-pr-<n>.creasy.club`  |
+
+- งานใหม่ทำบน branch `feat/*` แล้วเปิด PR เข้า `main`
+- โค้ดขึ้น `prod` ผ่าน PR เท่านั้น
+- preview ของ PR ถูกลบเมื่อปิด PR

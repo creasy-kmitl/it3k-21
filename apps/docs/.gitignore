@@ -1,0 +1,8 @@
+/node_modules
+/dist/
+.source
+.tanstack/
+.wrangler
+.alchemy
+.dev.vars*
+/src/routeTree.gen.ts
