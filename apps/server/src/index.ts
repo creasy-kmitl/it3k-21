@@ -31,6 +31,7 @@ import { cleanupImpersonationSessions, handleAuthRequest } from "./routes/auth-a
 import { cleanupFiles, createFileRoutes, createPublicFileRoutes } from "./routes/files";
 import { createFileStore } from "./routes/files/storage";
 import { createEmailRoutes } from "./routes/emails";
+import { createInvitationRoutes } from "./routes/invitations";
 import { createQueueMailer, type MailDeps } from "./email/mailer";
 import { handleEmailBatch, type JobMessage } from "./email/consumer";
 import type { EmailJob } from "@it3k/email/jobs";
@@ -96,6 +97,7 @@ const emailContext = { webOrigin: env.CORS_ORIGIN, apiOrigin: new URL(env.BETTER
 
 app.route("/api/departments", createDepartmentRoutes(deps));
 app.route("/api/users", createUserRoutes(deps));
+app.route("/api/invitations", createInvitationRoutes({ ...deps, ...mailDeps }));
 app.route("/api/view-as", createViewAsRoutes(deps));
 const fileDeps = { ...deps, getStore: () => createFileStore(env.UPLOADS), waitUntil };
 app.route("/api/files/public", createPublicFileRoutes(fileDeps));

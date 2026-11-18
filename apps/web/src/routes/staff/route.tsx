@@ -77,7 +77,7 @@ function AuthLayout() {
     <SessionBoundary key={session.data?.user.id} userId={session.data?.user.id ?? ""}>
       <TooltipProvider>
         <SidebarProvider>
-          <AppSidebar userRole={session.data?.user.role} />
+          <AppSidebar />
           {/* A plain border like the boxes on each page, instead of the inset's shadow. */}
           <SidebarInset className="md:peer-data-[variant=inset]:rounded-2xl md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:shadow-none">
             {/* Header and page share one centered column, so the breadcrumb lines up

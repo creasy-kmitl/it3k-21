@@ -59,7 +59,9 @@ export function HeadPage({ filters }: { filters?: FilterControl<ListFilters> }) 
   const renderActions = useCallback(
     (seat: LeadershipSummary, department?: LeadershipDepartment) => (
       <>
-        <LeadershipContactButton seat={seat} department={department} api={api} />
+        {seat.canReveal && (
+          <LeadershipContactButton seat={seat} department={department} api={api} />
+        )}
         {seat.canEdit && (
           <Button
             variant="ghost"

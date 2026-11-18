@@ -70,8 +70,10 @@ beforeEach(async () => {
   await t.seedUser("guest", { role: "guest" });
   await t.seedUser("other", { role: "guest" });
   await t.seedUser("admin", { role: "admin" });
-  await t.seedUser("tech", { department: "Tech/Live" });
-  await t.seedUser("registration", { department: "ทะเบียน" });
+  // Storage quotas are set by admins and the heads and viceheads of Tech/Live and ทะเบียน.
+  await t.seedUser("tech", { department: "Tech/Live", seat: "head" });
+  await t.seedUser("registration", { department: "ทะเบียน", seat: "vicehead" });
+  await t.seedUser("tech-staff", { department: "Tech/Live" });
   await t.seedUser("art", { department: "Art" });
 });
 const png = Uint8Array.from(
@@ -954,8 +956,8 @@ describe("staff quota controls", () => {
       ).toBe(GiB);
     });
   }
-  test("only admins and manager departments may set quota", async () => {
-    for (const actor of ["guest", "other", "art"])
+  test("only admins and Tech/Live or ทะเบียน leaders may set quota", async () => {
+    for (const actor of ["guest", "other", "art", "tech-staff"])
       expect(
         (
           await app.request(

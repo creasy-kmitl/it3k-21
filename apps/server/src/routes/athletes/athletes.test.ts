@@ -43,7 +43,8 @@ beforeEach(async () => {
   t = createTestContext();
   app = createAthleteRoutes(t.deps);
   await t.seedUser("admin", { role: "admin" });
-  await t.seedUser("tech", { department: "Tech/Live" });
+  await t.seedUser("tech", { department: "Tech/Live", seat: "head", institution: "kmitl" });
+  await t.seedUser("tech-staff", { department: "Tech/Live" });
   await t.seedUser("reg-head", { department: "ทะเบียน", seat: "head", institution: "kmitl" });
   await t.seedUser("reg-staff", { department: "ทะเบียน", institution: "kmitl" });
   // One head seat per department, so the other institution's leader is vicehead.
@@ -138,23 +139,24 @@ describe("reviewing", () => {
   const review = (who: string, id: string, json: unknown) =>
     send<Item & { message?: string }>(who, "PUT", `/${id}/status`, json);
 
-  test("other institutions approve and reject their own athletes only", async () => {
-    const own = await review("kmutt-staff", "r-kmutt-1-football", {
+  test("other institutions' registration, staff or a leftover seat, cannot review", async () => {
+    for (const who of ["kmutt-staff", "kmutt-head"]) {
+      const res = await review(who, "r-kmutt-1-football", {
+        status: "approved",
+        note: "",
+        version: 1,
+      });
+      expect(res.res.status).toBe(403);
+    }
+  });
+
+  test("Tech/Live staff cannot review either", async () => {
+    const res = await review("tech-staff", "r-kmitl-1-football", {
       status: "approved",
       note: "",
       version: 1,
     });
-    expect(own.res.status).toBe(200);
-    expect(own.body).toMatchObject({ status: "approved", version: 2 });
-    expect(
-      (
-        await review("kmutt-staff", "r-kmitl-1-football", {
-          status: "approved",
-          note: "",
-          version: 1,
-        })
-      ).res.status,
-    ).toBe(404);
+    expect(res.res.status).toBe(403);
   });
 
   test("host registration staff cannot review", async () => {
@@ -188,7 +190,7 @@ describe("reviewing", () => {
   test("a stale version or a reviewer who loses their institution writes nothing", async () => {
     expect(
       (
-        await review("kmutt-head", "r-kmutt-1-football", {
+        await review("reg-head", "r-kmutt-1-football", {
           status: "approved",
           note: "",
           version: 3,
@@ -196,11 +198,11 @@ describe("reviewing", () => {
       ).res.status,
     ).toBe(409);
     t.hooks.beforeBatch = () => {
-      t.sqlite.run(`update user set institution = 'kmitl' where id = 'kmutt-head'`);
+      t.sqlite.run(`update user set institution = 'kmutt' where id = 'reg-head'`);
     };
     expect(
       (
-        await review("kmutt-head", "r-kmutt-1-football", {
+        await review("reg-head", "r-kmutt-1-football", {
           status: "approved",
           note: "",
           version: 1,
@@ -258,7 +260,7 @@ describe("editing", () => {
   });
 
   test("only full managers edit", async () => {
-    for (const who of ["reg-staff", "kmutt-head"]) {
+    for (const who of ["reg-staff", "kmutt-head", "tech-staff"]) {
       expect((await send(who, "PUT", "/r-kmutt-1-football", edit)).res.status).toBe(403);
     }
   });
@@ -290,21 +292,21 @@ describe("the per-institution limit", () => {
       .status;
 
   test("counts approvals: the last place goes to whoever is approved first", async () => {
-    expect((await approve("kmutt-head", "r-kmutt-1-football")).res.status).toBe(200);
-    const full = await approve("kmutt-head", "r-kmutt-2-football");
+    expect((await approve("tech", "r-kmutt-1-football")).res.status).toBe(200);
+    const full = await approve("tech", "r-kmutt-2-football");
     expect(full.res.status).toBe(409);
     expect(full.body.message).toBe(TEAM_FULL);
     // Another institution's places are its own.
     expect((await approve("tech", "r-kmitl-1-football")).res.status).toBe(200);
 
     // Sending the first back to review frees the place.
-    const back = await send("kmutt-head", "PUT", "/r-kmutt-1-football/status", {
+    const back = await send("tech", "PUT", "/r-kmutt-1-football/status", {
       status: "review",
       note: "",
       version: 2,
     });
     expect(back.res.status).toBe(200);
-    expect((await approve("kmutt-head", "r-kmutt-2-football")).res.status).toBe(200);
+    expect((await approve("tech", "r-kmutt-2-football")).res.status).toBe(200);
   });
 
   test("a place taken between the check and the write refuses the approval", async () => {
@@ -313,14 +315,14 @@ describe("the per-institution limit", () => {
         "update sport_registration set status = 'approved' where id = 'r-kmutt-1-football'",
       );
     };
-    const raced = await approve("kmutt-head", "r-kmutt-2-football");
+    const raced = await approve("tech", "r-kmutt-2-football");
     expect(raced.res.status).toBe(409);
     expect(raced.body.message).toBe(TEAM_FULL);
     expect(await statusOf("r-kmutt-2-football")).toBe("review");
   });
 
   test("moving an approved athlete into an institution with no place left is refused", async () => {
-    await approve("kmutt-head", "r-kmutt-1-football");
+    await approve("tech", "r-kmutt-1-football");
     await approve("tech", "r-kmitl-1-football");
     const move = {
       shirtNumber: 10,

@@ -1,6 +1,7 @@
 import type { EmailContext } from "./components/layout";
 import type {
   CustomEmail,
+  InvitationJob,
   ProfileSubmittedJob,
   SportRegisteredJob,
   SportReviewedJob,
@@ -82,6 +83,18 @@ export const sampleTicketClaimed: TicketClaimedJob = {
     endAt: Date.UTC(2026, 11, 5, 12, 30),
     venue: "หอประชุมเจ้าพระยาสุรวงษ์ไวยวัฒน์",
     code: "Zx3sQm9vT2kLp8RwYb4NcHd7Ue1Fa6Jg",
+  },
+};
+
+export const sampleInvitation: InvitationJob = {
+  kind: "invitation",
+  to: { email: "friend@gmail.com" },
+  invite: {
+    kind: "staff",
+    department: "Tech/Live",
+    institution: "kmutnb-bangkok",
+    invitedBy: "สมชาย ใจดี",
+    expiresAt: Date.UTC(2026, 11, 2, 3, 0),
   },
 };
 

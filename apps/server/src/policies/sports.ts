@@ -2,14 +2,18 @@
 // registrations, events, venues and the check-in kiosk. Every sport route asks
 // this file, never a department code, seat or institution directly.
 //
-//   admin                                          everything, every institution
-//   member of a department with runSports          everything, every institution
-//   registerAthletes, host institution, head/vice  everything, every institution
-//   registerAthletes, host institution, staff      kiosk and reading athletes, every institution
-//   registerAthletes, any other institution        read, review and export its own athletes
-//   registerAthletes without an institution        nothing
+//   admin                                              everything, every institution
+//   runSports or registerAthletes, head/vice (KMITL)   everything, every institution
+//   runSports, staff                                   kiosk and reading athletes, every institution;
+//                                                      KMITL staff also set accounts' institutions
+//   registerAthletes, KMITL staff                      kiosk and reading athletes, every institution
+//   registerAthletes, any other institution            read and export its own athletes
+//   registerAthletes without an institution            nothing
+//
+// Seats are KMITL's (mayHoldSeat): a seat holder of another institution, left
+// from before that rule, counts as staff of their institution.
 import { hasRole, isMember } from "@it3k/auth/permissions";
-import { HOST_INSTITUTION, type Institution } from "@it3k/db/profile";
+import { HOST_INSTITUTION, type Institution, mayHoldSeat } from "@it3k/db/profile";
 import { user } from "@it3k/db/schema/auth";
 import { leadership } from "@it3k/db/schema/leadership";
 import { type SQL, and, eq, sql } from "drizzle-orm";
@@ -47,8 +51,12 @@ export type SportAccess = { can: ReadonlySet<SportPermission>; scope: SportScope
 
 const NONE: SportAccess = { can: new Set(), scope: { kind: "none" } };
 const FULL: SportAccess = { can: new Set(SPORT_PERMISSIONS), scope: { kind: "all" } };
-const HOST_STAFF: SportAccess = {
+const STAFF: SportAccess = {
   can: new Set(["kiosk.operate", "athletes.read"]),
+  scope: { kind: "all" },
+};
+const TECH_KMITL_STAFF: SportAccess = {
+  can: new Set(["kiosk.operate", "athletes.read", "users.setInstitution"]),
   scope: { kind: "all" },
 };
 
@@ -56,16 +64,17 @@ export function sportAccess(actor: SportActor | null): SportAccess {
   if (!actor || actor.banned) return NONE;
   if (hasRole(actor.role, "admin")) return FULL;
   if (!isMember(actor.role)) return NONE;
-  if (hasCapability(actor.departmentCode, "runSports")) return FULL;
-  if (!hasCapability(actor.departmentCode, "registerAthletes")) return NONE;
+  const runs = hasCapability(actor.departmentCode, "runSports");
+  const registers = hasCapability(actor.departmentCode, "registerAthletes");
+  if (!runs && !registers) return NONE;
+  // A seat always belongs to the account's own department.
+  if (actor.leadershipRole && mayHoldSeat(actor.institution)) return FULL;
+  if (runs) return actor.institution === HOST_INSTITUTION ? TECH_KMITL_STAFF : STAFF;
   // Without an institution nobody can tell whose athletes they may see.
   if (!actor.institution) return NONE;
-  if (actor.institution === HOST_INSTITUTION) {
-    // A seat always belongs to the account's own department.
-    return actor.leadershipRole ? FULL : HOST_STAFF;
-  }
+  if (actor.institution === HOST_INSTITUTION) return STAFF;
   return {
-    can: new Set(["athletes.read", "athletes.review", "athletes.export"]),
+    can: new Set(["athletes.read", "athletes.export"]),
     scope: { kind: "institution", institution: actor.institution },
   };
 }

@@ -16,6 +16,8 @@ function me(emailAccess: Me["emailAccess"]): Me {
     department: null,
     seatRole: null,
     canManageUsers: false,
+    canManageDepartments: false,
+    assignableKinds: [],
     institution: null,
     sportAccess: { permissions: [], scope: { kind: "none" } },
     emailAccess,

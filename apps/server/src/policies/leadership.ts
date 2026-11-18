@@ -1,5 +1,7 @@
 import { hasRole, isMember } from "@it3k/auth/permissions";
-import type { LeadershipRole } from "@it3k/db/schema/leadership";
+import { ASSIGN_KINDS, type AssignKind } from "@it3k/db/invitation-rules";
+import { HOST_INSTITUTION, mayHoldSeat } from "@it3k/db/profile";
+import { type LeadershipRole, leadership } from "@it3k/db/schema/leadership";
 import { user } from "@it3k/db/schema/auth";
 import { and, eq, sql } from "drizzle-orm";
 import type { CurrentUser } from "../middleware/current-user";
@@ -13,6 +15,8 @@ export type Actor = {
   /** The seat the actor holds. A seat's account always belongs to the seat's department. */
   leadershipRole: LeadershipRole | null;
   departmentCode: string | null;
+  /** Seats are KMITL's (mayHoldSeat); a seat held from before that rule grants no full rights. */
+  institution?: string | null;
   banned: boolean;
 };
 export type Target = { userId: string | null };
@@ -47,6 +51,52 @@ export function managerIsAsRead(actor: CurrentUser) {
   );
 }
 
+/**
+ * Who may make an account (or an invited address) into what. Admins, and the
+ * heads and viceheads of a department that grants manageAccounts, may give
+ * every kind; that department's other staff may only make someone a guest.
+ * Admin itself is granted separately (canGrantAdmin).
+ */
+export function hasFullAssignRights(actor: Actor | null): boolean {
+  if (!actor || actor.banned) return false;
+  if (hasRole(actor.role, "admin")) return true;
+  return isManager(actor) && isLeader(actor) && mayHoldSeat(actor.institution ?? null);
+}
+
+export function assignableKinds(actor: Actor | null): AssignKind[] {
+  if (hasFullAssignRights(actor)) return [...ASSIGN_KINDS];
+  return isManager(actor) ? ["guest"] : [];
+}
+
+/** The account an assignment changes: its stored role and the seat it holds. */
+export type AssignTarget = { role: string | null; seatRole: LeadershipRole | null };
+
+/**
+ * Whether `actor` may give `kind`: to an invited address when `target` is
+ * omitted, otherwise to that account. Staff with guest-only rights may not
+ * touch members or seat holders, so they cannot demote anyone to guest.
+ */
+export function canAssign(actor: Actor | null, kind: AssignKind, target?: AssignTarget): boolean {
+  if (!assignableKinds(actor).includes(kind)) return false;
+  if (!target) return true;
+  if (!canChangeAccount(actor, target.role)) return false;
+  if (hasFullAssignRights(actor)) return true;
+  return !isMember(target.role) && target.seatRole === null;
+}
+
+/**
+ * Recheck, inside the batch, everything canAssign read about the actor: their
+ * role and department (managerIsAsRead) and, when their rights come from a
+ * seat, that they still hold it.
+ */
+export function assignerIsAsRead(actor: CurrentUser): ReturnType<typeof sql> {
+  const seat =
+    !hasRole(actor.role, "admin") && actor.leadershipRole
+      ? sql`exists (select 1 from ${leadership} where ${leadership.userId} = ${actor.id} and ${leadership.role} = ${actor.leadershipRole}) and (${user.institution} is null or ${user.institution} = ${HOST_INSTITUTION})`
+      : sql`1`;
+  return and(managerIsAsRead(actor), seat) ?? sql`0`;
+}
+
 /** Only admins may change an admin's account: role, department or seat. */
 export function canChangeAccount(actor: Actor | null, targetRole: string | null): boolean {
   return !hasRole(targetRole, "admin") || canGrantAdmin(actor);
@@ -57,11 +107,27 @@ export function canGrantAdmin(actor: Actor | null): boolean {
   return !!actor && !actor.banned && hasRole(actor.role, "admin");
 }
 
+/**
+ * Seats are managed -- created, deleted, attached to an account, moved -- by
+ * those with full assignment rights: admins and the heads and viceheads of
+ * Tech/Live and ทะเบียน. Any other leader may edit the personal fields of the
+ * seat they hold (the route limits which fields).
+ */
 export function allowed(actor: Actor | null, action: Action, target?: Target): boolean {
   if (!actor || actor.banned || !isMember(actor.role)) return false;
-  // Every member may ask for contact details; the route audits it.
-  if (action === "reveal") return true;
-  if (isManager(actor)) return true;
-  // Other leaders may edit the personal fields of the seat they hold.
+  if (action === "reveal") return false; // see canRevealContact
+  if (hasFullAssignRights(actor)) return true;
   return action === "update" && isLeader(actor) && target?.userId === actor.id;
+}
+
+/** Whether a seat's contact details are the actor's to see; the route audits every look. */
+export function canRevealContact(
+  actor: (Actor & { departmentId: string | null }) | null,
+  seatDepartmentId: string,
+): boolean {
+  if (!actor || actor.banned || !isMember(actor.role)) return false;
+  // Admins and every leader see every leader's details, to work together.
+  if (hasRole(actor.role, "admin") || isLeader(actor)) return true;
+  // Staff see the head and vicehead of their own department.
+  return actor.departmentId === seatDepartmentId;
 }

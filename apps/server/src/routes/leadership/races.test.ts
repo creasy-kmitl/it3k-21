@@ -7,17 +7,34 @@ import { createLeadershipRoutes } from ".";
 import { createUserRoutes } from "../users";
 
 for (const operation of ["create", "edit", "delete"] as const) {
-  for (const revocation of ["role", "ban", "removal", "department", "code"] as const) {
-    test(`${operation} rolls back after the manager loses ${revocation} authorization`, async () => {
+  for (const revocation of [
+    "none",
+    "role",
+    "ban",
+    "removal",
+    "department",
+    "code",
+    "seat",
+  ] as const) {
+    const title =
+      revocation === "none"
+        ? `${operation} goes through for a seat manager`
+        : `${operation} rolls back after the manager loses ${revocation} authorization`;
+    test(title, async () => {
       const t = createTestContext();
       const isAdmin = revocation === "role";
+      // Seats are managed by admins and by Tech/Live and ทะเบียน leaders.
       await t.seedUser("manager", {
         role: isAdmin ? "admin" : "staff",
         department: isAdmin ? "Art" : "Tech/Live",
+        ...(isAdmin ? {} : { seat: "vicehead" as const }),
       });
+      await t.seedUser("spare", { role: "guest" });
       await t.seedUser("holder", { department: "Art", seat: "head" });
       const app = createLeadershipRoutes({ ...t.deps, audit: async () => {} });
-      const current = defined((await t.db.select().from(leadership))[0]);
+      const current = defined(
+        (await t.db.select().from(leadership).where(eq(leadership.userId, "holder")))[0],
+      );
       await t.db
         .insert(leadershipSocial)
         .values({ leadershipId: current.id, platform: "line", value: "original" });
@@ -29,6 +46,7 @@ for (const operation of ["create", "edit", "delete"] as const) {
           t.sqlite.run("update user set role = 'staff' where id = 'manager'");
         if (revocation === "ban") t.sqlite.run("update user set banned = 1 where id = 'manager'");
         if (revocation === "removal") t.sqlite.run("delete from user where id = 'manager'");
+        if (revocation === "seat") t.sqlite.run("delete from leadership where user_id = 'manager'");
         if (revocation === "department")
           t.sqlite.run("update user set department_id = ? where id = 'manager'", [art]);
         if (revocation === "code") {
@@ -40,21 +58,32 @@ for (const operation of ["create", "edit", "delete"] as const) {
         create: [
           "/",
           "POST",
-          { departmentId: tech, role: "head", name: "Restore access", userId: "manager" },
+          { departmentId: tech, role: "head", name: "Restore access", userId: "spare" },
         ],
         edit: [
           `/${current.id}`,
           "PATCH",
           {
             departmentId: tech,
-            userId: "manager",
+            userId: "spare",
             socials: [{ platform: "line", value: "changed" }],
           },
         ],
         delete: [`/${current.id}`, "DELETE", undefined],
       }[operation] as [string, string, unknown];
-      expect((await app.request(path, t.as("manager", { method, json }))).status).toBe(409);
-      expect(await t.db.select().from(leadership)).toEqual([current]);
+      const res = await app.request(path, t.as("manager", { method, json }));
+      if (revocation === "none") {
+        expect(res.status).toBeLessThan(300);
+        return;
+      }
+      expect(res.status).toBe(409);
+      // The holder's seat is as it was, and the spare account got none.
+      expect(await t.db.select().from(leadership).where(eq(leadership.id, current.id))).toEqual([
+        current,
+      ]);
+      expect(await t.db.select().from(leadership).where(eq(leadership.userId, "spare"))).toEqual(
+        [],
+      );
       expect((await t.db.select().from(leadershipSocial)).map((s) => s.value)).toEqual([
         "original",
       ]);

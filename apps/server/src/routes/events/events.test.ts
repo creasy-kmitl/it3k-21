@@ -59,7 +59,8 @@ beforeEach(async () => {
   t = createTestContext();
   app = createEventRoutes(t.deps);
   await t.seedUser("admin", { role: "admin" });
-  await t.seedUser("tech", { department: "Tech/Live" });
+  await t.seedUser("tech", { department: "Tech/Live", seat: "head", institution: "kmitl" });
+  await t.seedUser("tech-staff", { department: "Tech/Live" });
   await t.seedUser("reg-head", { department: "ทะเบียน", institution: "kmitl", seat: "head" });
   await t.seedUser("reg-staff", { department: "ทะเบียน", institution: "kmitl" });
   await t.seedUser("reg-kmutt", { department: "ทะเบียน", institution: "kmutt", seat: "vicehead" });

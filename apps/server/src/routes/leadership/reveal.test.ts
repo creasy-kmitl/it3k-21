@@ -21,7 +21,10 @@ beforeEach(async () => {
       events.push(event);
     },
   });
-  await t.seedUser("staff", { department: "Art" });
+  // Staff see their own department's leaders; tech-head leads Tech/Live.
+  await t.seedUser("staff", { department: "Tech/Live" });
+  await t.seedUser("art-staff", { department: "Art" });
+  await t.seedUser("art-head", { department: "Art", seat: "head" });
   await t.seedUser("tech-head", { department: "Tech/Live" });
   await t.seedUser("banned", { banned: true });
   // Impersonation is honoured only while the admin behind it is still one.
@@ -47,6 +50,12 @@ const reveal = (userId: string | null, json: unknown = { confirmed: true }, id =
   app.request(`/${id}/reveal`, t.as(userId, { method: "POST", json }));
 
 describe("POST /:id/reveal", () => {
+  test("staff of another department may not; leaders of any department may", async () => {
+    expect((await reveal("art-staff")).status).toBe(403);
+    expect(events).toEqual([]);
+    expect((await reveal("art-head")).status).toBe(200);
+  });
+
   test("returns contact details after recording who asked", async () => {
     const res = await reveal("staff");
     expect(res.status).toBe(200);
@@ -61,7 +70,7 @@ describe("POST /:id/reveal", () => {
     expect(events).toEqual([
       {
         actorUserId: "staff",
-        actorDepartmentCode: "art",
+        actorDepartmentCode: "tech-live",
         impersonatedBy: null,
         targetLeadershipId: seatId,
         targetDepartmentId: await t.departmentId("Tech/Live"),
@@ -113,7 +122,7 @@ describe("POST /:id/reveal", () => {
       {
         id: expect.any(String),
         actorUserId: "staff",
-        actorDepartmentCode: "art",
+        actorDepartmentCode: "tech-live",
         impersonatedBy: null,
         leadershipId: seatId,
         departmentId: await t.departmentId("Tech/Live"),
@@ -165,7 +174,7 @@ describe("POST /:id/reveal", () => {
   test("a seat without contact details reveals nulls", async () => {
     const [row] = await t.db
       .insert(leadership)
-      .values({ departmentId: await t.departmentId("Art"), role: "head", name: "A" })
+      .values({ departmentId: await t.departmentId("Tech/Live"), role: "vicehead", name: "A" })
       .returning();
     const res = await reveal("staff", { confirmed: true }, defined(row, "seat").id);
     expect(await readJson(res)).toEqual({ phone: null, socials: [] });

@@ -1,4 +1,3 @@
-import { can } from "@it3k/auth/permissions";
 import {
   DEPARTMENT_CODE_MAX_LENGTH,
   DEPARTMENT_CODE_PATTERN,
@@ -10,7 +9,7 @@ import {
   leadership,
   user,
 } from "@it3k/db/schema/index";
-import { and, count, eq, ne, notExists, sql } from "drizzle-orm";
+import { and, count, eq, ne, notExists } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -25,7 +24,7 @@ import {
   requireUser,
 } from "../../middleware/current-user";
 import { limitJsonBody } from "../../middleware/json-body-limit";
-import { activeAccount } from "../profile";
+import { canManageDepartments, departmentManagerIsAsRead } from "../../policies/departments";
 
 const departmentInput = z.object({
   name: z.string().trim().min(1).max(100),
@@ -60,10 +59,9 @@ function isUniqueViolation(error: unknown) {
   return constraintError(error) === "unique";
 }
 
-// The role granted the department permission above; require that exact role
-// and an active account again before any mutation, including self-assignment.
+// Recheck canManageDepartments before any mutation, including self-assignment.
 function stillAuthorized(actor: CurrentUser) {
-  return and(activeAccount(), eq(user.role, actor.role ?? "")) ?? sql`0`;
+  return departmentManagerIsAsRead(actor);
 }
 
 const STALE = "สิทธิ์หรือข้อมูลเปลี่ยนไปแล้ว กรุณาโหลดใหม่แล้วลองอีกครั้ง";
@@ -75,7 +73,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
     .use(limitJsonBody)
 
     .get("/", async (c) => {
-      if (!can(c.var.user.role, { department: ["read"] })) {
+      if (!canManageDepartments(c.var.user)) {
         return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const db = c.var.db;
@@ -99,7 +97,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
     })
 
     .get("/:id", async (c) => {
-      if (!can(c.var.user.role, { department: ["read"] })) {
+      if (!canManageDepartments(c.var.user)) {
         return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const db = c.var.db;
@@ -119,7 +117,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
     })
 
     .post("/", async (c) => {
-      if (!can(c.var.user.role, { department: ["create"] })) {
+      if (!canManageDepartments(c.var.user)) {
         return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const parsed = createInput.safeParse(await c.req.json().catch(() => null));
@@ -150,7 +148,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
     })
 
     .patch("/:id", async (c) => {
-      if (!can(c.var.user.role, { department: ["update"] })) {
+      if (!canManageDepartments(c.var.user)) {
         return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const id = c.req.param("id");
@@ -183,7 +181,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
     })
 
     .delete("/:id", async (c) => {
-      if (!can(c.var.user.role, { department: ["delete"] })) {
+      if (!canManageDepartments(c.var.user)) {
         return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const id = c.req.param("id");
@@ -230,7 +228,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
     })
 
     .put("/:id/members/:userId", async (c) => {
-      if (!can(c.var.user.role, { department: ["assign"] })) {
+      if (!canManageDepartments(c.var.user)) {
         return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const db = c.var.db;
@@ -269,7 +267,7 @@ export const createDepartmentRoutes = (deps: RouteDeps) =>
     })
 
     .delete("/:id/members/:userId", async (c) => {
-      if (!can(c.var.user.role, { department: ["assign"] })) {
+      if (!canManageDepartments(c.var.user)) {
         return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const db = c.var.db;

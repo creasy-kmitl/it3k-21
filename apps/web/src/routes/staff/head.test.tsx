@@ -47,6 +47,16 @@ describe("/staff/head", () => {
     expect(view.queryByRole("button", { name: "เพิ่มตำแหน่ง" })).toBeNull();
   });
 
+  test("offers contact only for seats the API lets the caller reveal", async () => {
+    const hidden = summary({ displayName: "Hidden", name: "Hidden", canReveal: false });
+    const { view } = setup(page([own, hidden]));
+    const list = within(await view.findByRole("region", { name: "Art" })).getByRole("list", {
+      name: "Art",
+    });
+    expect(within(list).getByRole("button", { name: "ช่องทางติดต่อ Own" })).toBeTruthy();
+    expect(within(list).queryByRole("button", { name: "ช่องทางติดต่อ Hidden" })).toBeNull();
+  });
+
   test("editing your own seat opens the restricted form", async () => {
     const { view } = setup(page([own]));
     const list = within(await view.findByRole("region", { name: "Art" })).getByRole("list", {

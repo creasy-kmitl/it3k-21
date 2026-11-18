@@ -120,7 +120,7 @@ describe("transactional emails", () => {
   });
 
   test("a review decision queues the result once, and reopening sends nothing", async () => {
-    await t.seedUser("tech", { department: "Tech/Live" });
+    await t.seedUser("tech", { department: "Tech/Live", seat: "head" });
     await t.seedParticipant("a1", "kmitl");
     const divisionId = await t.divisionId("athletics-100m-male");
     await t.db

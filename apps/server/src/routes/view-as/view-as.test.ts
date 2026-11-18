@@ -217,8 +217,10 @@ describe("impersonation", () => {
   });
 
   test("allows writes, as the target", async () => {
+    // Tech/Live staff without a seat may make a non-member a guest.
+    await t.seedUser("runner", { role: "participant" });
     const res = await app.request(
-      "/api/users/art-staff/assignment",
+      "/api/users/runner/assignment",
       t.as("tech", { method: "PUT", json: { kind: "guest" }, impersonatedBy: "admin" }),
     );
     expect(res.status).toBe(200);

@@ -760,3 +760,65 @@ test("social values reject control characters", async () => {
   });
   expect(res.status).toBe(400);
 });
+
+describe("full rights and KMITL seats", () => {
+  test("Tech/Live staff without a seat cannot create, delete or attach", async () => {
+    await t.seedUser("tech-staff", { department: "Tech/Live" });
+    const id = await seat({ department: "Art", role: "head", name: "Taken" });
+    const create = await send("tech-staff", "POST", "/", {
+      departmentId: await t.departmentId("PR"),
+      role: "head",
+      name: "X",
+      socials: [],
+    });
+    expect(create.res.status).toBe(403);
+    expect((await send("tech-staff", "PATCH", `/${id}`, { userId: "staff" })).res.status).toBe(403);
+    expect((await send("tech-staff", "DELETE", `/${id}`)).res.status).toBe(403);
+    expect((await app.request("/users", t.as("tech-staff"))).status).toBe(403);
+  });
+
+  test("an account of another institution cannot be attached to a seat", async () => {
+    await t.seedUser("kmutt", { department: "Art", institution: "kmutt" });
+    const res = await send("admin", "POST", "/", {
+      departmentId: await t.departmentId("Art"),
+      role: "head",
+      name: "X",
+      socials: [],
+      userId: "kmutt",
+    });
+    expect(res.res.status).toBe(400);
+    const id = await seat({ department: "Art", role: "vicehead", name: "Open" });
+    expect((await send("admin", "PATCH", `/${id}`, { userId: "kmutt" })).res.status).toBe(400);
+    const users = await app.request("/users", t.as("admin"));
+    expect(JSON.stringify(await users.json())).not.toContain('"kmutt"');
+  });
+
+  test("attaching makes an account without an institution KMITL's", async () => {
+    const res = await send("admin", "POST", "/", {
+      departmentId: await t.departmentId("Art"),
+      role: "head",
+      name: "X",
+      socials: [],
+      userId: "art-head",
+    });
+    expect(res.res.status).toBe(201);
+    const [row] = await t.db
+      .select({ institution: user.institution })
+      .from(user)
+      .where(eq(user.id, "art-head"));
+    expect(row?.institution).toBe("kmitl");
+  });
+
+  test("the roster says whose contact the caller may reveal", async () => {
+    await seatTechHead();
+    await seat({ department: "Art", role: "head", name: "Arthit", userId: "art-head" });
+    type Row = Summary & { canReveal: boolean };
+    const reveals = async (who: string) =>
+      Object.fromEntries(
+        ((await list(who)).body.items as Row[]).map((s) => [s.departmentName, s.canReveal]),
+      );
+    expect(await reveals("staff")).toEqual({ "Tech/Live": false, Art: true });
+    expect(await reveals("art-head")).toEqual({ "Tech/Live": true, Art: true });
+    expect(await reveals("admin")).toEqual({ "Tech/Live": true, Art: true });
+  });
+});

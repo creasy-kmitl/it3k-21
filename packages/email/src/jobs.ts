@@ -1,3 +1,4 @@
+import type { AssignKind } from "@it3k/db/invitation-rules";
 import type { Institution } from "@it3k/db/profile";
 import type { DivisionFormat, DivisionGender, RegistrationStatus } from "@it3k/db/sport-rules";
 import type { RichTextDoc } from "./rich-text";
@@ -73,6 +74,21 @@ export type TicketClaimedJob = {
   };
 };
 
+export type InvitationJob = {
+  kind: "invitation";
+  to: Recipient;
+  invite: {
+    kind: AssignKind;
+    /** The department's name, for staff and seats. */
+    department: string | null;
+    /** Set on the new account; absent on jobs queued before it was added. */
+    institution?: Institution | null;
+    /** Who sent it, by display name. */
+    invitedBy: string | null;
+    expiresAt: number;
+  };
+};
+
 export type CustomJob = {
   kind: "custom";
   campaignId: string;
@@ -91,6 +107,7 @@ export type EmailJob =
   | SportRegisteredJob
   | SportReviewedJob
   | TicketClaimedJob
+  | InvitationJob
   | CustomJob;
 
 /** A staff email with its content loaded, ready to render for one person. */

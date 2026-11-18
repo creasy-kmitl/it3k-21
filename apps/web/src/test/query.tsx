@@ -18,6 +18,7 @@ import type { VenuesApi } from "@/lib/venues";
 import type { EmailsApi } from "@/lib/emails";
 import type { TicketsApi } from "@/lib/tickets";
 import type { UsersApi } from "@/lib/users";
+import type { InvitationsApi } from "@/lib/invitations";
 
 /** Narrows a value a test expects to exist, failing loudly when it does not. */
 export function defined<T>(value: T | null | undefined, what = "value"): T {
@@ -82,6 +83,17 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
     events: apis.events ?? fakeEventsApi(),
     tickets: apis.tickets ?? fakeTicketsApi(),
     emails: apis.emails ?? fakeEmailsApi(),
+    invitations: apis.invitations ?? fakeInvitationsApi(),
+  };
+}
+
+export function fakeInvitationsApi(overrides: Partial<InvitationsApi> = {}): InvitationsApi {
+  return {
+    list: unexpected("invitations.list"),
+    create: unexpected("invitations.create"),
+    resend: unexpected("invitations.resend"),
+    revoke: unexpected("invitations.revoke"),
+    ...overrides,
   };
 }
 
@@ -210,6 +222,7 @@ export function summary(overrides: Partial<LeadershipSummary> = {}): LeadershipS
     displayName: "Arthit",
     canEdit: false,
     canDelete: false,
+    canReveal: true,
     ...overrides,
   };
 }

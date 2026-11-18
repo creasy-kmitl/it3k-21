@@ -1,13 +1,38 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 
+import type { Invitation, NewInvitation } from "@/lib/invitations";
 import type { Account, Assignment, UsersApi } from "@/lib/users";
-import { choose, defined, fakeApi, page, renderRoute, summary } from "@/test/query";
+import {
+  choose,
+  defined,
+  fakeApi,
+  fakeInvitationsApi,
+  page,
+  renderRoute,
+  summary,
+} from "@/test/query";
 
 import { UsersPage } from "./users";
 import { ApiError } from "@/lib/leadership";
 
 afterEach(cleanup);
+
+function invitation(overrides: Partial<Invitation> = {}): Invitation {
+  return {
+    id: crypto.randomUUID(),
+    email: "friend@gmail.com",
+    kind: "guest",
+    department: null,
+    institution: null,
+    invitedBy: "Tech Head",
+    createdAt: Date.UTC(2026, 10, 18),
+    expiresAt: Date.UTC(2026, 11, 2),
+    status: "pending",
+    canManage: true,
+    ...overrides,
+  };
+}
 
 function account(overrides: Partial<Account> = {}): Account {
   return {
@@ -22,10 +47,20 @@ function account(overrides: Partial<Account> = {}): Account {
     canEdit: true,
     institution: null,
     canSetInstitution: false,
+    canSetStorage: true,
     canImpersonate: false,
     ...overrides,
   };
 }
+
+const ALL_KINDS: Assignment["kind"][] = [
+  "guest",
+  "participant",
+  "athlete",
+  "staff",
+  "head",
+  "vicehead",
+];
 
 const unexpected = (name: string) => () => Promise.reject(new Error(`Unexpected call to ${name}`));
 
@@ -34,8 +69,12 @@ function setup(
   canGrantAdmin = false,
   overrides: Partial<UsersApi> = {},
   onImpersonate?: (userId: string) => Promise<void>,
+  assignableKinds: Assignment["kind"][] = ALL_KINDS,
+  invitations: Invitation[] = [],
+  canSetInstitution = false,
 ) {
   const assigned: [string, Assignment][] = [];
+  const invited: NewInvitation[] = [];
   const api: UsersApi = {
     setStorage: async () => {
       throw new Error("Unexpected quota update");
@@ -47,12 +86,14 @@ function setup(
       department: null,
       seatRole: null,
       canManageUsers: true,
+      canManageDepartments: false,
+      assignableKinds,
       institution: null,
       sportAccess: { permissions: [], scope: { kind: "none" } },
       emailAccess: null,
       viewingAs: false,
     }),
-    list: async () => ({ items, page: 1, hasMore: false, canGrantAdmin }),
+    list: async () => ({ items, page: 1, hasMore: false, canGrantAdmin, assignableKinds }),
     assign: async (id, json) => {
       assigned.push([id, json]);
       return defined(items[0], "account");
@@ -64,11 +105,19 @@ function setup(
     list: async () =>
       page([summary({ role: "head", userId: "u-old", displayName: "Old Head", name: "Old Head" })]),
   });
+  const invitationsApi = fakeInvitationsApi({
+    list: async () => ({ items: invitations, assignableKinds, canSetInstitution }),
+    create: async (json) => {
+      invited.push(json);
+      return invitation({ email: json.email, kind: json.kind });
+    },
+  });
   return {
     assigned,
+    invited,
     view: renderRoute(
       { options: { component: () => <UsersPage onImpersonate={onImpersonate} /> } },
-      { users: api, leadership: seats },
+      { users: api, leadership: seats, invitations: invitationsApi },
     ),
   };
 }
@@ -107,9 +156,25 @@ describe("/staff/users", () => {
     await waitFor(() => expect(assigned).toEqual([["u-stray", { kind: "guest" }]]));
   });
 
+  test("offers the storage quota only where the API allows it", async () => {
+    const stray = account({ id: "u-stray", name: "Stray Staff", canSetStorage: false });
+    const { view, assigned } = setup([stray]);
+    fireEvent.click(await view.findByRole("button", { name: "แก้ไข Stray Staff" }));
+    expect(view.queryByLabelText("พื้นที่จัดเก็บสูงสุด (GB)")).toBeNull();
+    // setStorage throws if called: the quota is left alone.
+    await choose(view.getByRole("combobox", { name: "สถานะ" }), "Guest");
+    fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(assigned).toEqual([["u-stray", { kind: "guest" }]]));
+  });
+
   test("sets an account's institution when allowed, and only then offers it", async () => {
     // A guest needs no department, so the dialog can save without one.
-    const staff = account({ id: "u-reg", name: "Reg Staff", role: "guest", canSetInstitution: true });
+    const staff = account({
+      id: "u-reg",
+      name: "Reg Staff",
+      role: "guest",
+      canSetInstitution: true,
+    });
     const set: [string, string | null][] = [];
     const { view } = setup([staff, account({ name: "Other" })], false, {
       setInstitution: async (id, institution) => {
@@ -143,7 +208,13 @@ describe("/staff/users", () => {
     const expectedLimits: number[] = [];
     let assignments = 0;
     const { view } = setup([guest], false, {
-      list: async () => ({ items: [persisted], page: 1, hasMore: false, canGrantAdmin: false }),
+      list: async () => ({
+        items: [persisted],
+        page: 1,
+        hasMore: false,
+        canGrantAdmin: false,
+        assignableKinds: ALL_KINDS,
+      }),
       setStorage: async (_id, storageLimit, expectedLimit) => {
         expectedLimits.push(expectedLimit);
         if (expectedLimit !== persisted.storageLimit) throw new ApiError(409, "stale quota");
@@ -194,5 +265,91 @@ describe("/staff/users", () => {
     expect(acted).toEqual([]);
     fireEvent.click(view.getByRole("button", { name: "ดูในฐานะผู้ใช้นี้" }));
     await waitFor(() => expect(acted).toEqual(["u-staff"]));
+  });
+
+  test("guest-only staff are offered guest, plus the account's current status", async () => {
+    const athlete = account({ name: "Runner", role: "athlete" });
+    const { view } = setup([athlete], false, {}, undefined, ["guest"]);
+    fireEvent.click(await view.findByRole("button", { name: "แก้ไข Runner" }));
+    fireEvent.click(view.getByRole("combobox", { name: "สถานะ" }));
+    const options = (await view.findAllByRole("option")).map((o) => o.textContent);
+    expect(options).toEqual(["Guest", "นักกีฬา"]);
+  });
+});
+
+async function openInviteDialog(view: ReturnType<typeof setup>["view"]) {
+  const button = await view.findByRole("button", { name: "เชิญผู้ใช้" });
+  // Enabled once the list says which kinds the caller may give.
+  await waitFor(() => expect(button).toHaveProperty("disabled", false));
+  fireEvent.click(button);
+  await view.findByRole("dialog");
+}
+
+describe("invitations", () => {
+  test("lists invitations and offers resend and revoke only where allowed", async () => {
+    const { view } = setup(
+      [],
+      false,
+      {},
+      undefined,
+      ["guest"],
+      [
+        invitation({ email: "mine@gmail.com" }),
+        invitation({ email: "theirs@gmail.com", kind: "staff", canManage: false }),
+      ],
+    );
+    await view.findByText("mine@gmail.com");
+    expect(view.getByRole("button", { name: "ยกเลิกคำเชิญของ mine@gmail.com" })).toBeDefined();
+    expect(view.queryByRole("button", { name: "ยกเลิกคำเชิญของ theirs@gmail.com" })).toBeNull();
+  });
+
+  test("invites with only the kinds the caller may give", async () => {
+    const { view, invited } = setup([], false, {}, undefined, ["guest"]);
+    await openInviteDialog(view);
+    fireEvent.click(view.getByRole("combobox", { name: "บทบาท" }));
+    const options = await view.findAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(["Guest"]);
+    const guest = defined(options[0]);
+    fireEvent.pointerDown(guest, { pointerType: "mouse" });
+    fireEvent.click(guest);
+    fireEvent.change(view.getByLabelText("อีเมล"), { target: { value: "friend@gmail.com" } });
+    fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() =>
+      expect(invited).toEqual([{ email: "friend@gmail.com", kind: "guest", departmentId: null }]),
+    );
+    // Without the right to set an institution, the field is not offered.
+    expect(view.queryByRole("combobox", { name: "สถาบัน" })).toBeNull();
+  });
+
+  test("sets the institution, suggested from the address until picked", async () => {
+    const { view, invited } = setup([], false, {}, undefined, ["guest"], [], true);
+    await openInviteDialog(view);
+    fireEvent.change(view.getByLabelText("อีเมล"), { target: { value: "a@kmitl.ac.th" } });
+    expect(view.getByRole("combobox", { name: "สถาบัน" }).textContent).toContain("สจล.");
+    await choose(view.getByRole("combobox", { name: "สถาบัน" }), "มจพ. กรุงเทพฯ");
+    fireEvent.change(view.getByLabelText("อีเมล"), { target: { value: "a@kmutt.ac.th" } });
+    fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() =>
+      expect(invited).toEqual([
+        {
+          email: "a@kmutt.ac.th",
+          kind: "guest",
+          departmentId: null,
+          institution: "kmutnb-bangkok",
+        },
+      ]),
+    );
+  });
+
+  test("a staff invitation asks for the department", async () => {
+    const { view, invited } = setup([], false, {}, undefined, ALL_KINDS);
+    await openInviteDialog(view);
+    await choose(view.getByRole("combobox", { name: "บทบาท" }), "Staff");
+    await choose(view.getByRole("combobox", { name: "ฝ่าย" }), "Art");
+    fireEvent.change(view.getByLabelText("อีเมล"), { target: { value: "s@gmail.com" } });
+    fireEvent.click(view.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() =>
+      expect(invited).toEqual([{ email: "s@gmail.com", kind: "staff", departmentId: "d-art" }]),
+    );
   });
 });

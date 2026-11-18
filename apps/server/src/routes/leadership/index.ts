@@ -1,6 +1,7 @@
 import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
 import { department, departmentAppearance } from "@it3k/db/schema/department";
+import { HOST_INSTITUTION, mayHoldSeat } from "@it3k/db/profile";
 import {
   LEADERSHIP_ROLES,
   type LeadershipRole,
@@ -29,10 +30,11 @@ import {
 } from "../../middleware/current-user";
 import {
   allowed,
+  assignerIsAsRead,
   canChangeAccount,
   canGrantAdmin,
-  isManager,
-  managerIsAsRead,
+  canRevealContact,
+  hasFullAssignRights,
 } from "../../policies/leadership";
 import { notBanned, roleIncludes } from "../../policies/actor-sql";
 import { validate } from "../../middleware/validation";
@@ -107,6 +109,8 @@ export type LeadershipSummary = {
   displayName: string;
   canEdit: boolean;
   canDelete: boolean;
+  /** Whether the caller may see this seat's phone and socials (canRevealContact). */
+  canReveal: boolean;
 };
 
 // Seeded department ids are hex and Better Auth user ids are random strings,
@@ -258,6 +262,7 @@ function toSummary(row: SummaryRow, actor: CurrentUser): LeadershipSummary {
     displayName: row.nickname ? `${row.nickname} ${name}` : name,
     canEdit: allowed(actor, "update", target),
     canDelete: allowed(actor, "delete", target),
+    canReveal: canRevealContact(actor, row.departmentId),
   };
 }
 
@@ -289,16 +294,28 @@ async function checkPlacement(
   }
   if (userId === null) return null;
   const [account] = await db
-    .select({ id: user.id, role: user.role })
+    .select({ id: user.id, role: user.role, institution: user.institution })
     .from(user)
     .where(eq(user.id, userId));
   if (!account) {
     return { message: "ไม่พบบัญชีนี้", status: 404 };
   }
+  if (!mayHoldSeat(account.institution)) {
+    return { message: NOT_HOST_SEAT, status: 400 };
+  }
   if (!canChangeAccount(actor, account.role)) {
     return { message: "เฉพาะผู้ดูแลระบบที่แก้ไขบัญชีของผู้ดูแลระบบได้", status: 403 };
   }
   return null;
+}
+
+export const NOT_HOST_SEAT = "หัวหน้าและรองหัวหน้าฝ่ายต้องเป็นบัญชีของ สจล. เท่านั้น";
+
+export { mayHoldSeat };
+
+/** SQL on the account's own `user` row: mayHoldSeat, rechecked inside a batch. */
+export function mayHoldSeatSql(): SQL {
+  return sql`(${user.institution} is null or ${user.institution} = ${HOST_INSTITUTION})`;
 }
 
 /**
@@ -338,7 +355,7 @@ export function seatIsAsRead(
  * anything else the route read.
  */
 function attachGuard(db: Database, actor: CurrentUser, userId: string, extra?: SQL) {
-  const checks = [canGrantAdmin(actor) ? undefined : notAdmin(), extra].filter(
+  const checks = [canGrantAdmin(actor) ? undefined : notAdmin(), mayHoldSeatSql(), extra].filter(
     (check): check is SQL => check !== undefined,
   );
   return abortUnless(db, userId, and(...checks) ?? sql`1`);
@@ -366,6 +383,8 @@ export function syncAccountDepartment(db: Database, leadershipId: string) {
     .set({
       departmentId: sql`(select ${leadership.departmentId} from ${leadership} where ${seat})`,
       role: sql`case when ${user.role} in ('guest', 'participant', 'athlete') then 'staff' else ${user.role} end`,
+      // Seats are KMITL's (mayHoldSeat); the batch already refused any other institution.
+      institution: sql`coalesce(${user.institution}, ${HOST_INSTITUTION})`,
     })
     .where(inArray(user.id, db.select({ id: leadership.userId }).from(leadership).where(seat)));
 }
@@ -377,7 +396,7 @@ function insertSocials(db: Database, leadershipId: string, items: z.infer<typeof
 }
 
 const managerOnly = createMiddleware<LeadershipEnv>(async (c, next) => {
-  if (!isManager(c.var.user)) {
+  if (!hasFullAssignRights(c.var.user)) {
     return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
   }
   await next();
@@ -411,7 +430,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
           items: rows.slice(0, PAGE_SIZE).map((row) => toSummary(row, c.var.user)),
           page,
           hasMore: rows.length > PAGE_SIZE,
-          canCreate: isManager(c.var.user),
+          canCreate: hasFullAssignRights(c.var.user),
         },
         200,
       );
@@ -433,7 +452,8 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
     .get("/users", managerOnly, validate("query", userQuery), async (c) => {
       const { q, departmentId, page } = c.req.valid("query");
       // Accounts that do not hold a seat yet; never selects email.
-      const filters: SQL[] = [isNull(leadership.id)];
+      // Only accounts that may take a seat: KMITL's, or not yet any institution's.
+      const filters: SQL[] = [isNull(leadership.id), mayHoldSeatSql()];
       if (departmentId) filters.push(eq(user.departmentId, departmentId));
       if (q) filters.push(containsAny([user.name], q));
       const rows = await c.var.db
@@ -471,7 +491,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       const id = crypto.randomUUID();
       try {
         await db.batch([
-          abortUnless(db, c.var.user.id, managerIsAsRead(c.var.user)),
+          abortUnless(db, c.var.user.id, assignerIsAsRead(c.var.user)),
           db.insert(leadership).values({ id, ...fields }),
           ...(fields.userId ? [attachGuard(db, c.var.user, fields.userId)] : []),
           ...(fields.userId ? [syncAccountDepartment(db, id)] : []),
@@ -502,7 +522,10 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       if (!allowed(actor, "update", current)) {
         return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
-      if (!isManager(actor) && Object.keys(input).some((key) => !SELF_EDITABLE.has(key))) {
+      if (
+        !hasFullAssignRights(actor) &&
+        Object.keys(input).some((key) => !SELF_EDITABLE.has(key))
+      ) {
         return c.json({ message: "คุณแก้ไขได้เฉพาะชื่อเล่น เบอร์โทร และโซเชียลของตัวเอง" }, 403);
       }
       if (input.departmentId !== undefined || input.userId !== undefined) {
@@ -519,7 +542,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       const { socials: items, ...fields } = input;
       // Re-checked inside the batch: a seat reattached after the ownership check
       // above must not be written by the account that used to hold it.
-      const stillAllowed = isManager(actor)
+      const stillAllowed = hasFullAssignRights(actor)
         ? eq(leadership.id, id)
         : and(eq(leadership.id, id), eq(leadership.userId, actor.id));
       // Handing an attached seat to another account: the previous holder's
@@ -542,8 +565,8 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       const actorGuard = abortUnless(
         db,
         actor.id,
-        isManager(actor)
-          ? managerIsAsRead(actor)
+        hasFullAssignRights(actor)
+          ? assignerIsAsRead(actor)
           : sql`(${notBanned()} and (${roleIncludes("staff")} or ${roleIncludes("admin")}) and exists (select 1 from ${leadership} where ${leadership.id} = ${id} and ${leadership.userId} = ${actor.id}))`,
       );
       let updated: { id: string }[];
@@ -600,7 +623,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
         throw error;
       }
       if (updated.length === 0) {
-        return isManager(actor)
+        return hasFullAssignRights(actor)
           ? c.json({ message: "ไม่พบหัวหน้าฝ่ายนี้" }, 404)
           : c.json({ message: "ตำแหน่งนี้ถูกแก้ไขระหว่างที่คุณกำลังแก้ กรุณาโหลดใหม่แล้วลองอีกครั้ง" }, 409);
       }
@@ -622,7 +645,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       if (!seat) {
         return c.json({ message: "ไม่พบหัวหน้าฝ่ายนี้" }, 404);
       }
-      if (!allowed(actor, "reveal", { userId: null })) {
+      if (!canRevealContact(actor, seat.departmentId)) {
         return c.json({ message: "คุณไม่มีสิทธิ์ทำรายการนี้" }, 403);
       }
       const event: ContactRevealAudit = {
@@ -665,7 +688,7 @@ export const createLeadershipRoutes = (deps: LeadershipDeps) =>
       let deleted: { id: string }[];
       try {
         const results = await db.batch([
-          abortUnless(db, c.var.user.id, managerIsAsRead(c.var.user)),
+          abortUnless(db, c.var.user.id, assignerIsAsRead(c.var.user)),
           db.delete(leadership).where(eq(leadership.id, id)).returning({ id: leadership.id }),
         ]);
         deleted = results[1];
