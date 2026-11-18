@@ -35,20 +35,13 @@ describe("sport access", () => {
     }
   });
 
-  test("Tech/Live staff run the kiosk and read athletes; KMITL's also set institutions", () => {
-    expect(permissions(actor({ departmentCode: "tech-live" }))).toEqual([
-      "athletes.read",
-      "kiosk.operate",
-    ]);
-    expect(permissions(actor({ departmentCode: "tech-live", institution: "kmutt" }))).toEqual([
-      "athletes.read",
-      "kiosk.operate",
-    ]);
-    expect(permissions(actor({ departmentCode: "tech-live", institution: "kmitl" }))).toEqual([
-      "athletes.read",
-      "kiosk.operate",
-      "users.setInstitution",
-    ]);
+  test("Tech/Live staff of any institution run the kiosk and read athletes", () => {
+    for (const institution of [null, "kmutt", "kmitl"] as const) {
+      expect(permissions(actor({ departmentCode: "tech-live", institution }))).toEqual([
+        "athletes.read",
+        "kiosk.operate",
+      ]);
+    }
   });
 
   test("a seat holder of another institution, left from before seats were KMITL's, is staff", () => {
@@ -64,8 +57,12 @@ describe("sport access", () => {
     ]);
   });
 
-  test("host registration staff only run the kiosk and read athletes", () => {
-    expect(permissions(registration("kmitl"))).toEqual(["athletes.read", "kiosk.operate"]);
+  test("host registration staff run the kiosk, read athletes and set institutions", () => {
+    expect(permissions(registration("kmitl"))).toEqual([
+      "athletes.read",
+      "kiosk.operate",
+      "users.setInstitution",
+    ]);
     expect(sportAccess(registration("kmitl")).scope).toEqual({ kind: "all" });
   });
 
@@ -96,7 +93,7 @@ describe("sport access", () => {
 
   test("the JSON form lists permissions in a stable order", () => {
     expect(sportAccessJson(registration("kmitl"))).toEqual({
-      permissions: ["athletes.read", "kiosk.operate"],
+      permissions: ["athletes.read", "kiosk.operate", "users.setInstitution"],
       scope: { kind: "all" },
     });
   });

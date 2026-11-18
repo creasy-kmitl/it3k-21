@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { EMPTY_PROFILE } from "@it3k/db/profile";
 import { userProfile } from "@it3k/db/schema/profile";
+import { user } from "@it3k/db/schema/auth";
 import { createTestContext, defined } from "../../testing";
 import { createProfileRoutes } from ".";
 import { MAX_JSON_BODY_SIZE } from "../../middleware/json-body-limit";
@@ -88,4 +89,58 @@ test("a replay is rechecked atomically against a competing edit", async () => {
   };
   expect((await save("A")).status).toBe(409);
   expect(defined((await t.db.select().from(userProfile))[0]).draft.firstName).toBe("B");
+});
+
+async function draft(values: object, revision = 0) {
+  return app.request(
+    "/api/profile/draft",
+    t.as("guest", {
+      method: "PUT",
+      json: { userId: "guest", revision, values: { ...EMPTY_PROFILE, ...values } },
+    }),
+  );
+}
+async function me() {
+  return (await (await app.request("/api/profile/me", t.as("guest"))).json()) as {
+    institution: string | null;
+  };
+}
+const storedDraft = async () => defined((await t.db.select().from(userProfile))[0]).draft;
+
+test("before submitting, the holder chooses and changes their institution", async () => {
+  expect((await draft({ institution: "kmitl" })).status).toBe(200);
+  expect((await draft({ institution: "kmutt" }, 1)).status).toBe(200);
+  expect((await storedDraft()).institution).toBe("kmutt");
+  expect((await me()).institution).toBeNull();
+});
+
+test("after submitting, a draft keeps the submitted institution", async () => {
+  const submitted = { ...EMPTY_PROFILE, firstName: "A", institution: "kmutt" as const };
+  await t.db.insert(userProfile).values({
+    userId: "guest",
+    draft: submitted,
+    values: submitted,
+    revision: 1,
+    dirty: false,
+    submittedAt: new Date(),
+  });
+  expect((await me()).institution).toBe("kmutt");
+  expect((await draft({ firstName: "B", institution: "kmitl" }, 1)).status).toBe(200);
+  expect(await storedDraft()).toMatchObject({ firstName: "B", institution: "kmutt" });
+});
+
+test("an account's own institution wins over the profile's and is locked from the start", async () => {
+  await t.db.update(user).set({ institution: "kmutnb-bangkok" }).where(eq(user.id, "guest"));
+  expect((await me()).institution).toBe("kmutnb-bangkok");
+  expect((await draft({ institution: "kmitl" })).status).toBe(200);
+  expect((await storedDraft()).institution).toBe("kmutnb-bangkok");
+});
+
+test("a staff change to the institution meanwhile rolls the draft back", async () => {
+  t.hooks.beforeBatch = () => {
+    t.hooks.beforeBatch = undefined;
+    t.sqlite.run("update user set institution = 'kmutt' where id = 'guest'");
+  };
+  expect((await draft({ institution: "kmitl" })).status).toBe(409);
+  expect(await t.db.select().from(userProfile)).toEqual([]);
 });

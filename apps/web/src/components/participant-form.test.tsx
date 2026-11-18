@@ -18,6 +18,7 @@ async function setup(
   draft: ProfileValues | null = null,
   overrides: Partial<ProfileApi> = {},
   menuClient?: UserMenuClient & SessionObserver,
+  institution: MyProfile["institution"] = null,
 ) {
   const saves: ProfileValues[] = [];
   const revisions: number[] = [];
@@ -39,6 +40,7 @@ async function setup(
     revision: 0,
     hasDraft: !!draft,
     submittedAt: null,
+    institution,
   };
   const apis = fakeApis({
     profile: {
@@ -122,6 +124,22 @@ test("saved institution wins over the Google email suggestion and stays editable
     "value",
     INSTITUTIONS[3].name,
   );
+});
+test("a locked institution is shown read-only and replaces the draft's", async () => {
+  const view = await setup(
+    { ...EMPTY_PROFILE, institution: "kmitl", firstName: "Saved" },
+    {},
+    undefined,
+    "kmutt",
+  );
+  const input = view.getByRole("combobox", { name: "มหาวิทยาลัย/สถาบัน" });
+  expect(input).toHaveProperty("value", INSTITUTIONS[1].name);
+  expect(input).toHaveProperty("disabled", true);
+  expect(view.getByRole("button", { name: "เลือกมหาวิทยาลัย/สถาบัน" })).toHaveProperty(
+    "disabled",
+    true,
+  );
+  expect(view.getByText(/ติดต่อฝ่ายทะเบียน/)).toBeTruthy();
 });
 test("an incomplete edit is debounced and autosaved", async () => {
   const view = await setup();

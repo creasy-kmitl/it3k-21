@@ -831,6 +831,34 @@ describe("registration and drafts", () => {
       409,
     );
   });
+  test("a later submission cannot change the institution, but staff can", async () => {
+    const photo = await upload();
+    const values = await valid(photo);
+    const submit = (revision: number, institution: string) =>
+      app.request(
+        "/profile/submit",
+        t.as("guest", {
+          method: "POST",
+          json: { userId: "guest", revision, values: { ...values, institution } },
+        }),
+      );
+    expect((await submit(0, "kmitl")).status).toBe(200);
+    expect((await submit(1, "kmutt")).status).toBe(200);
+    expect((await t.db.select().from(userProfile))[0]?.values?.institution).toBe("kmitl");
+    // Staff set the account's institution; the next submission follows it.
+    await t.seedUser("reg-kmitl", { department: "ทะเบียน", institution: "kmitl" });
+    expect(
+      (
+        await app.request(
+          "/users/guest/institution",
+          t.as("reg-kmitl", { method: "PUT", json: { institution: "kmutt" } }),
+        )
+      ).status,
+    ).toBe(200);
+    expect((await submit(2, "kmitl")).status).toBe(200);
+    expect((await t.db.select().from(userProfile))[0]?.values?.institution).toBe("kmutt");
+    expect(t.mail.jobs.filter((job) => job.kind === "profile-submitted")).toHaveLength(1);
+  });
   test("stale autosaves cannot overwrite another tab or a submitted profile", async () => {
     const photo = await upload();
     const values = await valid(photo);

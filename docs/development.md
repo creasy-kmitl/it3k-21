@@ -155,7 +155,7 @@ Everything else is decided on the server, in `apps/server/src/policies/`:
 | Edit a seat's nickname, phone and socials        | Full rights, and the seat's own holder                                              |
 | See a leader's contact (audited)                 | Admins and every leader see all; staff see their own department's head and vicehead |
 | Storage quotas                                   | Full rights                                                                         |
-| An account's institution                         | Admins, KMITL Tech/Live members, and Tech/Live or ทะเบียน leaders                    |
+| An account's institution                         | Full rights and KMITL ทะเบียน staff; holders cannot change their own once it is set  |
 | Departments: create, edit, delete, members       | Admins, and KMITL ทะเบียน heads and viceheads                                        |
 | Sports, events, venues; review and edit athletes | Full rights                                                                         |
 | Read athletes and run the kiosk                  | Full rights, Tech/Live staff and KMITL ทะเบียน staff                                 |
@@ -168,6 +168,8 @@ Everything else is decided on the server, in `apps/server/src/policies/`:
 ### Sign-up and invitations
 
 A first Google sign-in creates an account on its own only for a verified address on `kmitl.ac.th`, `kmutt.ac.th` or `kmutnb.ac.th`, subdomains included (`SELF_SIGNUP_DOMAINS` in `packages/db/src/profile.ts`). Any other address is sent back to `/login?error=invite_required` unless it has an open invitation. Invitations are made on `/staff/users`, emailed through the queue, and expire after 14 days. When the invited address signs in, the invitation sets its role, department and institution, and gives it a head or vicehead seat if that seat is still free (`packages/auth/src/signup.ts`). A head or vicehead invitation is always KMITL's.
+
+A new account picks its institution on the participant form, and can change it only until the form is first submitted. After that, or as soon as the account has an institution of its own (from an invitation, staff, or a first sport registration), the form shows it read-only and `/api/profile/draft` and `/submit` keep the locked value whatever they are sent (`lockedInstitution` in `apps/server/src/routes/profile/index.ts`). Only those in the table above change it, through `PUT /api/users/:id/institution`.
 
 ## Database and migrations
 

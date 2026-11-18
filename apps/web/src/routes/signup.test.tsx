@@ -27,6 +27,7 @@ function draft(revision: number, firstName: string): MyProfile {
     revision,
     hasDraft: true,
     submittedAt: null,
+    institution: null,
   };
 }
 
