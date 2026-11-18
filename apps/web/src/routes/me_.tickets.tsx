@@ -130,6 +130,9 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
         <EventDateChip startAt={ticket.event.startAt} className="absolute top-3 left-3" />
       </div>
       <CardHeader>
+        {ticket.ticketType && (
+          <p className="text-xs font-semibold tracking-wide text-primary">{ticket.ticketType.name}</p>
+        )}
         <CardTitle>{ticket.event.name}</CardTitle>
         <CardDescription className="flex flex-col gap-1">
           <EventWhen startAt={ticket.event.startAt} endAt={ticket.event.endAt} />
@@ -146,6 +149,7 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
       ) : null}
       <CardFooter className="mt-auto flex-wrap gap-2">
         <Button
+          className="h-11 sm:h-9"
           render={<Link to="/tickets/$slug" params={{ slug: ticketRef(ticket.event) }} />}
           nativeButton={false}
         >
@@ -153,7 +157,7 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
           แสดงตั๋ว
         </Button>
         {!checkedIn && (
-          <Button variant="ghost" onClick={() => setConfirming(true)}>
+          <Button variant="ghost" className="h-11 sm:h-9" onClick={() => setConfirming(true)}>
             ยกเลิกตั๋ว
           </Button>
         )}
@@ -179,7 +183,10 @@ function CancelDialog({ ticket, onClose }: { ticket: Ticket; onClose: () => void
     <AlertDialog open onOpenChange={(open) => !open && onClose()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>ยกเลิกตั๋ว {ticket.event.name}?</AlertDialogTitle>
+          <AlertDialogTitle>
+            ยกเลิกตั๋ว {ticket.event.name}
+            {ticket.ticketType ? ` (${ticket.ticketType.name})` : ""}?
+          </AlertDialogTitle>
           <AlertDialogDescription>
             ที่นั่งจะคืนให้คนอื่น รับใหม่ได้ถ้ากิจกรรมยังเปิดรับและยังไม่เต็ม
           </AlertDialogDescription>

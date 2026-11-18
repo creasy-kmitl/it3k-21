@@ -79,6 +79,7 @@ export const sampleTicketClaimed: TicketClaimedJob = {
   ticket: {
     ref: "opening-ceremony",
     eventName: "พิธีเปิด IT3Kings",
+    ticketTypeName: "ผู้ชมทั่วไป",
     startAt: Date.UTC(2026, 11, 5, 10, 0),
     endAt: Date.UTC(2026, 11, 5, 12, 30),
     venue: "หอประชุมเจ้าพระยาสุรวงษ์ไวยวัฒน์",

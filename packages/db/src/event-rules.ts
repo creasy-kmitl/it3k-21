@@ -2,7 +2,9 @@
 // Drizzle so the browser bundle can import it.
 import { z } from "zod";
 
+import { imageUrlSchema } from "./image-url";
 import { INSTITUTION_IDS } from "./profile";
+import { richTextDocSchema } from "./rich-text";
 import { UUID_PATTERN, slugify } from "./slugify";
 
 export const EVENT_TYPES = ["sport", "general"] as const;
@@ -22,6 +24,19 @@ export const TICKET_QR_PREFIX = "it3k-t:";
 export const TICKET_CODE_PATTERN = /^[A-Za-z0-9_-]{32}$/;
 export const ticketCode = z.string().regex(TICKET_CODE_PATTERN);
 export const MAX_TICKET_CAPACITY = 100_000;
+export const MAX_TICKET_TYPES = 20;
+export const MAX_TICKETS_PER_USER = 20;
+
+/**
+ * The account roles a ticket type may be limited to. The same list as
+ * `ROLES` in `@it3k/auth/permissions`, which this package cannot import; a
+ * server test keeps the two in step.
+ */
+export const TICKET_ROLES = ["guest", "participant", "athlete", "staff", "admin"] as const;
+export type TicketRole = (typeof TICKET_ROLES)[number];
+
+/** How long the plain-text summary made from an event's content may be. */
+export const EVENT_SUMMARY_MAX = 300;
 
 /** A new random ticket code. */
 export function newTicketCode(): string {
@@ -127,24 +142,69 @@ export const venueInput = z
   });
 export type VenueInput = z.infer<typeof venueInput>;
 
+const ticketCount = (min: number, max: number, unit = "ใบ") =>
+  z
+    .number({ error: "กรอกเป็นตัวเลข" })
+    .int("กรอกเป็นจำนวนเต็ม")
+    .min(min, `อย่างน้อย ${min} ${unit}`)
+    .max(max, `ไม่เกิน ${max.toLocaleString("en-US")} ${unit}`);
+
+/** One ticket type as the event editor sends it; a new one has no id. */
+export const ticketTypeInput = z.strictObject({
+  id: z.string().min(1).max(64).optional(),
+  name: z.string().trim().min(1, "กรอกชื่อประเภทตั๋ว").max(60, "ชื่อยาวได้ไม่เกิน 60 ตัวอักษร"),
+  description: z.string().trim().max(300, "คำอธิบายยาวได้ไม่เกิน 300 ตัวอักษร"),
+  capacity: ticketCount(1, MAX_TICKET_CAPACITY).nullable(),
+  maxPerUser: ticketCount(1, MAX_TICKETS_PER_USER),
+  open: z.boolean(),
+  // Sport events only.
+  listedOnly: z.boolean(),
+  allowedRoles: z.array(z.enum(TICKET_ROLES)).max(TICKET_ROLES.length),
+  allowedInstitutions: z.array(z.enum(INSTITUTION_IDS)).max(INSTITUTION_IDS.length),
+  allowedSportIds: z.array(z.string().min(1).max(64)).max(100),
+});
+export type TicketTypeInput = z.infer<typeof ticketTypeInput>;
+
+/** A new ticket type: anyone may claim one, once, with no seat limit. */
+export function defaultTicketType(name = "ทั่วไป"): TicketTypeInput {
+  return {
+    name,
+    description: "",
+    capacity: null,
+    maxPerUser: 1,
+    open: true,
+    listedOnly: false,
+    allowedRoles: [],
+    allowedInstitutions: [],
+    allowedSportIds: [],
+  };
+}
+
+/** What creating an event takes; everything else is set on its edit tab. */
+export const eventDraftInput = z.strictObject({
+  name,
+  // "" makes one from the name.
+  slug: eventSlug,
+});
+export type EventDraftInput = z.infer<typeof eventDraftInput>;
+
 const eventFields = z.strictObject({
   type: z.enum(EVENT_TYPES),
   name,
   // "" makes one from the name. Omitted, a new event gets one from its name
   // and an existing one keeps its own.
   slug: eventSlug.optional(),
-  description,
+  // The event page's body; null for none.
+  content: richTextDocSchema.nullable(),
   startAt: epochMs,
   endAt: epochMs,
   venueId: z.string().min(1).max(64).nullable(),
-  thumbnailUrl: httpsUrl,
+  thumbnailUrl: imageUrlSchema,
   ticketsOpen: z.boolean(),
-  ticketCapacity: z
-    .number({ error: "กรอกเป็นตัวเลข" })
-    .int("กรอกเป็นจำนวนเต็ม")
-    .min(1, "อย่างน้อย 1 ใบ")
-    .max(MAX_TICKET_CAPACITY, `ไม่เกิน ${MAX_TICKET_CAPACITY.toLocaleString("en-US")} ใบ`)
-    .nullable(),
+  // A cap across all ticket types; null for none.
+  ticketCapacity: ticketCount(1, MAX_TICKET_CAPACITY).nullable(),
+  // In the order participants see them.
+  ticketTypes: z.array(ticketTypeInput).max(MAX_TICKET_TYPES, `มีได้ไม่เกิน ${MAX_TICKET_TYPES} ประเภท`),
   // Sport events only; a general event sends both empty.
   institutions: z.array(z.enum(INSTITUTION_IDS)).max(INSTITUTION_IDS.length),
   divisionIds: z.array(z.string().min(1).max(64)).max(MAX_EVENT_DIVISIONS),
@@ -152,36 +212,68 @@ const eventFields = z.strictObject({
 
 type EventFields = z.infer<typeof eventFields>;
 
-/** What is wrong with an event's times and links, field by field. */
-export function eventProblems(event: EventFields): { path: keyof EventFields; message: string }[] {
-  const problems: { path: keyof EventFields; message: string }[] = [];
+type Problem = { path: (string | number)[]; message: string };
+
+/** What is wrong with an event's times, links and ticket types, field by field. */
+export function eventProblems(event: EventFields): Problem[] {
+  const problems: Problem[] = [];
+  const push = (path: keyof EventFields, message: string) => problems.push({ path: [path], message });
   if (event.endAt <= event.startAt) {
-    problems.push({ path: "endAt", message: "เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม" });
+    push("endAt", "เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม");
   } else if (event.endAt - event.startAt > MAX_EVENT_MS) {
-    problems.push({ path: "endAt", message: "กิจกรรมยาวได้ไม่เกิน 31 วัน" });
+    push("endAt", "กิจกรรมยาวได้ไม่เกิน 31 วัน");
   }
   if (event.type === "sport") {
     if (event.institutions.length === 0) {
-      problems.push({ path: "institutions", message: "เลือกอย่างน้อย 1 สถาบัน" });
+      push("institutions", "เลือกอย่างน้อย 1 สถาบัน");
     }
     if (event.divisionIds.length === 0) {
-      problems.push({ path: "divisionIds", message: "เลือกอย่างน้อย 1 ประเภทกีฬา" });
+      push("divisionIds", "เลือกอย่างน้อย 1 ประเภทกีฬา");
     }
   } else if (event.institutions.length > 0 || event.divisionIds.length > 0) {
-    problems.push({ path: "type", message: "กิจกรรมทั่วไปไม่มีสถาบันหรือประเภทกีฬา" });
+    push("type", "กิจกรรมทั่วไปไม่มีสถาบันหรือประเภทกีฬา");
   }
   if (new Set(event.institutions).size !== event.institutions.length) {
-    problems.push({ path: "institutions", message: "เลือกสถาบันซ้ำ" });
+    push("institutions", "เลือกสถาบันซ้ำ");
   }
   if (new Set(event.divisionIds).size !== event.divisionIds.length) {
-    problems.push({ path: "divisionIds", message: "เลือกประเภทกีฬาซ้ำ" });
+    push("divisionIds", "เลือกประเภทกีฬาซ้ำ");
+  }
+  const names = new Set<string>();
+  const ids = new Set<string>();
+  event.ticketTypes.forEach((type, index) => {
+    const at = (field: keyof TicketTypeInput, message: string) =>
+      problems.push({ path: ["ticketTypes", index, field], message });
+    const key = type.name.trim().toLowerCase();
+    if (names.has(key)) at("name", "ชื่อประเภทตั๋วซ้ำกัน");
+    names.add(key);
+    if (type.id) {
+      if (ids.has(type.id)) at("id", "ประเภทตั๋วซ้ำกัน");
+      ids.add(type.id);
+    }
+    if (type.listedOnly && event.type !== "sport") {
+      at("listedOnly", "ใช้ได้เฉพาะกิจกรรมกีฬา");
+    }
+    if (type.capacity !== null && type.maxPerUser > type.capacity) {
+      at("maxPerUser", "มากกว่าจำนวนตั๋วของประเภทนี้");
+    }
+    for (const [field, list] of [
+      ["allowedRoles", type.allowedRoles],
+      ["allowedInstitutions", type.allowedInstitutions],
+      ["allowedSportIds", type.allowedSportIds],
+    ] as const) {
+      if (new Set<string>(list).size !== list.length) at(field, "เลือกซ้ำ");
+    }
+  });
+  if (event.ticketsOpen && !event.ticketTypes.some((type) => type.open)) {
+    push("ticketTypes", "เปิดรับตั๋วต้องมีอย่างน้อย 1 ประเภทที่เปิดรับ");
   }
   return problems;
 }
 
 export const eventInput = eventFields.superRefine((event, ctx) => {
   for (const { path, message } of eventProblems(event)) {
-    ctx.addIssue({ code: "custom", path: [path], message });
+    ctx.addIssue({ code: "custom", path, message });
   }
 });
 export type EventInput = z.infer<typeof eventInput>;

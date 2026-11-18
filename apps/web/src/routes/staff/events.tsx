@@ -1,93 +1,27 @@
-import {
-  EVENT_SLUG_MAX,
-  EVENT_TYPES,
-  EVENT_TYPE_LABELS,
-  type EventInput,
-  type EventType,
-  eventInput,
-  eventSlugBase,
-} from "@it3k/db/event-rules";
+import { EVENT_TYPE_LABELS, type EventDraftInput } from "@it3k/db/event-rules";
 import { INSTITUTIONS, type Institution } from "@it3k/db/profile";
-import { slugify } from "@it3k/db/slugify";
 import type { SportIcon } from "@it3k/db/sport-rules";
 import { Badge } from "@it3k/ui/components/badge";
 import { Button } from "@it3k/ui/components/button";
-import { Checkbox } from "@it3k/ui/components/checkbox";
-import { Input } from "@it3k/ui/components/input";
-import {
-  Combobox,
-  ComboboxCollection,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxGroup,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-} from "@it3k/ui/components/combobox";
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldLabel,
-  FieldSet,
-} from "@it3k/ui/components/field";
 import { Skeleton } from "@it3k/ui/components/skeleton";
+import { useHotkey } from "@tanstack/react-hotkeys";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, createFileRoute } from "@tanstack/react-router";
-import {
-  CalendarCheck,
-  CalendarCheck2,
-  CalendarClock,
-  CalendarDays,
-  Clock,
-  ImageIcon,
-  Link2,
-  type LucideIcon,
-  MapPin,
-  Medal,
-  Pencil,
-  Plus,
-  School,
-  Shapes,
-  Sparkles,
-  TextAlignStart,
-  Ticket,
-  Trash2,
-  Type,
-  Users,
-} from "lucide-react";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { CalendarCheck, Clock, MapPin, Pencil, Plus, Ticket, Trash2, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { DateTimePicker } from "@/components/calendar/date-time-picker";
-import { IconLabel } from "@/components/calendar/icon-label";
-import {
-  ChoiceField,
-  ConfirmDelete,
-  FormDialog,
-  FormLabel,
-  FormLegend,
-  TextAreaField,
-  TextField,
-  issuesOf,
-} from "@/components/form-dialog";
-import { PageHeader } from "@/components/page-header";
-import { SportThumbnail } from "@/components/sport-art";
-import { DivisionTags } from "@/components/sport-badges";
-import { useApis } from "@/lib/api-context";
-import {
-  HOUR_MS,
-  formatBangkok,
-  formatRange,
-  fromDatetimeLocal,
-  startOfDay,
-  toDatetimeLocal,
-} from "@/lib/bangkok-time";
-import type { EventItem } from "@/lib/events";
-import type { Sport } from "@/lib/sports";
-import type { Venue } from "@/lib/venues";
 import { ErrorState } from "@/components/error-state";
+import { CreateEventDialog } from "@/components/events/create-event-dialog";
+import { ConfirmDelete } from "@/components/form-dialog";
+import { PageHeader } from "@/components/page-header";
+import { ShortcutHint } from "@/components/shortcut-hint";
+import { SportThumbnail } from "@/components/sport-art";
+import { useApis } from "@/lib/api-context";
+import { formatBangkok, formatRange, startOfDay } from "@/lib/bangkok-time";
 import { toastError } from "@/lib/errors";
+import type { EventItem } from "@/lib/events";
+import { ApiError } from "@/lib/leadership";
 
 export const Route = createFileRoute("/staff/events")({
   component: EventsPage,
@@ -115,12 +49,15 @@ function sportsSummary(event: EventItem) {
   return [...bySport].map(([sport, names]) => `${sport}: ${names.join(", ")}`);
 }
 
-type Editing = { kind: "event"; event: EventItem | null } | { kind: "delete"; event: EventItem };
+type Editing = { kind: "create" } | { kind: "delete"; event: EventItem };
+
+export const NEW_EVENT_HOTKEY = "N" as const;
 
 /** Sport and general events. The API enforces who may edit. */
 export function EventsPage() {
   const { events: api } = useApis();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [showPast, setShowPast] = useState(false);
   // Fixed for the visit, so the query key does not change every render.
   const [today] = useState(() => startOfDay(Date.now()));
@@ -131,27 +68,62 @@ export function EventsPage() {
   const [editing, setEditing] = useState<Editing | null>(null);
   const canManage = events.data?.canManage ?? false;
 
-  const save = useMutation({
-    mutationFn: async (action: () => Promise<unknown>) => action(),
+  const create = useMutation({
+    mutationFn: (input: EventDraftInput) => api.create(input),
+    onSuccess: async (created) => {
+      await queryClient.invalidateQueries({ queryKey: ["events"] });
+      setEditing(null);
+      await navigate({
+        to: "/staff/events/$eventId",
+        params: { eventId: created.slug ?? created.id },
+        search: { tab: "edit" },
+      });
+    },
+    // A taken slug shows on its field; anything else as a toast.
+    onError: (error) => {
+      if (!(error instanceof ApiError && error.status === 409)) toastError(error, "สร้างไม่สำเร็จ");
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.remove(id),
     onSuccess: () => {
-      toast.success("บันทึกแล้ว");
+      toast.success("ลบแล้ว");
       setEditing(null);
     },
-    onError: (error) => toastError(error, "บันทึกไม่สำเร็จ"),
+    onError: (error) => toastError(error, "ลบไม่สำเร็จ"),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["events"] }),
   });
+  useHotkey(
+    NEW_EVENT_HOTKEY,
+    () => {
+      create.reset();
+      setEditing({ kind: "create" });
+    },
+    { enabled: canManage && editing === null },
+  );
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <PageHeader icon={CalendarCheck} title="กิจกรรม" description="การแข่งขันกีฬาและกิจกรรมทั่วไป" />
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setShowPast((value) => !value)}>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <Button
+            variant="outline"
+            className={canManage ? "h-11 sm:h-9" : "col-span-2 h-11 sm:h-9"}
+            onClick={() => setShowPast((value) => !value)}
+          >
             {showPast ? "เฉพาะที่ยังไม่จบ" : "แสดงที่จบแล้ว"}
           </Button>
           {canManage && (
-            <Button onClick={() => setEditing({ kind: "event", event: null })}>
-              <Plus /> เพิ่มกิจกรรม
+            <Button
+              className="h-11 sm:h-9"
+              onClick={() => {
+                create.reset();
+                setEditing({ kind: "create" });
+              }}
+            >
+              <Plus data-icon="inline-start" aria-hidden /> เพิ่มกิจกรรม
+              <ShortcutHint hotkey={NEW_EVENT_HOTKEY} />
             </Button>
           )}
         </div>
@@ -207,7 +179,7 @@ export function EventsPage() {
                   {ticketSummary(event)}
                 </p>
                 {event.description && (
-                  <p className="text-sm whitespace-pre-wrap">{event.description}</p>
+                  <p className="line-clamp-3 text-sm whitespace-pre-line">{event.description}</p>
                 )}
                 {event.institutions.length > 0 && (
                   <span className="flex flex-wrap gap-1">
@@ -228,7 +200,7 @@ export function EventsPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="mr-auto"
+                  className="mr-auto h-11 sm:h-8"
                   render={
                     <Link
                       to="/staff/events/$eventId"
@@ -244,14 +216,23 @@ export function EventsPage() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
+                      className="size-11 sm:size-8"
                       aria-label={`แก้ไข ${event.name}`}
-                      onClick={() => setEditing({ kind: "event", event })}
+                      render={
+                        <Link
+                          to="/staff/events/$eventId"
+                          params={{ eventId: event.slug ?? event.id }}
+                          search={{ tab: "edit" }}
+                        />
+                      }
+                      nativeButton={false}
                     >
                       <Pencil />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon-sm"
+                      className="size-11 sm:size-8"
                       aria-label={`ลบ ${event.name}`}
                       onClick={() => setEditing({ kind: "delete", event })}
                     >
@@ -265,304 +246,28 @@ export function EventsPage() {
         </ul>
       )}
 
-      {editing?.kind === "event" && (
-        <EventForm
-          key={editing.event?.id ?? "new"}
-          initial={editing.event}
-          pending={save.isPending}
+      {editing?.kind === "create" && (
+        <CreateEventDialog
+          pending={create.isPending}
+          error={
+            create.error instanceof ApiError && create.error.status === 409
+              ? create.error.message
+              : undefined
+          }
           onClose={() => setEditing(null)}
-          onSubmit={(input) => {
-            const { event } = editing;
-            save.mutate(() =>
-              event
-                ? api.update(event.id, { ...input, version: event.version })
-                : api.create(input),
-            );
-          }}
+          onSubmit={(input) => create.mutate(input)}
         />
       )}
       {editing?.kind === "delete" && (
         <ConfirmDelete
           name={editing.event.name}
-          description="ลบกิจกรรมนี้ออกจากระบบ"
-          pending={save.isPending}
+          description="ลบกิจกรรมนี้พร้อมตั๋วและการเช็คอินทั้งหมด"
+          pending={remove.isPending}
           onClose={() => setEditing(null)}
-          onConfirm={() => save.mutate(() => api.remove(editing.event.id))}
+          onConfirm={() => remove.mutate(editing.event.id)}
         />
       )}
     </div>
-  );
-}
-
-const TYPE_ICONS: Record<EventType, LucideIcon> = {
-  sport: Medal,
-  general: CalendarDays,
-};
-
-function nextHour() {
-  return Math.ceil(Date.now() / HOUR_MS) * HOUR_MS;
-}
-
-export function EventForm({
-  initial,
-  pending,
-  onClose,
-  onSubmit,
-}: {
-  initial: EventItem | null;
-  pending: boolean;
-  onClose: () => void;
-  onSubmit: (input: EventInput) => void;
-}) {
-  const { venues: venuesApi, sports: sportsApi } = useApis();
-  const venues = useQuery({ queryKey: ["venues"], queryFn: () => venuesApi.list() });
-  const sports = useQuery({ queryKey: ["sports"], queryFn: () => sportsApi.list() });
-
-  const start = initial ? Date.parse(initial.startAt) : nextHour();
-  const [type, setType] = useState<EventType>(initial?.type ?? "sport");
-  const [name, setName] = useState(initial?.name ?? "");
-  // Follows the name until typed into; an event that already has a slug
-  // keeps it, so renaming the event does not break links to it.
-  const [slug, setSlug] = useState(initial?.slug ?? "");
-  const [slugTyped, setSlugTyped] = useState(!!initial?.slug);
-  const [description, setDescription] = useState(initial?.description ?? "");
-  const [startAt, setStartAt] = useState(toDatetimeLocal(start));
-  const [endAt, setEndAt] = useState(
-    toDatetimeLocal(initial ? Date.parse(initial.endAt) : start + 2 * HOUR_MS),
-  );
-  const [venueId, setVenueId] = useState<string | null>(initial?.venue?.id ?? null);
-  const [thumbnailUrl, setThumbnailUrl] = useState(initial?.thumbnailUrl ?? "");
-  const [ticketsOpen, setTicketsOpen] = useState(initial?.ticketsOpen ?? false);
-  const [ticketCapacity, setTicketCapacity] = useState(
-    initial?.ticketCapacity == null ? "" : String(initial.ticketCapacity),
-  );
-  const [institutions, setInstitutions] = useState<Institution[]>(initial?.institutions ?? []);
-  const [divisionIds, setDivisionIds] = useState<string[]>(
-    initial?.divisions.map((division) => division.id) ?? [],
-  );
-  const [issues, setIssues] = useState<Record<string, string>>({});
-
-  const venueItems = venues.data?.items ?? [];
-  const selectedVenue = venueItems.find((venue) => venue.id === venueId) ?? null;
-  const shownSlug = slugTyped
-    ? slug
-    : eventSlugBase({ name, type, startAt: fromDatetimeLocal(startAt) ?? start });
-
-  return (
-    <FormDialog
-      title={initial ? `แก้ไข ${initial.name}` : "เพิ่มกิจกรรม"}
-      icon={initial ? CalendarCheck : Plus}
-      pending={pending}
-      onClose={onClose}
-      onSubmit={() => {
-        const start = fromDatetimeLocal(startAt);
-        const end = fromDatetimeLocal(endAt);
-        if (start === null || end === null) {
-          setIssues({ endAt: "เลือกวันและเวลาให้ครบ" });
-          return;
-        }
-        const sport = type === "sport";
-        const parsed = eventInput.safeParse({
-          type,
-          name,
-          // "" has the API make it from the name, adding "-2" if it is taken.
-          slug: slugTyped ? slugify(slug) : "",
-          description,
-          startAt: start,
-          endAt: end,
-          venueId,
-          thumbnailUrl,
-          ticketsOpen,
-          // Blank is no limit; anything else is checked as a number.
-          ticketCapacity: ticketCapacity.trim() === "" ? null : Number(ticketCapacity),
-          // A general event keeps nothing it picked while it was a sport event.
-          institutions: sport ? institutions : [],
-          divisionIds: sport ? divisionIds : [],
-        });
-        if (!parsed.success) {
-          setIssues(issuesOf(parsed.error));
-          return;
-        }
-        setIssues({});
-        onSubmit(parsed.data);
-      }}
-    >
-      <ChoiceField
-        id="event-type"
-        label="ประเภทกิจกรรม"
-        icon={Shapes}
-        value={type}
-        options={EVENT_TYPES.map((value) => ({
-          value,
-          label: EVENT_TYPE_LABELS[value],
-          icon: TYPE_ICONS[value],
-        }))}
-        onChange={setType}
-      />
-      <TextField
-        id="event-name"
-        label="ชื่อกิจกรรม"
-        icon={Type}
-        value={name}
-        onChange={setName}
-        error={issues.name}
-      />
-      <SlugField
-        value={shownSlug}
-        typed={slugTyped}
-        error={issues.slug}
-        onChange={(value) => {
-          const next = slugify(value, { keepTrailingHyphen: true });
-          setSlug(next);
-          // Clearing the box hands it back to the name.
-          setSlugTyped(next !== "");
-        }}
-        onReset={() => {
-          setSlug("");
-          setSlugTyped(false);
-        }}
-      />
-      <TextAreaField
-        id="event-description"
-        label="รายละเอียด"
-        icon={TextAlignStart}
-        value={description}
-        onChange={setDescription}
-        error={issues.description}
-      />
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field>
-          <FormLabel htmlFor="event-start" icon={CalendarClock}>
-            เริ่ม
-          </FormLabel>
-          <DateTimePicker id="event-start" label="เริ่ม" value={startAt} onChange={setStartAt} />
-          <FieldDescription>เวลาไทย (UTC+07:00)</FieldDescription>
-        </Field>
-        <Field data-invalid={!!issues.endAt}>
-          <FormLabel htmlFor="event-end" icon={CalendarCheck2}>
-            สิ้นสุด
-          </FormLabel>
-          <DateTimePicker
-            id="event-end"
-            label="สิ้นสุด"
-            value={endAt}
-            onChange={setEndAt}
-            invalid={!!issues.endAt}
-          />
-          <FieldError>{issues.endAt}</FieldError>
-        </Field>
-      </div>
-      <Field>
-        <FormLabel htmlFor="event-venue" icon={MapPin}>
-          สถานที่
-        </FormLabel>
-        <Combobox<Venue>
-          items={venueItems}
-          value={selectedVenue}
-          itemToStringLabel={(venue) => venue.name}
-          itemToStringValue={(venue) => venue.id}
-          onValueChange={(venue) => setVenueId(venue?.id ?? null)}
-        >
-          <ComboboxInput
-            id="event-venue"
-            placeholder={venues.isPending ? "กำลังโหลดสถานที่" : "ค้นหาสถานที่"}
-            triggerLabel="เลือกสถานที่"
-            clearLabel="ไม่ระบุสถานที่"
-            showClear={!!selectedVenue}
-          />
-          <ComboboxContent>
-            <ComboboxEmpty>ไม่พบสถานที่ เพิ่มได้ที่หน้าสถานที่</ComboboxEmpty>
-            <ComboboxList>
-              <ComboboxGroup>
-                <ComboboxCollection>
-                  {(venue: Venue) => (
-                    <ComboboxItem key={venue.id} value={venue}>
-                      <IconLabel icon={MapPin}>{venue.name}</IconLabel>
-                    </ComboboxItem>
-                  )}
-                </ComboboxCollection>
-              </ComboboxGroup>
-            </ComboboxList>
-          </ComboboxContent>
-        </Combobox>
-      </Field>
-      <TextField
-        id="event-thumbnail"
-        label="ลิงก์รูปปก"
-        icon={ImageIcon}
-        inputMode="url"
-        placeholder="https://..."
-        value={thumbnailUrl}
-        onChange={setThumbnailUrl}
-        error={issues.thumbnailUrl}
-        hint="ไม่ใส่ก็ได้ ระบบจะสร้างภาพประกอบให้"
-      />
-      <FieldSet>
-        <FormLegend icon={Ticket}>ตั๋ว</FormLegend>
-        <Field orientation="horizontal">
-          <Checkbox
-            id="event-tickets-open"
-            checked={ticketsOpen}
-            onCheckedChange={(checked) => setTicketsOpen(checked === true)}
-          />
-          <FieldLabel htmlFor="event-tickets-open">เปิดรับตั๋ว</FieldLabel>
-        </Field>
-        <FieldDescription>
-          ต้องมีตั๋วจึงจะเช็คอินได้ ผู้เข้าร่วมกดรับตั๋วเองที่หน้าตั๋วของฉัน
-          {type === "sport" ? " (เฉพาะนักกีฬาในรายชื่อ)" : ""} ปิดรับเองเมื่อกิจกรรมจบ
-        </FieldDescription>
-        <TextField
-          id="event-ticket-capacity"
-          label="จำนวนตั๋วสูงสุด"
-          icon={Users}
-          inputMode="numeric"
-          placeholder="ไม่จำกัด"
-          value={ticketCapacity}
-          onChange={setTicketCapacity}
-          error={issues.ticketCapacity}
-          hint={
-            initial
-              ? `รับไปแล้ว ${initial.ticketCount.toLocaleString("th-TH")} ใบ · เว้นว่างถ้าไม่จำกัด`
-              : "เว้นว่างถ้าไม่จำกัด"
-          }
-        />
-      </FieldSet>
-      {type === "sport" && (
-        <>
-          <FieldSet data-invalid={!!issues.institutions}>
-            <FormLegend icon={School}>สถาบันที่เข้าร่วม</FormLegend>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {INSTITUTIONS.map((institution) => (
-                <Field key={institution.id} orientation="horizontal">
-                  <Checkbox
-                    id={`event-institution-${institution.id}`}
-                    checked={institutions.includes(institution.id)}
-                    onCheckedChange={(checked) =>
-                      setInstitutions((current) =>
-                        checked
-                          ? [...current, institution.id]
-                          : current.filter((id) => id !== institution.id),
-                      )
-                    }
-                  />
-                  <FieldLabel htmlFor={`event-institution-${institution.id}`}>
-                    {institution.short}
-                  </FieldLabel>
-                </Field>
-              ))}
-            </div>
-            <FieldError>{issues.institutions}</FieldError>
-          </FieldSet>
-          <DivisionPicker
-            sports={sports.data?.items ?? []}
-            loading={sports.isPending}
-            value={divisionIds}
-            onChange={setDivisionIds}
-            error={issues.divisionIds}
-          />
-        </>
-      )}
-    </FormDialog>
   );
 }
 
@@ -574,156 +279,4 @@ export function ticketSummary(
   const of =
     event.ticketCapacity === null ? "" : `/${event.ticketCapacity.toLocaleString("th-TH")}`;
   return `ตั๋ว ${count}${of} ใบ · ${event.ticketsOpen ? "เปิดรับ" : "ปิดรับ"}`;
-}
-
-/** Where the event's pages live, for the URL preview. */
-const appOrigin = () => (typeof window === "undefined" ? "" : window.location.origin);
-
-/** The event's address in links, with a preview of the URLs it makes. */
-function SlugField({
-  value,
-  typed,
-  error,
-  onChange,
-  onReset,
-}: {
-  value: string;
-  typed: boolean;
-  error?: string;
-  onChange: (value: string) => void;
-  onReset: () => void;
-}) {
-  const shown = value.replace(/-+$/, "") || "…";
-  return (
-    <Field data-invalid={!!error}>
-      <div className="flex items-center justify-between gap-2">
-        <FormLabel htmlFor="event-slug" icon={Link2}>
-          ลิงก์กิจกรรม (slug)
-        </FormLabel>
-        {typed && (
-          <Button type="button" variant="ghost" size="xs" onClick={onReset}>
-            <Sparkles data-icon="inline-start" aria-hidden /> สร้างจากชื่อ
-          </Button>
-        )}
-      </div>
-      <Input
-        id="event-slug"
-        value={value}
-        maxLength={EVENT_SLUG_MAX}
-        autoCapitalize="none"
-        autoComplete="off"
-        autoCorrect="off"
-        spellCheck={false}
-        aria-invalid={!!error}
-        aria-describedby="event-slug-preview"
-        onChange={(event) => onChange(event.target.value)}
-      />
-      <FieldDescription id="event-slug-preview" className="flex flex-col gap-0.5">
-        <span>
-          {typed
-            ? "a-z, 0-9 และขีดกลาง ลบให้ว่างเพื่อสร้างจากชื่ออีกครั้ง"
-            : "สร้างจากตัวอักษรอังกฤษและตัวเลขในชื่อ ถ้าไม่มีจะใช้ประเภทกับวันที่แทน ถ้าซ้ำจะเติมเลขต่อท้าย"}
-        </span>
-        <span className="font-mono text-xs break-all">
-          {appOrigin()}/staff/events/{shown}
-        </span>
-        <span className="font-mono text-xs break-all">
-          {appOrigin()}/kiosk/{shown}
-        </span>
-      </FieldDescription>
-      <FieldError>{error}</FieldError>
-    </Field>
-  );
-}
-
-/** Divisions grouped by sport; a sport's own box picks or drops all of them. */
-function DivisionPicker({
-  sports,
-  loading,
-  value,
-  onChange,
-  error,
-}: {
-  sports: Sport[];
-  loading: boolean;
-  value: string[];
-  onChange: (value: string[]) => void;
-  error?: string;
-}) {
-  const picked = new Set(value);
-  return (
-    <FieldSet data-invalid={!!error}>
-      <FormLegend icon={Medal}>ประเภทกีฬา</FormLegend>
-      {loading && <Skeleton className="h-24" />}
-      <div className="flex flex-col gap-3">
-        {sports
-          .filter((sport) => sport.divisions.length > 0)
-          .map((sport) => {
-            const ids = sport.divisions.map((division) => division.id);
-            const count = ids.filter((id) => picked.has(id)).length;
-            return (
-              <div key={sport.id} className="flex flex-col gap-2 rounded-xl border p-3">
-                <Field orientation="horizontal">
-                  <Checkbox
-                    id={`event-sport-${sport.id}`}
-                    checked={count === ids.length}
-                    indeterminate={count > 0 && count < ids.length}
-                    onCheckedChange={(checked) =>
-                      onChange(
-                        checked
-                          ? [...value, ...ids.filter((id) => !picked.has(id))]
-                          : value.filter((id) => !ids.includes(id)),
-                      )
-                    }
-                  />
-                  <FieldLabel
-                    htmlFor={`event-sport-${sport.id}`}
-                    className="min-w-0 flex-1 items-center gap-2 font-medium"
-                  >
-                    <span aria-hidden className="shrink-0">
-                      <SportThumbnail
-                        src={sport.thumbnailUrl}
-                        icon={sport.icon}
-                        seed={sport.id}
-                        label={sport.name}
-                        className="aspect-square size-8 w-8 rounded-lg"
-                      />
-                    </span>
-                    <span className="truncate">{sport.name}</span>
-                  </FieldLabel>
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {count}/{ids.length}
-                  </span>
-                </Field>
-                <div className="flex flex-col gap-2 pl-6">
-                  {sport.divisions.map((division) => (
-                    <Field key={division.id} orientation="horizontal">
-                      <Checkbox
-                        id={`event-division-${division.id}`}
-                        checked={picked.has(division.id)}
-                        onCheckedChange={(checked) =>
-                          onChange(
-                            checked
-                              ? [...value, division.id]
-                              : value.filter((id) => id !== division.id),
-                          )
-                        }
-                      />
-                      <FieldLabel
-                        htmlFor={`event-division-${division.id}`}
-                        className="flex-1 flex-wrap items-center gap-x-2 gap-y-1 font-normal"
-                      >
-                        <span>{division.name}</span>
-                        <DivisionTags division={division} />
-                      </FieldLabel>
-                    </Field>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-      </div>
-      <FieldError>{error}</FieldError>
-    </FieldSet>
-  );
 }

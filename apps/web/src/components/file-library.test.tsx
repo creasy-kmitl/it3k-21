@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiProvider } from "@/lib/api-context";
 import { fakeApis } from "@/test/query";
@@ -102,4 +102,57 @@ test("searching waits for typing to pause and keeps the current files on screen 
   expect(await screen.findByRole("button", { name: "match.pdf" })).toBeTruthy();
   // One request for the pause, none for the half-typed "m".
   expect(queries).toEqual(["", "match"]);
+});
+
+test("deleting a file asks in a dialog first", async () => {
+  const removed: string[] = [];
+  const pdf = {
+    id: "f-1",
+    name: "poster.pdf",
+    size: 1,
+    contentType: "application/pdf",
+    url: "https://files.test/poster.pdf",
+    createdAt: new Date(0).toISOString(),
+  };
+  const apis = fakeApis({
+    files: {
+      list: async () => ({
+        items: removed.length ? [] : [pdf],
+        uploads: [],
+        used: 1,
+        limit: GiB,
+        page: 1,
+        hasMore: false,
+      }),
+      remove: async (fileId) => {
+        removed.push(fileId);
+        return { success: true };
+      },
+      upload: async () => {
+        throw new Error("Unexpected upload");
+      },
+    },
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <ApiProvider value={apis}>
+        <FileLibrary userId="guest" onClose={() => {}} />
+      </ApiProvider>
+    </QueryClientProvider>,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "poster.pdf" }));
+  fireEvent.click(screen.getByRole("button", { name: "ลบไฟล์" }));
+  // Cancelling keeps the file.
+  fireEvent.click(
+    await screen.findByRole("button", { name: "ยกเลิก" }, { container: document.body }),
+  );
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(removed).toEqual([]);
+
+  fireEvent.click(screen.getByRole("button", { name: "ลบไฟล์" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "ลบ poster.pdf?" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "ลบ" }));
+  await waitFor(() => expect(removed).toEqual(["f-1"]));
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
 });

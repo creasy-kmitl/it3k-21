@@ -19,6 +19,7 @@ const EVENT: EventItem & { canManage: boolean } = {
   name: "ฟุตบอลรอบแรก",
   slug: null,
   description: null,
+  content: null,
   startAt: new Date(Date.UTC(2026, 11, 5, 2)).toISOString(),
   endAt: new Date(Date.UTC(2026, 11, 5, 5)).toISOString(),
   venueId: null,
@@ -33,6 +34,7 @@ const EVENT: EventItem & { canManage: boolean } = {
   venue: null,
   institutions: ["kmitl"],
   divisions: [],
+  ticketTypes: [],
   canManage: false,
 };
 
@@ -53,6 +55,8 @@ const participant = (overrides: Partial<Participant> = {}): Participant => ({
   ...PERSON,
   expected: true,
   hasTicket: true,
+  tickets: [],
+  checkins: [],
   checkin: null,
   ...overrides,
 });
@@ -63,7 +67,10 @@ function setup(overrides: Partial<EventsApi> = {}, canCheckIn = true, eventId = 
     participants: async () => ({
       items: [
         participant(),
-        participant({ userId: "u-2", checkin: { at: NOW, method: "scan", forced: false } }),
+        participant({
+          userId: "u-2",
+          checkin: { id: "c-1", at: NOW, method: "scan", forced: false, ticketId: "t-2" },
+        }),
       ],
       canCheckIn,
       canUndo: false,
@@ -103,7 +110,14 @@ describe("/kiosk/$eventId", () => {
     const view = await setup({
       checkIn: async (id, json) => {
         calls.push([id, json]);
-        return { code: "checked-in", person: PERSON, checkedInAt: NOW, forced: false };
+        return {
+          code: "checked-in",
+          person: PERSON,
+          checkinId: "c-9",
+          checkedInAt: NOW,
+          forced: false,
+          ticket: null,
+        };
       },
     });
     await scan(view, " u-1 ");
@@ -130,7 +144,14 @@ describe("/kiosk/$eventId", () => {
         },
         checkIn: async (id, json) => {
           calls.push([id, json]);
-          return { code: "checked-in", person: PERSON, checkedInAt: NOW, forced: false };
+          return {
+          code: "checked-in",
+          person: PERSON,
+          checkinId: "c-9",
+          checkedInAt: NOW,
+          forced: false,
+          ticket: null,
+        };
         },
       },
       true,
@@ -150,7 +171,14 @@ describe("/kiosk/$eventId", () => {
     const view = await setup({
       checkIn: async (id, json) => {
         calls.push([id, json]);
-        return { code: "checked-in", person: PERSON, checkedInAt: NOW, forced: false };
+        return {
+          code: "checked-in",
+          person: PERSON,
+          checkinId: "c-9",
+          checkedInAt: NOW,
+          forced: false,
+          ticket: null,
+        };
       },
     });
     const code = "a".repeat(32);
@@ -165,7 +193,14 @@ describe("/kiosk/$eventId", () => {
       checkIn: async (_, json): Promise<CheckinOutcome> => {
         calls.push(json);
         return json.force
-          ? { code: "checked-in", person: PERSON, checkedInAt: NOW, forced: true }
+          ? {
+              code: "checked-in",
+              person: PERSON,
+              checkinId: "c-9",
+              checkedInAt: NOW,
+              forced: true,
+              ticket: null,
+            }
           : {
               code: "no-ticket",
               person: PERSON,
@@ -207,32 +242,28 @@ describe("/kiosk/$eventId", () => {
         code: "duplicate",
         person: PERSON,
         checkedInAt: new Date(Date.UTC(2026, 11, 5, 2, 15)).toISOString(),
-        message: "เช็คอินไปแล้ว",
+        message: "ใช้ตั๋วครบทุกใบแล้ว",
+        ticket: null,
       }),
     });
     await scan(view, "u-1");
     expect(await view.findByRole("alertdialog", { name: "เช็คอินไปแล้วเมื่อ 09:15" })).toBeTruthy();
   });
 
-  test("managers may check in someone not on the list", async () => {
-    const calls: unknown[] = [];
+  test("someone with several tickets sees which one was used", async () => {
     const view = await setup({
-      checkIn: async (_, json): Promise<CheckinOutcome> => {
-        calls.push(json);
-        const person = { ...PERSON, userId: "userId" in json ? json.userId : "", divisions: [] };
-        return json.force
-          ? { code: "checked-in", person, checkedInAt: NOW, forced: true }
-          : { code: "not-listed", person, canForce: true, message: "ไม่อยู่ในรายชื่อของกิจกรรมนี้" };
-      },
+      checkIn: async (): Promise<CheckinOutcome> => ({
+        code: "checked-in",
+        person: PERSON,
+        checkinId: "c-9",
+        checkedInAt: NOW,
+        forced: false,
+        ticket: { id: "t-2", typeName: "แฟนคลับ", index: 2, total: 3 },
+      }),
     });
-    await scan(view, "u-9");
-    expect(await view.findByRole("alertdialog", { name: "ไม่อยู่ในรายชื่อของกิจกรรมนี้" })).toBeTruthy();
-    fireEvent.click(view.getByRole("button", { name: "เช็คอินนอกรายชื่อ" }));
-    expect(await view.findByRole("alertdialog", { name: "เช็คอินแล้ว (บังคับ)" })).toBeTruthy();
-    expect(calls).toEqual([
-      { userId: "u-9", method: "scan" },
-      { userId: "u-9", force: true, method: "scan" },
-    ]);
+    await scan(view, "u-1");
+    expect(await view.findByRole("alertdialog", { name: "เช็คอินสำเร็จ" })).toBeTruthy();
+    expect(view.getByText("แฟนคลับ · ใบที่ 2/3")).toBeTruthy();
   });
 
   test("an account without kiosk rights is told so", async () => {

@@ -3,6 +3,7 @@ import {
   emailCampaign,
   event,
   eventTicket,
+  eventTicketType,
   sportRegistration,
   uploadedFile,
   user,
@@ -151,12 +152,20 @@ describe("transactional emails", () => {
       endAt: new Date(now + 3 * HOUR),
       ticketsOpen: true,
     });
+    await t.db.insert(eventTicketType).values({ id: "tt-1", eventId: "e1", name: "ผู้ชม" });
     const app = createTicketRoutes(t.deps);
-    const claim = () => app.request("/events/opening", t.as("guest", { method: "POST", json: {} }));
+    const claim = () =>
+      app.request(
+        "/events/opening",
+        t.as("guest", { method: "POST", json: { ticketTypeId: "tt-1" } }),
+      );
     expect((await claim()).status).toBe(201);
     expect((await claim()).status).toBe(200);
     expect(t.mail.jobs).toMatchObject([
-      { kind: "ticket-claimed", ticket: { ref: "opening", eventName: "พิธีเปิด" } },
+      {
+        kind: "ticket-claimed",
+        ticket: { ref: "opening", eventName: "พิธีเปิด", ticketTypeName: "ผู้ชม" },
+      },
     ]);
     // The email draws the same code the kiosk checks.
     const [row] = await t.db.select({ code: eventTicket.code }).from(eventTicket);

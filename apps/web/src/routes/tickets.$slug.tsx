@@ -37,12 +37,12 @@ function TicketPage() {
   );
 }
 
-/** The caller's ticket to one event, with the QR the kiosk scans. */
+/** The caller's tickets to one event, each with the QR the kiosk scans. */
 export function TicketView({ eventRef }: { eventRef: string }) {
   const { tickets } = useApis();
   const held = useQuery({
     queryKey: [...TICKETS_KEY, "ticket", eventRef],
-    queryFn: () => tickets.ticketFor(eventRef),
+    queryFn: () => tickets.ticketsFor(eventRef),
   });
 
   return (
@@ -89,7 +89,16 @@ export function TicketView({ eventRef }: { eventRef: string }) {
           <ErrorState error={held.error} onRetry={held.refetch} title="โหลดตั๋วไม่สำเร็จ" />
         )
       ) : (
-        <TicketStub ticket={held.data.ticket} />
+        <ol aria-label="ตั๋วของคุณ" className="flex flex-col gap-6">
+          {held.data.tickets.map((ticket, index) => (
+            <li key={ticket.id}>
+              <TicketStub
+                ticket={ticket}
+                number={held.data.tickets.length > 1 ? { index: index + 1, total: held.data.tickets.length } : null}
+              />
+            </li>
+          ))}
+        </ol>
       )}
     </div>
   );
@@ -100,7 +109,14 @@ export function TicketView({ eventRef }: { eventRef: string }) {
  * details, a torn line, then the QR stub. Phones stack the same parts, so
  * the QR stays large enough for the kiosk camera.
  */
-function TicketStub({ ticket }: { ticket: Ticket }) {
+function TicketStub({
+  ticket,
+  number,
+}: {
+  ticket: Ticket;
+  /** Its place among the caller's tickets to the event, when they hold more than one. */
+  number: { index: number; total: number } | null;
+}) {
   const checkedInAt = ticket.checkedInAt;
   return (
     <article className="flex flex-col overflow-hidden rounded-3xl border bg-card shadow-sm md:flex-row">
@@ -116,7 +132,14 @@ function TicketStub({ ticket }: { ticket: Ticket }) {
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-3 p-5 md:justify-center md:p-6">
-        <p className="text-xs font-semibold tracking-widest text-primary uppercase">ตั๋วเข้างาน</p>
+        <p className="flex flex-wrap items-center gap-x-2 text-xs font-semibold tracking-widest text-primary uppercase">
+          <span>ตั๋วเข้างาน{ticket.ticketType ? ` · ${ticket.ticketType.name}` : ""}</span>
+          {number && (
+            <span className="font-medium tracking-normal text-muted-foreground normal-case">
+              ใบที่ {number.index}/{number.total}
+            </span>
+          )}
+        </p>
         <h1 className="text-xl font-bold text-balance md:text-2xl">{ticket.event.name}</h1>
         <div className="flex flex-col gap-1 text-sm text-muted-foreground">
           <EventWhen startAt={ticket.event.startAt} endAt={ticket.event.endAt} />
@@ -149,7 +172,9 @@ function TicketStub({ ticket }: { ticket: Ticket }) {
       <div className="flex flex-col items-center justify-center gap-3 p-6 pt-3 md:w-64 md:shrink-0 md:p-6">
         <TicketQr
           code={ticket.code}
-          label={`QR ตั๋ว ${ticket.event.name}`}
+          label={`QR ตั๋ว ${ticket.event.name}${ticket.ticketType ? ` ${ticket.ticketType.name}` : ""}${
+            number ? ` ใบที่ ${number.index}` : ""
+          }`}
           className="max-w-72 md:max-w-52"
         />
         <p className="text-center text-xs text-muted-foreground">

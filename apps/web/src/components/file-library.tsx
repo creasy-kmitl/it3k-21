@@ -26,6 +26,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { Check, Copy, FileIcon, ImagePlus, Loader2Icon, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ConfirmDelete } from "@/components/form-dialog";
 import { LoadingButton } from "@/components/loading-button";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useApis } from "@/lib/api-context";
@@ -60,6 +61,7 @@ export function FileLibrary({
   const [progress, setProgress] = useState(0);
   const [uploadName, setUploadName] = useState("");
   const [error, setError] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState<LibraryFile | null>(null);
   const abort = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   const picker = useRef<HTMLInputElement>(null);
@@ -87,6 +89,7 @@ export function FileLibrary({
     mutationFn: (id: string) => files.remove(id, userId),
     onSuccess: async () => {
       setSelected(null);
+      setConfirmingDelete(null);
       await queryClient.invalidateQueries({ queryKey: ["files"] });
     },
     onError: (err) => {
@@ -364,10 +367,7 @@ export function FileLibrary({
                         variant="destructive"
                         icon={Trash2}
                         loading={remove.isPending}
-                        onClick={() => {
-                          if (window.confirm(`ลบ ${selected.name} ถาวร?`))
-                            remove.mutate(selected.id);
-                        }}
+                        onClick={() => setConfirmingDelete(selected)}
                       >
                         ลบไฟล์
                       </LoadingButton>
@@ -415,6 +415,15 @@ export function FileLibrary({
           )}
         </DialogFooter>
       </DialogContent>
+      {confirmingDelete && (
+        <ConfirmDelete
+          name={confirmingDelete.name}
+          description="ลบไฟล์นี้ถาวร รูปที่ใช้ไฟล์นี้อยู่ในอีเมลหรือหน้ากิจกรรมจะหายไปด้วย"
+          pending={remove.isPending}
+          onClose={() => setConfirmingDelete(null)}
+          onConfirm={() => remove.mutate(confirmingDelete.id)}
+        />
+      )}
     </Dialog>
   );
 }

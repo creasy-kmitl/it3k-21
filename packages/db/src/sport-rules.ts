@@ -2,6 +2,8 @@
 // browser bundle can import it.
 import { z } from "zod";
 
+import { imageUrlSchema } from "./image-url";
+
 /** Keys the web app maps to an illustration (components/sport-art.tsx). */
 export const SPORT_ICONS = [
   "football",
@@ -47,11 +49,7 @@ const code = z
   .regex(SPORT_CODE_PATTERN, "ใช้ a-z, 0-9 และ - เท่านั้น");
 const name = z.string().trim().min(1, "กรอกชื่อ").max(100, "ชื่อยาวได้ไม่เกิน 100 ตัวอักษร");
 const description = z.string().trim().max(2000, "คำอธิบายยาวได้ไม่เกิน 2,000 ตัวอักษร");
-const thumbnailUrl = z
-  .string()
-  .trim()
-  .max(2000)
-  .refine((value) => value === "" || value.startsWith("https://"), "ใช้ลิงก์ที่ขึ้นต้นด้วย https://");
+const thumbnailUrl = imageUrlSchema;
 const sortOrder = z.number().int().min(0).max(10_000);
 
 export const sportInput = z.strictObject({

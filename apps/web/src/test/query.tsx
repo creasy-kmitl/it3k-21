@@ -113,7 +113,7 @@ export function fakeTicketsApi(overrides: Partial<TicketsApi> = {}): TicketsApi 
     mine: unexpected("tickets.mine"),
     openEvents: unexpected("tickets.openEvents"),
     event: unexpected("tickets.event"),
-    ticketFor: unexpected("tickets.ticketFor"),
+    ticketsFor: unexpected("tickets.ticketsFor"),
     claim: unexpected("tickets.claim"),
     cancel: unexpected("tickets.cancel"),
     ...overrides,

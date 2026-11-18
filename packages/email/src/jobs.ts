@@ -66,6 +66,8 @@ export type TicketClaimedJob = {
     /** The `/tickets/<ref>` path segment: the event's slug, or its id. */
     ref: string;
     eventName: string;
+    /** The ticket type's name. Absent on jobs queued before ticket types. */
+    ticketTypeName?: string;
     startAt: number;
     endAt: number | null;
     venue: string | null;

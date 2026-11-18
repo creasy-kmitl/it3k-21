@@ -1,349 +1,175 @@
-import { INSTITUTIONS, type Institution } from "@it3k/db/profile";
-import { Avatar, AvatarFallback, AvatarImage } from "@it3k/ui/components/avatar";
+import { EVENT_TYPE_LABELS } from "@it3k/db/event-rules";
 import { Badge } from "@it3k/ui/components/badge";
 import { Button } from "@it3k/ui/components/button";
-import { Input } from "@it3k/ui/components/input";
 import { Skeleton } from "@it3k/ui/components/skeleton";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, createFileRoute } from "@tanstack/react-router";
-import {
-  ArrowLeft,
-  CalendarCheck,
-  Download,
-  LogIn,
-  MapPin,
-  MonitorSmartphone,
-  ScanBarcode,
-  Search,
-  Ticket,
-  Undo2,
-} from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@it3k/ui/components/tabs";
+import { useHotkey } from "@tanstack/react-hotkeys";
+import { useQuery } from "@tanstack/react-query";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, CalendarCheck, ExternalLink, MapPin, Pencil, Ticket, Users } from "lucide-react";
+import { z } from "zod";
 
-import { ScanSheet } from "@/components/checkin/scan-sheet";
-import { LoadingButton } from "@/components/loading-button";
-import { PageHeader } from "@/components/page-header";
-import { SegmentedControl } from "@/components/segmented-control";
-import { useApis } from "@/lib/api-context";
-import { formatBangkok } from "@/lib/bangkok-time";
-import { csvBlob } from "@/lib/csv";
-import type { Participant } from "@/lib/events";
-import { type Decoder, createDecoder } from "@/lib/kiosk";
-import { downloadBlob } from "@/lib/qr-export";
-import { eventTime, ticketSummary } from "./events";
 import { ErrorState } from "@/components/error-state";
-import { toastError } from "@/lib/errors";
+import { EventEditor } from "@/components/events/event-editor";
+import { EventParticipants } from "@/components/events/event-participants";
+import { PageHeader } from "@/components/page-header";
+import { ShortcutHint } from "@/components/shortcut-hint";
+import { useApis } from "@/lib/api-context";
+import type { Decoder } from "@/lib/kiosk";
+import { eventTime, ticketSummary } from "./events";
+
+export const EVENT_TABS = ["participants", "edit"] as const;
+export type EventTab = (typeof EVENT_TABS)[number];
+
+const searchSchema = z.object({
+  tab: z.enum(EVENT_TABS).optional().catch(undefined),
+});
 
 export const Route = createFileRoute("/staff/events_/$eventId")({
-  head: () => ({ meta: [{ title: "ผู้เข้าร่วมกิจกรรม · IT3Kings" }] }),
+  validateSearch: (search) => searchSchema.parse(search),
+  head: () => ({ meta: [{ title: "กิจกรรม · IT3Kings" }] }),
   component: RouteComponent,
 });
 
 function RouteComponent() {
   const { eventId } = Route.useParams();
-  return <EventParticipantsPage eventId={eventId} />;
+  const { tab = "participants" } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  return (
+    <EventPage
+      eventId={eventId}
+      tab={tab}
+      onTabChange={(next) =>
+        navigate({ search: { tab: next === "participants" ? undefined : next }, replace: true })
+      }
+      onDeleted={() => navigate({ to: "/staff/events" })}
+    />
+  );
 }
 
-const institutionShort = (id: Institution | null) =>
-  id ? (INSTITUTIONS.find((item) => item.id === id)?.short ?? id) : "—";
+const TAB_HOTKEYS = { participants: "Mod+1", edit: "Mod+2" } as const satisfies Record<EventTab, string>;
 
-export const fullName = (person: Pick<Participant, "prefix" | "firstName" | "lastName" | "name">) =>
-  person.firstName ? `${person.prefix}${person.firstName} ${person.lastName}` : person.name;
-
-/** The participant list as a spreadsheet, one row per person. */
-export function participantsCsv(items: Participant[]) {
-  return csvBlob([
-    [
-      "user_id",
-      "student_id",
-      "prefix",
-      "first_name",
-      "last_name",
-      "nickname",
-      "institution",
-      "divisions",
-      "on_list",
-      "has_ticket",
-      "checked_in_at",
-      "method",
-      "forced",
-    ],
-    ...items.map((item) => [
-      item.userId,
-      item.studentId,
-      item.prefix,
-      item.firstName || item.name,
-      item.lastName,
-      item.nickname,
-      institutionShort(item.institution),
-      item.divisions.map((division) => division.name).join(" / "),
-      item.expected ? "yes" : "no",
-      item.hasTicket ? "yes" : "no",
-      item.checkin ? formatBangkok(Date.parse(item.checkin.at), "dateTime") : "",
-      item.checkin?.method ?? "",
-      item.checkin ? (item.checkin.forced ? "yes" : "no") : "",
-    ]),
-  ]);
-}
-
-type Show = "all" | "in" | "out";
-
-/** Who an event expects and who has checked in, with manual check-in and export. */
-export function EventParticipantsPage({
+/** One event for staff: its participants and check-in, and for managers its edit tab. */
+export function EventPage({
   eventId,
-  decoderFactory = createDecoder,
+  tab,
+  onTabChange,
+  onDeleted,
+  decoderFactory,
 }: {
   eventId: string;
+  tab: EventTab;
+  onTabChange: (tab: EventTab) => void;
+  onDeleted: () => void;
   decoderFactory?: () => Promise<Decoder>;
 }) {
   const { events: api } = useApis();
-  const queryClient = useQueryClient();
   const event = useQuery({ queryKey: ["events", eventId], queryFn: () => api.get(eventId) });
-  // `eventId` may be a slug; once the event is loaded, its id keeps working
-  // even if someone renames the slug while this page is open.
-  const id = event.data?.id ?? eventId;
-  const participants = useQuery({
-    queryKey: ["events", eventId, "participants"],
-    queryFn: () => api.participants(id),
-  });
-  const [show, setShow] = useState<Show>("all");
-  const [search, setSearch] = useState("");
-  const [scanning, setScanning] = useState(false);
+  const canManage = !!event.data?.canManage;
+  // Someone who cannot edit lands on the participants even from an edit link.
+  const shown: EventTab = tab === "edit" && !canManage ? "participants" : tab;
 
-  const refresh = () =>
-    queryClient.invalidateQueries({ queryKey: ["events", eventId, "participants"] });
-  const checkIn = useMutation({
-    mutationFn: (vars: { userId: string; force?: boolean }) =>
-      api.checkIn(id, { ...vars, method: "manual" }),
-    onSuccess: (outcome, vars) => {
-      if (outcome.code === "checked-in") toast.success(`เช็คอิน ${fullName(outcome.person)} แล้ว`);
-      else if ("canForce" in outcome && outcome.canForce) {
-        toast.error(outcome.message, {
-          action: {
-            label: "บังคับเช็คอิน",
-            onClick: () => checkIn.mutate({ userId: vars.userId, force: true }),
-          },
-        });
-      } else toast.error(outcome.message);
-    },
-    onError: (error) => toastError(error, "เช็คอินไม่สำเร็จ"),
-    onSettled: refresh,
+  useHotkey(TAB_HOTKEYS.participants, () => onTabChange("participants"), {
+    ignoreInputs: false,
   });
-  const undo = useMutation({
-    mutationFn: (userId: string) => api.undoCheckIn(id, userId),
-    onSuccess: () => toast.success("ยกเลิกการเช็คอินแล้ว"),
-    onError: (error) => toastError(error, "ยกเลิกการเช็คอินไม่สำเร็จ"),
-    onSettled: refresh,
+  useHotkey(TAB_HOTKEYS.edit, () => onTabChange("edit"), {
+    ignoreInputs: false,
+    enabled: canManage,
   });
-
-  const items = participants.data?.items ?? [];
-  const checkedIn = items.filter((item) => item.checkin).length;
-  const needle = search.trim().toLowerCase();
-  const visible = items.filter(
-    (item) =>
-      (show === "all" || (show === "in") === !!item.checkin) &&
-      (!needle ||
-        [fullName(item), item.name, item.nickname, item.studentId ?? "", item.userId].some((text) =>
-          text.toLowerCase().includes(needle),
-        )),
-  );
 
   return (
-    <div className="flex flex-1 flex-col gap-6">
+    <div className="flex flex-1 flex-col gap-4 sm:gap-6">
       <Button
         variant="ghost"
         size="sm"
-        className="self-start"
+        className="-ml-2 self-start"
         render={<Link to="/staff/events" />}
         nativeButton={false}
       >
         <ArrowLeft data-icon="inline-start" aria-hidden /> กิจกรรมทั้งหมด
       </Button>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <PageHeader
-          icon={CalendarCheck}
-          title={event.data?.name ?? "กิจกรรม"}
-          description={
-            event.data ? (
-              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span>{eventTime(event.data)}</span>
-                <span className="inline-flex items-center gap-1">
-                  <Ticket className="size-4" aria-hidden />
-                  {ticketSummary(event.data)}
-                </span>
-                {event.data.venue && (
-                  <span className="inline-flex items-center gap-1">
-                    <MapPin className="size-4" aria-hidden />
-                    {event.data.venue.name}
-                  </span>
-                )}
-              </span>
-            ) : undefined
-          }
-        />
-        <div className="flex flex-wrap gap-2">
-          {participants.data?.canExport && (
-            <Button
-              variant="outline"
-              onClick={() =>
-                downloadBlob(
-                  participantsCsv(items),
-                  `it3k-event-${event.data?.slug ?? id.slice(0, 8)}.csv`,
-                )
-              }
-            >
-              <Download data-icon="inline-start" aria-hidden />
-              ส่งออก CSV
-            </Button>
-          )}
-          {participants.data?.canCheckIn && (
-            <>
-              {/* Two ways to scan: a drawer here, or the full-screen kiosk for a desk. */}
-              <Button
-                variant="outline"
-                render={
-                  <Link to="/kiosk/$eventId" params={{ eventId: event.data?.slug ?? eventId }} />
-                }
-                nativeButton={false}
-              >
-                <MonitorSmartphone data-icon="inline-start" aria-hidden />
-                เปิด Kiosk
-              </Button>
-              <Button onClick={() => setScanning(true)}>
-                <ScanBarcode data-icon="inline-start" aria-hidden />
-                สแกนเช็คอิน
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
 
-      {participants.data?.canCheckIn && (
-        <ScanSheet
-          open={scanning}
-          onOpenChange={setScanning}
-          eventKey={eventId}
-          id={id}
-          eventName={event.data?.name}
-          counts={{ checkedIn, total: items.length }}
-          decoderFactory={decoderFactory}
-        />
-      )}
-
-      {participants.isPending ? (
-        <div role="status" className="flex flex-col gap-2">
+      {event.isPending ? (
+        <div role="status" className="flex flex-col gap-3">
           <span className="sr-only">กำลังโหลด</span>
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-10 w-2/3" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-40 w-full" />
         </div>
-      ) : participants.isError ? (
-        <ErrorState
-          error={participants.error}
-          onRetry={participants.refetch}
-          title="โหลดรายชื่อไม่สำเร็จ"
-        />
+      ) : event.isError ? (
+        <ErrorState error={event.error} onRetry={event.refetch} title="โหลดกิจกรรมไม่สำเร็จ" />
       ) : (
         <>
-          <p className="text-sm text-muted-foreground" aria-live="polite">
-            เช็คอินแล้ว {checkedIn} จาก {items.length} คน
-          </p>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <SegmentedControl<Show>
-              label="แสดง"
-              value={show}
-              onChange={setShow}
-              segments={[
-                { value: "all", label: "ทั้งหมด" },
-                { value: "in", label: "เช็คอินแล้ว" },
-                { value: "out", label: "ยังไม่เช็คอิน" },
-              ]}
+          <div className="flex flex-col gap-2">
+            <PageHeader
+              icon={CalendarCheck}
+              title={event.data.name}
+              description={
+                <span className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
+                  <span>{eventTime(event.data)}</span>
+                  <span className="inline-flex items-center gap-1">
+                    <Ticket className="size-4 shrink-0" aria-hidden />
+                    {ticketSummary(event.data)}
+                  </span>
+                  {event.data.venue && (
+                    <span className="inline-flex min-w-0 items-center gap-1">
+                      <MapPin className="size-4 shrink-0" aria-hidden />
+                      <span className="truncate">{event.data.venue.name}</span>
+                    </span>
+                  )}
+                </span>
+              }
             />
-            <div className="relative flex-1">
-              <Search
-                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-                aria-hidden
-              />
-              <Input
-                type="search"
-                aria-label="ค้นหาผู้เข้าร่วม"
-                placeholder="ค้นหาชื่อ ชื่อเล่น หรือรหัสนักศึกษา"
-                className="pl-9"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={event.data.type === "sport" ? "default" : "secondary"}>
+                {EVENT_TYPE_LABELS[event.data.type]}
+              </Badge>
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto px-0"
+                render={<Link to="/events/$eventId" params={{ eventId: event.data.slug ?? event.data.id }} />}
+                nativeButton={false}
+              >
+                ดูหน้ากิจกรรม
+                <ExternalLink data-icon="inline-end" aria-hidden />
+              </Button>
             </div>
           </div>
-          {visible.length === 0 ? (
-            <p className="text-muted-foreground">
-              {items.length === 0 ? "ยังไม่มีผู้เข้าร่วม" : "ไม่พบผู้เข้าร่วมที่ตรงกับตัวกรอง"}
-            </p>
-          ) : (
-            <ul className="flex flex-col divide-y rounded-2xl border">
-              {visible.map((item) => (
-                <li key={item.userId} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <Avatar>
-                    <AvatarImage src={item.image ?? undefined} alt="" />
-                    <AvatarFallback>{item.name.trim().slice(0, 2).toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="truncate font-medium">
-                      {fullName(item)}
-                      {item.nickname && (
-                        <span className="text-muted-foreground"> ({item.nickname})</span>
-                      )}
-                    </span>
-                    <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span className="rounded-md border px-1.5 py-0.5">
-                        {institutionShort(item.institution)}
-                      </span>
-                      {item.studentId && <span>รหัส {item.studentId}</span>}
-                      {item.divisions.length > 0 && (
-                        <span>{item.divisions.map((d) => d.name).join(", ")}</span>
-                      )}
-                      {!item.expected && <Badge variant="destructive">ไม่อยู่ในรายชื่อ</Badge>}
-                      {!item.hasTicket && !item.checkin && (
-                        <Badge variant="outline">ยังไม่รับตั๋ว</Badge>
-                      )}
-                    </span>
-                  </div>
-                  {item.checkin ? (
-                    <span className="flex items-center gap-2 text-sm">
-                      <Badge>
-                        เช็คอิน {formatBangkok(Date.parse(item.checkin.at), "time")}
-                        {item.checkin.method === "manual" ? " · มือ" : ""}
-                      </Badge>
-                      {participants.data.canUndo && (
-                        <LoadingButton
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`ยกเลิกการเช็คอิน ${item.name}`}
-                          icon={Undo2}
-                          loading={undo.isPending && undo.variables === item.userId}
-                          disabled={undo.isPending}
-                          onClick={() => undo.mutate(item.userId)}
-                        />
-                      )}
-                    </span>
-                  ) : (
-                    participants.data.canCheckIn && (
-                      <LoadingButton
-                        variant="outline"
-                        size="sm"
-                        aria-label={`เช็คอิน ${item.name}`}
-                        icon={LogIn}
-                        loading={checkIn.isPending && checkIn.variables?.userId === item.userId}
-                        disabled={checkIn.isPending}
-                        onClick={() => checkIn.mutate({ userId: item.userId })}
-                      >
-                        เช็คอิน
-                      </LoadingButton>
-                    )
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+
+          <Tabs value={shown} onValueChange={(value) => onTabChange(value as EventTab)}>
+            {canManage && (
+              <div className="sticky top-0 z-20 -mx-4 bg-background/95 px-4 py-2 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+                <TabsList className="grid h-11 w-full grid-cols-2 sm:inline-flex sm:h-9 sm:w-fit">
+                  <TabsTrigger value="participants">
+                    <Users aria-hidden /> ผู้เข้าร่วม
+                    <ShortcutHint hotkey={TAB_HOTKEYS.participants} />
+                  </TabsTrigger>
+                  <TabsTrigger value="edit">
+                    <Pencil aria-hidden /> แก้ไข
+                    <ShortcutHint hotkey={TAB_HOTKEYS.edit} />
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+            )}
+            <TabsContent value="participants" className="pt-2">
+              <EventParticipants
+                event={event.data}
+                eventKey={eventId}
+                decoderFactory={decoderFactory}
+              />
+            </TabsContent>
+            {canManage && (
+              <TabsContent value="edit" className="pt-2">
+                {/* A new version (after a save) starts the form from what was saved. */}
+                <EventEditor
+                  key={`${event.data.id}:${event.data.version}`}
+                  event={event.data}
+                  onDeleted={onDeleted}
+                />
+              </TabsContent>
+            )}
+          </Tabs>
         </>
       )}
     </div>

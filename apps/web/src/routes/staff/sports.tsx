@@ -49,6 +49,7 @@ import {
   TextField,
   issuesOf,
 } from "@/components/form-dialog";
+import { ImageUrlField } from "@/components/image-url-field";
 import { PageHeader } from "@/components/page-header";
 import { DivisionBadges, FormatTag, GenderTag } from "@/components/sport-badges";
 import { SportArt, SportThumbnail } from "@/components/sport-art";
@@ -346,7 +347,6 @@ function SportForm({
         onSubmit(parsed.data);
       }}
     >
-      <SportArt icon={icon} seed={initial?.id ?? code} label="ภาพตัวอย่าง" className="rounded-xl" />
       <TextField
         id="sport-name"
         label="ชื่อ"
@@ -385,15 +385,18 @@ function SportForm({
         }))}
         onChange={setIcon}
       />
-      <TextField
+      <ImageUrlField
         id="sport-thumbnail"
-        label="ลิงก์รูปหน้าปก"
+        label="รูปหน้าปก"
         icon={ImageIcon}
         value={thumbnailUrl}
         onChange={setThumbnailUrl}
         error={issues.thumbnailUrl}
-        hint="เว้นว่างไว้เพื่อใช้ภาพประกอบด้านบน"
-        inputMode="url"
+        hint="เว้นว่างไว้เพื่อใช้ภาพประกอบที่เลือก"
+        selectTitle="เลือกรูปหน้าปกกีฬา"
+        fallback={
+          <SportArt icon={icon} seed={initial?.id ?? code} label="ภาพประกอบ" className="h-full" />
+        }
       />
       <TextField
         id="sport-order"

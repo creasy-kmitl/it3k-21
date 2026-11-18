@@ -224,6 +224,7 @@ function Result({
     title,
     person,
     details,
+    ticketLabel,
     forceable,
     forceLabel,
   } = describeResult(outcome, failure);
@@ -259,6 +260,11 @@ function Result({
             {person.nickname && ` (${person.nickname})`}
           </p>
           <p className="text-lg opacity-90 wide-xl:text-2xl">{details}</p>
+          {ticketLabel && (
+            <p className="rounded-full bg-black/15 px-4 py-1 text-xl font-medium wide-xl:text-3xl">
+              {ticketLabel}
+            </p>
+          )}
         </div>
       )}
       {forceable && (

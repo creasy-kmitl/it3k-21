@@ -133,7 +133,9 @@ export function EventsView() {
  */
 function EventCard({ item }: { item: OpenEvent }) {
   const claim = useClaimTicket(item);
-  const soldOut = item.remaining === 0;
+  // Only the types the caller may take, or already holds.
+  const types = item.ticketTypes.filter((type) => type.eligible || type.held > 0);
+  const only = types.length === 1 ? types[0] : undefined;
 
   return (
     <article className="group relative flex w-full flex-col overflow-hidden rounded-2xl border bg-card shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring hover:shadow-md">
@@ -175,7 +177,7 @@ function EventCard({ item }: { item: OpenEvent }) {
           </span>
         )}
         {item.description && (
-          <p className="line-clamp-2 text-sm whitespace-pre-wrap text-muted-foreground">
+          <p className="line-clamp-2 text-sm whitespace-pre-line text-muted-foreground">
             {item.description}
           </p>
         )}
@@ -196,19 +198,33 @@ function EventCard({ item }: { item: OpenEvent }) {
                 ดูตั๋ว
               </Button>
             </div>
-          ) : (
+          ) : only ? (
             <>
-              <Seats capacity={item.capacity} remaining={item.remaining} />
+              <Seats capacity={only.capacity} remaining={only.remaining} />
               <LoadingButton
                 icon={TicketIcon}
-                className="w-full"
+                className="h-11 w-full sm:h-9"
                 loading={claim.isPending}
-                disabled={soldOut}
-                onClick={() => claim.mutate()}
+                disabled={!only.canClaim}
+                onClick={() => claim.mutate({ id: only.id, name: only.name })}
               >
-                {soldOut ? "ตั๋วเต็มแล้ว" : "รับตั๋ว"}
+                {only.canClaim ? "รับตั๋ว" : only.refusal === "full" ? "ตั๋วเต็มแล้ว" : "ปิดรับแล้ว"}
               </LoadingButton>
             </>
+          ) : types.length > 1 ? (
+            <>
+              <Seats capacity={item.capacity} remaining={item.remaining} />
+              <Button
+                className="h-11 w-full sm:h-9"
+                render={<Link to="/events/$eventId" params={{ eventId: item.slug ?? item.id }} />}
+                nativeButton={false}
+              >
+                <TicketIcon data-icon="inline-start" aria-hidden />
+                เลือกประเภทตั๋ว ({types.length})
+              </Button>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">ยังไม่มีตั๋วที่เปิดให้คุณรับ</p>
           )}
         </div>
       </div>
