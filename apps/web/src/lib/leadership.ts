@@ -31,6 +31,18 @@ export function isSignedOut(error: unknown) {
   return error instanceof ApiError && error.status === 401;
 }
 
+/** An open form belongs to a different account than the current cookie. */
+export function isAccountChanged(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    error.status === 403 &&
+    error.body !== null &&
+    typeof error.body === "object" &&
+    "code" in error.body &&
+    error.body.code === "ACCOUNT_CHANGED"
+  );
+}
+
 type Client = ReturnType<typeof hc<LeadershipRoutes>>;
 type Seat = Client[":id"];
 

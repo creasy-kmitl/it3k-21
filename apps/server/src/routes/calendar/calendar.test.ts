@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { calendarChange, calendarItem } from "@it3k/db/schema/index";
+import { calendarChange, calendarItem, department } from "@it3k/db/schema/index";
 import { eq, sql } from "drizzle-orm";
 
 import { createTestContext, readJson } from "../../testing";
@@ -647,16 +647,14 @@ describe("more races", () => {
   });
 
   test("a collaborator department deleted mid-request fails cleanly", async () => {
+    // Departments with a code cannot be deleted, so use one created without.
+    await t.db.insert(department).values({ name: "Plain" });
+    const pr = await t.departmentId("Plain");
     t.hooks.beforeBatch = () => {
       t.hooks.beforeBatch = undefined;
-      t.sqlite.run("DELETE FROM department WHERE id = ?", [registration]);
+      t.sqlite.run("DELETE FROM department WHERE id = ?", [pr]);
     };
-    const { res } = await send(
-      "art-staff",
-      "POST",
-      "/items",
-      entry({ collaboratorIds: [registration] }),
-    );
+    const { res } = await send("art-staff", "POST", "/items", entry({ collaboratorIds: [pr] }));
     expect(res.status).toBe(409);
     expect(await t.db.select().from(calendarItem)).toEqual([]);
   });

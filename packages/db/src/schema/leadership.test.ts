@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 
-import { createTestDb, defined } from "../testing";
+import { createTestDb, defined, unlockDepartmentCodes } from "../testing";
 import { department, leadership, leadershipContactReveal, leadershipSocial, user } from "./index";
 
 let t: ReturnType<typeof createTestDb>;
@@ -22,20 +22,35 @@ beforeEach(() => {
 });
 
 describe("department code", () => {
-  test("backfills stable codes for the seeded manager departments", async () => {
+  test("backfills a stable code for every seeded department", async () => {
     const rows = await t.db
       .select({ name: department.name, code: department.code })
       .from(department)
-      .orderBy(department.name);
-    const coded = rows.filter((row) => row.code !== null);
-    expect(coded).toEqual([
-      { name: "Tech/Live", code: "tech-live" },
+      .orderBy(department.createdAt);
+    expect(rows).toEqual([
+      { name: "สวัสดิการ", code: "welfare" },
+      { name: "สถานที่", code: "venue" },
+      { name: "พิธีการ", code: "ceremony" },
+      { name: "พาเหรด", code: "parade" },
+      { name: "พัสดุ", code: "supplies" },
+      { name: "พยาบาล", code: "medical" },
+      { name: "ประสานงาน", code: "coordination" },
       { name: "ทะเบียน", code: "registration" },
+      { name: "กีฬา", code: "sports" },
+      { name: "การเงิน", code: "finance" },
+      { name: "Sponsor", code: "sponsor" },
+      { name: "Production", code: "production" },
+      { name: "PR", code: "pr" },
+      { name: "Merchandise", code: "merchandise" },
+      { name: "Art", code: "art" },
+      { name: "Tech/Live", code: "tech-live" },
     ]);
   });
 
   test("codes are unique", async () => {
     const art = await seedDepartment("Art");
+    // The lock trigger would refuse first; check the unique index behind it.
+    unlockDepartmentCodes(t.sqlite);
     expect(() =>
       t.sqlite.run("UPDATE department SET code = 'tech-live' WHERE id = ?", [art.id]),
     ).toThrow(/UNIQUE/);

@@ -1,4 +1,4 @@
-import { LoaderCircleIcon, MapIcon, RefreshCwIcon } from "lucide-react";
+import { LoaderCircleIcon, LocateFixedIcon, MapIcon, MapPinnedIcon, RefreshCwIcon } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 
 import { Badge } from "@it3k/ui/components/badge";
@@ -12,6 +12,10 @@ import {
   DialogTrigger,
 } from "@it3k/ui/components/dialog";
 
+// Imported as a type on purpose: a value import here would pull map-view into
+// the main bundle and undo the lazy loading above.
+import type { CenterRequest, CenterTarget } from "@/components/map/map-view";
+import { type Segment, SegmentedControl } from "@/components/segmented-control";
 import { useUserLocation } from "@/hooks/use-user-location";
 
 /**
@@ -24,12 +28,26 @@ const MapView = lazy(() =>
   import("@/components/map/map-view").then((module) => ({ default: module.MapView })),
 );
 
-/** Everything inside the dialog: status, the map, and the recentre button. */
+const CENTER_SEGMENTS: Segment<CenterTarget>[] = [
+  { value: "user", label: "ตำแหน่งของฉัน", icon: LocateFixedIcon },
+  { value: "venue", label: "จุดเริ่มต้น", icon: MapPinnedIcon },
+];
+
+/** Everything inside the dialog: status, the map, and the centre control. */
 function MapPanel() {
   const { status, coords, message, request } = useUserLocation();
-  // Off by default so the dialog opens on the fixed venue coordinate rather
-  // than jumping to wherever the user happens to be.
-  const [follow, setFollow] = useState(false);
+  // One request object rather than a target plus a counter: `nonce` changes on
+  // every request so that asking for the anchor that is already selected still
+  // flies there. A segmented control is a radio, so re-picking the option that
+  // is already active fires no change of its own.
+  const [centerRequest, setCenterRequest] = useState<CenterRequest>({
+    target: "venue",
+    nonce: 0,
+  });
+
+  const choose = (target: CenterTarget) => {
+    setCenterRequest((previous) => ({ target, nonce: previous.nonce + 1 }));
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -73,21 +91,18 @@ function MapPanel() {
             </div>
           }
         >
-          <MapView user={coords} follow={follow} />
+          <MapView user={coords} request={centerRequest} />
         </Suspense>
       </div>
 
       <div className="border-t p-3">
-        <Button
-          variant={follow && coords ? "default" : "outline"}
-          size="sm"
-          disabled={!coords}
-          onClick={() => setFollow((on) => !on)}
+        <SegmentedControl
+          label="จุดที่แผนที่จะโฟกัส"
+          value={centerRequest.target}
+          onChange={choose}
+          segments={CENTER_SEGMENTS}
           className="w-full"
-        >
-          <MapIcon />
-          {follow && coords ? "กำลังติดตามตำแหน่ง" : "กลับไปที่ตำแหน่งของฉัน"}
-        </Button>
+        />
       </div>
     </div>
   );

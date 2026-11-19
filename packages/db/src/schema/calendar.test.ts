@@ -216,12 +216,13 @@ describe("calendar schema", () => {
   });
 
   test("deleting a department removes its items and its collaborations", async () => {
-    const owned = await insertItem({ departmentId: registration });
+    // Departments with a code cannot be deleted, so use one created without.
+    const [created] = await t.db.insert(department).values({ name: "Plain" }).returning();
+    const plain = defined(created).id;
+    const owned = await insertItem({ departmentId: plain });
     const shared = await insertItem();
-    await t.db
-      .insert(calendarItemCollaborator)
-      .values({ itemId: shared.id, departmentId: registration });
-    await t.db.delete(department).where(eq(department.id, registration));
+    await t.db.insert(calendarItemCollaborator).values({ itemId: shared.id, departmentId: plain });
+    await t.db.delete(department).where(eq(department.id, plain));
     const left = await t.db.select().from(calendarItem);
     expect(left.map((item) => item.id)).toEqual([shared.id]);
     expect(left.some((item) => item.id === owned.id)).toBe(false);

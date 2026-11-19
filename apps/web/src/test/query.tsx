@@ -44,6 +44,7 @@ export function fakeUsersApi(overrides: Partial<UsersApi> = {}): UsersApi {
     list: unexpected("list"),
     assign: unexpected("assign"),
     setAdmin: unexpected("setAdmin"),
+    setStorage: unexpected("setStorage"),
     ...overrides,
   };
 }
@@ -56,6 +57,8 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
     calendar: apis.calendar ?? fakeCalendarApi(),
     links: apis.links ?? fakeLinksApi(),
     qrPresets: apis.qrPresets ?? fakeQrPresetsApi(),
+    profile: apis.profile ?? { me: unexpected("profile.me"), saveDraft: unexpected("profile.saveDraft"), submit: unexpected("profile.submit") },
+    files: apis.files ?? { list: unexpected("files.list"), remove: unexpected("files.remove"), upload: unexpected("files.upload") },
   };
 }
 

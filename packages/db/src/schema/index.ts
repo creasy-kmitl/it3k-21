@@ -4,3 +4,4 @@ export * from "./leadership";
 export * from "./calendar";
 export * from "./short-link";
 export * from "./qr-preset";
+export * from "./profile";

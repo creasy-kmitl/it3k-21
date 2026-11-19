@@ -16,7 +16,7 @@ import {
 } from "@it3k/ui/components/sidebar";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronsUpDownIcon, LogOutIcon } from "lucide-react";
 
 import { DepartmentBadge } from "@/components/department-icon";
@@ -99,6 +99,7 @@ export function NavUser() {
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
+            <DropdownMenuItem render={<Link to="/me" />}>โปรไฟล์ของฉัน</DropdownMenuItem>
             <DropdownMenuItem
               variant="destructive"
               onClick={() => {

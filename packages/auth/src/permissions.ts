@@ -8,11 +8,12 @@ export const statement = {
 
 export const ac = createAccessControl(statement);
 
-// New sign-ins wait as guests until a user manager makes them staff.
+// New sign-ins register as participants or receive staff access from a manager.
 export const guest = ac.newRole({});
 
-// Athletes are told apart from guests but, for now, reach no more than they do.
+// Registration and athlete eligibility are separate from staff access.
 export const athlete = ac.newRole({});
+export const participant = ac.newRole({});
 
 export const staff = ac.newRole({});
 
@@ -27,7 +28,7 @@ export const admin = ac.newRole({
   department: ["create", "read", "update", "delete", "assign"],
 });
 
-export const roles = { guest, athlete, staff, admin };
+export const roles = { guest, participant, athlete, staff, admin };
 
 export type Role = keyof typeof roles;
 export const ROLES = Object.keys(roles) as Role[];
@@ -46,7 +47,7 @@ export function hasRole(role: string | null | undefined, target: Role) {
   return parseRoles(role).includes(target);
 }
 
-/** Staff and admins; guests and athletes may not use the signed-in app yet. */
+/** Staff workspace membership; profile and file access require only sign-in. */
 export function isMember(role: string | null | undefined) {
   return hasRole(role, "admin") || hasRole(role, "staff");
 }

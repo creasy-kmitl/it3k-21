@@ -16,6 +16,7 @@ import { Input } from "@it3k/ui/components/input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -35,6 +36,8 @@ import { PageHeader } from "@/components/page-header";
 import { ROLE_BADGES, RoleBadge } from "@/components/role-badge";
 import { useApis } from "@/lib/api-context";
 import { type ListFilters, listSearchSchema, replacesHistory } from "@/lib/list-search";
+import { GiB } from "@it3k/db/profile";
+import { fileSize } from "@/lib/files";
 
 export const Route = createFileRoute("/staff/users")({
   validateSearch: (search) => listSearchSchema.parse(search),
@@ -59,9 +62,9 @@ function RouteComponent() {
 }
 
 type Status = Assignment["kind"];
-const STATUSES: Status[] = ["guest", "athlete", "staff", "vicehead", "head"];
+const STATUSES: Status[] = ["guest", "participant", "athlete", "staff", "vicehead", "head"];
 // Statuses that carry no department.
-const UNAFFILIATED = new Set<Status>(["guest", "athlete"]);
+const UNAFFILIATED = new Set<Status>(["guest", "participant", "athlete"]);
 
 function initials(name: string) {
   return name.trim().slice(0, 2).toUpperCase();
@@ -69,7 +72,8 @@ function initials(name: string) {
 
 function statusOf(account: Account): Status {
   if (account.seatRole) return account.seatRole;
-  if (account.role === "athlete" || account.role === "guest") return account.role;
+  if (account.role === "athlete" || account.role === "participant" || account.role === "guest")
+    return account.role;
   // Staff, even without a department, is not a guest; admins read by department.
   if (account.role === "staff") return "staff";
   return account.department ? "staff" : "guest";
@@ -132,7 +136,7 @@ export function UsersPage({ filters: control }: { filters?: FilterControl<ListFi
       <PageHeader
         icon={UserCog}
         title="ผู้ใช้"
-        description="กำหนดว่าแต่ละบัญชีเป็น Guest, นักกีฬา, Staff หรือหัวหน้าฝ่ายใด"
+        description="กำหนดสถานะ Guest, ผู้เข้าร่วม, นักกีฬา, Staff หรือหัวหน้าฝ่าย และพื้นที่จัดเก็บไฟล์"
       />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -196,6 +200,9 @@ export function UsersPage({ filters: control }: { filters?: FilterControl<ListFi
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="truncate font-medium">{account.name}</span>
                 <AccountBadges account={account} />
+                <span className="text-xs text-muted-foreground">
+                  ไฟล์ {fileSize(account.storageUsed)} / {fileSize(account.storageLimit)}
+                </span>
               </div>
               <Button
                 variant="ghost"
@@ -281,6 +288,11 @@ function EditAccountDialog({
   const [status, setStatus] = useState<Status>(initialStatus);
   const [departmentId, setDepartmentId] = useState(account.department?.id ?? "");
   const [admin, setAdmin] = useState(account.role === "admin");
+  const [savedAccount, setSavedAccount] = useState(account);
+  const [storageGB, setStorageGB] = useState(String(account.storageLimit / GiB));
+  const storageLimit = Math.round(Number(storageGB) * GiB);
+  const validStorage =
+    storageGB.trim() !== "" && Number.isSafeInteger(storageLimit) && storageLimit >= 0;
   const needsDepartment = !UNAFFILIATED.has(status);
   const seatRole = status === "head" || status === "vicehead" ? status : null;
 
@@ -295,18 +307,25 @@ function EditAccountDialog({
 
   const save = useMutation({
     mutationFn: async () => {
+      // Set quota before an assignment that may revoke the caller's own rights.
+      let saved = savedAccount;
+      if (storageLimit !== saved.storageLimit) {
+        saved = await api.setStorage(account.id, storageLimit, saved.storageLimit);
+        setSavedAccount(saved);
+      }
       // Compared with what the account is, not with the status the dialog opened
       // on, so e.g. a staff account without a department can still be made a guest.
-      if (!alreadyIs(account, status, departmentId)) {
-        await api.assign(
+      if (!alreadyIs(saved, status, departmentId)) {
+        saved = await api.assign(
           account.id,
-          status === "guest" || status === "athlete"
+          status === "guest" || status === "participant" || status === "athlete"
             ? { kind: status }
             : { kind: status, departmentId },
         );
+        setSavedAccount(saved);
       }
-      if (canGrantAdmin && admin !== (account.role === "admin")) {
-        await api.setAdmin(account.id, admin);
+      if (canGrantAdmin && admin !== (saved.role === "admin")) {
+        setSavedAccount(await api.setAdmin(account.id, admin));
       }
     },
     onSuccess: async () => {
@@ -317,7 +336,13 @@ function EditAccountDialog({
         queryClient.invalidateQueries({ queryKey: ["leadership"] }),
       ]);
     },
-    onError: (error) => toast.error(`บันทึกไม่สำเร็จ: ${error.message}`),
+    onError: async (error) => {
+      toast.error(`บันทึกไม่สำเร็จ: ${error.message}`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["users"] }),
+        queryClient.invalidateQueries({ queryKey: ["leadership"] }),
+      ]);
+    },
   });
 
   const statusItems = STATUSES.map((value) => ({ value, label: ROLE_BADGES[value].label }));
@@ -347,11 +372,13 @@ function EditAccountDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {statusItems.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>
-                    {s.label}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  {statusItems.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </Field>
@@ -367,11 +394,13 @@ function EditAccountDialog({
                   <SelectValue placeholder="เลือกฝ่าย" />
                 </SelectTrigger>
                 <SelectContent>
-                  {departmentItems.map((d) => (
-                    <SelectItem key={d.value} value={d.value}>
-                      {d.label}
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    {departmentItems.map((d) => (
+                      <SelectItem key={d.value} value={d.value}>
+                        {d.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
               {occupant.data && (
@@ -393,11 +422,29 @@ function EditAccountDialog({
               <FieldLabel htmlFor="account-admin">Admin</FieldLabel>
             </Field>
           )}
+          <Field data-invalid={!validStorage}>
+            <FieldLabel htmlFor="account-storage">พื้นที่จัดเก็บสูงสุด (GB)</FieldLabel>
+            <Input
+              id="account-storage"
+              type="number"
+              min="0"
+              step="any"
+              value={storageGB}
+              aria-invalid={!validStorage}
+              onChange={(event) => setStorageGB(event.target.value)}
+            />
+            <FieldDescription>
+              ใช้แล้ว {fileSize(account.storageUsed)} · ค่าเริ่มต้น 1 GB · กำหนด 0 เพื่อหยุดอัปโหลดใหม่
+            </FieldDescription>
+            {validStorage && storageLimit < account.storageUsed && (
+              <FieldDescription>ไฟล์เดิมยังอยู่ จะอัปโหลดเพิ่มได้เมื่อใช้พื้นที่ต่ำกว่าโควตา</FieldDescription>
+            )}
+          </Field>
         </FieldGroup>
         <AlertDialogFooter>
           <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
           <Button
-            disabled={save.isPending || (needsDepartment && departmentId === "")}
+            disabled={save.isPending || !validStorage || (needsDepartment && departmentId === "")}
             onClick={() => save.mutate()}
           >
             บันทึก

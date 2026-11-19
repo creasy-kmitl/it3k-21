@@ -39,6 +39,8 @@ function PendingPage() {
       }}
       footer={
         <div className="flex flex-wrap items-center gap-2">
+          <Link to="/signup" className={buttonVariants()}>ลงทะเบียนผู้เข้าร่วม</Link>
+          <Link to="/me" className={buttonVariants({ variant: "outline" })}>โปรไฟล์ของฉัน</Link>
           <Button
             onClick={() => {
               void authClient.signOut({

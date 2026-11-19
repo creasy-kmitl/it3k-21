@@ -28,30 +28,64 @@ const USER_ICON = L.divIcon({
 });
 
 /**
- * Pans the map when `follow` is on and a new position arrives.
+ * Moves the map to whichever anchor is selected.
+ *
+ * Two effects rather than one, because `coords` changes every time the GPS
+ * reports a fix. A single effect would re-run on every fix and, with the
+ * campus selected, drag the map back from wherever the user had panned it to.
+ * The first effect does not depend on the coordinates at all, so it fires only
+ * when the target changes or a re-centre is asked for; the second depends on
+ * the coordinates but does nothing unless the user is the target.
  *
  * This is the bridge between the two worlds: React is declarative, Leaflet is
- * imperative. React tells us the position changed; the effect below is what
- * actually tells Leaflet to move. `useMap` only works inside `MapContainer`,
+ * imperative. React tells us the request changed; the effects below are what
+ * actually tell Leaflet to move. `useMap` only works inside `MapContainer`,
  * which is why this needs to be its own component.
  */
-function FollowUser({ coords, follow }: { coords: Coords | null; follow: boolean }) {
+function FocusTarget({
+  coords,
+  request,
+}: {
+  coords: Coords | null;
+  request: CenterRequest;
+}) {
   const map = useMap();
 
   useEffect(() => {
-    if (!follow || !coords) return;
+    if (request.target !== "venue") return;
+    map.flyTo([VENUE_CENTER.lat, VENUE_CENTER.lng], VENUE_CENTER.zoom, { duration: 0.6 });
+  }, [request, map]);
+
+  useEffect(() => {
+    if (request.target !== "user" || !coords) return;
     map.flyTo([coords.lat, coords.lng], Math.max(map.getZoom(), VENUE_CENTER.zoom), {
       duration: 0.6,
     });
-  }, [coords, follow, map]);
+  }, [coords, request, map]);
 
   return null;
 }
 
+/** Which anchor the map returns to: the campus, or the live user position. */
+export type CenterTarget = "venue" | "user";
+
+/**
+ * What the map should be looking at.
+ *
+ * `nonce` changes on every request so that asking for the anchor that is
+ * already selected still flies there. A segmented control is a radio, so
+ * re-picking the option that is already active fires no change of its own, and
+ * the map would stay wherever the user had panned it to.
+ */
+export type CenterRequest = {
+  target: CenterTarget;
+  nonce: number;
+};
+
 export type MapViewProps = {
   user: Coords | null;
-  /** Keep the user's position centred as it updates. */
-  follow: boolean;
+  /** Which anchor to fly to, and which request to answer. */
+  request: CenterRequest;
 };
 
 /**
@@ -59,7 +93,7 @@ export type MapViewProps = {
  * marker. Venue pins are deliberately absent for now, so `lib/map.ts` holds a
  * single coordinate rather than a list.
  */
-export function MapView({ user, follow }: MapViewProps) {
+export function MapView({ user, request }: MapViewProps) {
   return (
     <MapContainer
       center={[VENUE_CENTER.lat, VENUE_CENTER.lng]}
@@ -87,7 +121,7 @@ export function MapView({ user, follow }: MapViewProps) {
         </>
       )}
 
-      <FollowUser coords={user} follow={follow} />
+      <FocusTarget coords={user} request={request} />
     </MapContainer>
   );
 }
