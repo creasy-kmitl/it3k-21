@@ -1,0 +1,53 @@
+---
+title: สถาปัตยกรรม
+description: โครง monorepo worker แต่ละตัว และการเชื่อมเว็บกับ API
+icon: Network
+---
+
+<PageHero spot="server">
+  ทุกแอปเป็น Cloudflare Worker ในโปรเจกต์ Bun workspace เดียว สร้างและ deploy ด้วย Alchemy
+  (`packages/infra/alchemy.run.ts`)
+</PageHero>
+
+<Diagram title="Worker และข้อมูล">
+  <Flow labels={["fetch + cookie", "D1 / R2 / Queue"]}>
+    <Node title="web" tone="primary">TanStack Start · `:3001`</Node>
+    <Node title="server">Hono API · `:3000`</Node>
+    <Node title="ข้อมูล" tone="muted">D1 · R2 · EMAIL_QUEUE</Node>
+  </Flow>
+</Diagram>
+
+## แพ็กเกจ
+
+| โฟลเดอร์             | หน้าที่                                                                 |
+| -------------------- | ---------------------------------------------------------------------- |
+| `apps/server`        | Hono API: Better Auth ที่ `/api/auth/*` และ router ของแต่ละ resource ที่ `/api/<resource>` |
+| `apps/web`           | TanStack Start (React 19) หน้าผู้เข้าร่วมและระบบทีมงาน `/staff` (client-only) |
+| `apps/docs`          | คู่มือนี้ Fumadocs บน TanStack Start                                      |
+| `packages/auth`      | `createAuth(env, db)` Google sign-in, admin plugin, oAuthProxy, `permissions.ts` |
+| `packages/db`        | Drizzle schema, migration และกฎที่ใช้ร่วมกันทั้ง server และ web              |
+| `packages/email`     | เทมเพลต react-email และชนิดของงานในคิว                                    |
+| `packages/ui`        | shadcn/ui และ `tokens.css` ที่เว็บกับคู่มือใช้ร่วมกัน                          |
+| `packages/infra`     | stack ของ Alchemy                                                       |
+
+## รูปแบบของ router
+
+ทุก router เป็น factory `createXRoutes(deps: RouteDeps)` โดย `RouteDeps = { getSession, getDb }`
+production ส่ง session ของ Better Auth และ D1 เข้ามา ส่วนเทสต์ส่ง session ปลอมและ DB ในหน่วยความจำ
+
+- `requireUser` โหลดบทบาท ฝ่าย ที่นั่ง และสถานะระงับจาก DB **ทุก request**
+- `requireJsonPosts` คือตัวกัน CSRF: คุกกี้เป็น `SameSite=None` ทุก POST จึงต้องเป็น `application/json`
+- ตรวจ input ด้วย `validate(target, zodSchema)` ตอบ 400 เป็น `{ message, issues }`
+
+## เขียนแบบกัน race
+
+route อ่านสถานะก่อน แล้วเขียนทั้งหมดใน `db.batch([...])` ครั้งเดียว (เป็น transaction เดียวใน D1)
+`abortUnless(db, userId, condition)` อยู่ต้น batch ถ้าสิ่งที่อ่านไว้เปลี่ยน batch จะล้มและตอบ `"stale"`
+ทุกการเขียนที่ขึ้นกับสิ่งที่อ่านไว้ก่อนต้องใช้รูปแบบนี้
+
+## เว็บ ↔ API
+
+- router export `type XRoutes = ReturnType<typeof createXRoutes>` เว็บ import type นี้แล้วสร้าง `hono/client` ที่มีชนิดข้อมูล
+  เปลี่ยน response ฝั่ง server แล้ว type ฝั่งเว็บตามอัตโนมัติ
+- หน้าเว็บได้ client ผ่าน `useApis()` เทสต์สลับเป็นของปลอมด้วย `ApiProvider`
+- `clearCacheOnUserChange` ล้าง Query cache เมื่อผู้ใช้เปลี่ยน เพราะข้อมูลอย่าง `canEdit` เป็นของผู้ใช้แต่ละคน

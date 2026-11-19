@@ -1,0 +1,101 @@
+---
+title: เขียนคู่มือและถ่ายภาพหน้าจอ
+description: โครงของคู่มือ component ที่ใช้ได้ใน MDX และสคริปต์ seed + Playwright สำหรับถ่ายภาพหน้าจอใหม่
+icon: Camera
+---
+
+<PageHero spot="camera">
+  ภาพหน้าจอทั้งหมดในคู่มือสร้างจากสคริปต์ จึงถ่ายใหม่ได้ทุกครั้งที่หน้าจอเปลี่ยน ข้อมูลในภาพเป็นบัญชีสมมติ
+  (`demo-*` และ `@example.test`) ไม่มีข้อมูลของคนจริง
+</PageHero>
+
+## โครงของคู่มือ
+
+- หน้าคู่มืออยู่ที่ `apps/docs/content/docs/` เป็น MDX ภาษาไทย ลำดับเมนูกำหนดด้วย `meta.json` ในแต่ละโฟลเดอร์
+- frontmatter ทุกหน้ามี `title` `description` และ `icon` (ชื่อไอคอน Lucide)
+- เนื้อหาฝั่งสตาฟจัดเป็น **ฝ่าย → ตำแหน่ง** (`staff/departments/`) และหน้าบทบาทลิงก์ไปขั้นตอนใน `staff/tasks/` เพื่อไม่ให้เนื้อหาซ้ำ
+- ข้อมูลสิทธิ์ทุกอย่างต้องตรงกับ `apps/server/src/policies/*.ts` ถ้าแก้ policy ให้แก้คู่มือใน PR เดียวกัน
+
+## Component ใน MDX
+
+| Component                       | ใช้ทำอะไร                                                              |
+| ------------------------------- | --------------------------------------------------------------------- |
+| `<PageHero spot="ticket">`      | หัวหน้าพร้อมภาพประกอบ (ชื่อ spot ดูใน `src/components/illustration.tsx`)   |
+| `<RoleCards>` / `<RoleCard>`    | การ์ดเลือกบทบาทพร้อมภาพประกอบ                                            |
+| `<Screenshot src="art-staff/links" alt="…" mobile />` | ภาพหน้าจอในกรอบคอมพิวเตอร์ และกรอบมือถือถ้าใส่ `mobile`        |
+| `<Diagram>` `<Flow>` `<Node>`   | แผนภาพที่ใช้สีจาก token รองรับโหมดมืด                                       |
+| `<RightsFormula />` `<SignupGate />` `<AccountJourney />` | แผนภาพสำเร็จรูป                            |
+| `<Steps>` `<Tabs>` `<Accordions>` `<Callout>` `<Cards>` | component ของ Fumadocs                          |
+
+รูปทุกรูปกดขยายได้ (ImageZoom) ภาพประกอบเก็บที่ `public/illustrations/` ทั้งแบบสว่าง (`spot-*.webp`) และมืด (`spot-dark-*.webp`)
+
+## ถ่ายภาพหน้าจอใหม่
+
+สคริปต์อยู่ที่ `apps/docs/scripts/screenshots/`
+
+| ไฟล์           | หน้าที่                                                                       |
+| -------------- | ---------------------------------------------------------------------------- |
+| `personas.ts`  | บัญชีสมมติ 11 บทบาท (guest ถึง admin) และผู้เข้าร่วมอีก 10 คน                      |
+| `seed.ts`      | ลบแถว `demo-*` เดิม แล้วใส่ข้อมูลตัวอย่างและ session ลง D1 ในเครื่อง               |
+| `shots.ts`     | รายการภาพ: persona, path, ขนาด และขั้นตอนก่อนถ่าย                               |
+| `capture.ts`   | เปิด Chrome ในเครื่องด้วย Playwright ใส่คุกกี้ session แล้วถ่าย บันทึกเป็น WebP     |
+
+<Callout type="warn" title="ใช้ฐานข้อมูลเปล่าเสมอ">
+  `seed.ts` ไม่ยอมรันถ้าใน D1 มีบัญชีที่ไม่ใช่ `demo-*` เพื่อกันไม่ให้ข้อมูลจริงปนเข้าภาพ
+  ถ้า D1 ในเครื่องของคุณมีข้อมูลที่อยากเก็บไว้ ให้ย้ายไปไว้ที่อื่นก่อนตามขั้นตอนด้านล่าง อย่าใช้ `--force`
+</Callout>
+
+<Steps>
+<Step>
+
+### หยุด `bun run dev` แล้วย้ายข้อมูลในเครื่องไปเก็บ
+
+```bash
+mkdir -p packages/infra/.alchemy/local-backup-docs
+mv packages/infra/.alchemy/local/d1 packages/infra/.alchemy/local/r2 packages/infra/.alchemy/local-backup-docs/
+```
+
+</Step>
+<Step>
+
+### เปิด `bun run dev` บนฐานเปล่า
+
+รอจน migration ทำงานเสร็จ และเว็บเปิดได้ที่ `localhost:3001`
+
+</Step>
+<Step>
+
+### Seed และถ่ายภาพ (เปิด dev ค้างไว้)
+
+```bash
+bun run --cwd apps/docs screenshots:seed
+bun run --cwd apps/docs screenshots
+```
+
+seed อ่าน `BETTER_AUTH_SECRET` จาก `apps/server/.env` เพื่อเซ็นคุกกี้ session และอัปโหลดรูปโปรไฟล์ผ่าน API
+ถ่ายเฉพาะบางภาพได้ด้วยการใส่คำกรอง เช่น `bun run --cwd apps/docs screenshots tech-head`
+ต้องมี Google Chrome และ `cwebp` (`brew install webp`) ในเครื่อง
+
+</Step>
+<Step>
+
+### หยุด dev แล้วคืนข้อมูลเดิม
+
+```bash
+rm -rf packages/infra/.alchemy/local/d1 packages/infra/.alchemy/local/r2
+mv packages/infra/.alchemy/local-backup-docs/d1 packages/infra/.alchemy/local-backup-docs/r2 packages/infra/.alchemy/local/
+```
+
+</Step>
+</Steps>
+
+ภาพถูกบันทึกที่ `apps/docs/public/screenshots/<persona>/<ชื่อ>.webp` (และ `-mobile.webp`)
+desktop ขนาด 1440×900 มือถือ 390×844 ที่ความละเอียด 2 เท่า วันที่ในข้อมูลตัวอย่างนับจากวันที่รัน seed
+
+## เพิ่มภาพใหม่
+
+1. ถ้าต้องใช้ข้อมูลเพิ่ม ใส่ใน `seed.ts` (id ขึ้นต้นด้วย `demo-` เสมอ)
+2. เพิ่มรายการใน `SHOTS` ของ `shots.ts` เช่น
+   `{ file: "tech-head/venues", as: "techHead", path: "/staff/venues" }`
+   ใส่ `mobile: true` สำหรับภาพมือถือ `sidebar: true` สำหรับถ่ายเฉพาะเมนู หรือ `act` เพื่อกดปุ่มก่อนถ่าย
+3. รันเฉพาะภาพนั้น แล้วใช้ `<Screenshot src="tech-head/venues" alt="…" />` ในหน้า MDX

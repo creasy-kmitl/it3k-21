@@ -1,4 +1,1 @@
-{
-  "title": "นักพัฒนา",
-  "pages": ["setup", "deployment"]
-}
+{ "title": "นักพัฒนา", "pages": ["setup", "architecture", "permissions", "testing", "deployment", "docs-screenshots"] }

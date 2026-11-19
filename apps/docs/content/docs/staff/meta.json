@@ -1,4 +1,1 @@
-{
-  "title": "สตาฟ",
-  "pages": ["overview", "invitations"]
-}
+{ "title": "สตาฟ", "pages": ["overview", "basics", "departments", "tasks", "admin"] }
