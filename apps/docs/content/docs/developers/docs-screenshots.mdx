@@ -22,7 +22,9 @@ icon: Camera
 | ------------------------------- | --------------------------------------------------------------------- |
 | `<PageHero spot="ticket">`      | หัวหน้าพร้อมภาพประกอบ (ชื่อ spot ดูใน `src/components/illustration.tsx`)   |
 | `<RoleCards>` / `<RoleCard>`    | การ์ดเลือกบทบาทพร้อมภาพประกอบ                                            |
-| `<Screenshot src="art-staff/links" alt="…" mobile />` | ภาพหน้าจอในกรอบคอมพิวเตอร์ และกรอบมือถือถ้าใส่ `mobile`        |
+| `<Screenshot src="guest/home" alt="…" mobile="guest/home-mobile" />` | ภาพหน้าจอในกรอบคอมพิวเตอร์ และกรอบมือถือข้าง ๆ ถ้าใส่ `mobile` |
+| `<Screenshot src="…" alt="…" scroll />` | ภาพเต็มหน้า (`fullPage: true`) ที่ยาวกว่าจอมาก ให้เลื่อนดูในกรอบแทนการยืดหน้า |
+| `<SidebarShot src="art-staff/sidebar" alt="…">ข้อความ</SidebarShot>` | ภาพเมนู (`sidebar: true`) ในขนาดจริง ข้อความด้านในวางข้างภาพ (บนมือถืออยู่ใต้ภาพ) |
 | `<Diagram>` `<Flow>` `<Node>`   | แผนภาพที่ใช้สีจาก token รองรับโหมดมืด                                       |
 | `<RightsFormula />` `<SignupGate />` `<AccountJourney />` | แผนภาพสำเร็จรูป                            |
 | `<Steps>` `<Tabs>` `<Accordions>` `<Callout>` `<Cards>` | component ของ Fumadocs                          |
@@ -99,3 +101,4 @@ desktop ขนาด 1440×900 มือถือ 390×844 ที่ความ
    `{ file: "tech-head/venues", as: "techHead", path: "/staff/venues" }`
    ใส่ `mobile: true` สำหรับภาพมือถือ `sidebar: true` สำหรับถ่ายเฉพาะเมนู หรือ `act` เพื่อกดปุ่มก่อนถ่าย
 3. รันเฉพาะภาพนั้น แล้วใช้ `<Screenshot src="tech-head/venues" alt="…" />` ในหน้า MDX
+   (ภาพเมนูใช้ `<SidebarShot>` และภาพเต็มหน้าที่ยาวมากใส่ `scroll` อย่าใส่ใน `<Screenshot>` เปล่า ๆ เพราะจะถูกยืดเต็มความกว้าง)
