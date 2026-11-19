@@ -295,6 +295,11 @@ export default Alchemy.Stack(
         // so the stage reaches it the same way the API URL does: only
         // `VITE_`-prefixed keys are inlined into `import.meta.env`.
         VITE_DEPLOY_ENV: observabilityBindings.DEPLOY_ENV,
+        // The staff sidebar links to the guide. `docsWorker.url` can't be used
+        // here because the docs worker already takes this worker's URL, so the
+        // two would depend on each other. The hostname is known up front in CI;
+        // elsewhere the web app falls back to the local docs dev server.
+        ...(hostnames ? { VITE_DOCS_URL: `https://${hostnames.docs}` } : {}),
         // Short links live on the web host (`/l/<slug>`) but are answered by
         // the API, which holds the database. A service binding hands the
         // request straight over, with no second trip through the internet.

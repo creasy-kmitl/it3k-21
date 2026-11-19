@@ -3,4 +3,5 @@
 // every `import.meta.env` key to `string | undefined`.
 interface ImportMetaEnv {
   readonly VITE_SERVER_URL: string;
+  readonly VITE_DOCS_URL?: string;
 }
