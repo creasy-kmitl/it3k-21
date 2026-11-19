@@ -56,3 +56,6 @@ coverage
 .cache
 tmp
 temp
+
+# Docs screenshot sessions (apps/docs/scripts/screenshots/seed.ts)
+apps/docs/scripts/screenshots/.sessions.json

@@ -1,0 +1,83 @@
+---
+title: สิทธิ์ในระบบ
+description: roles, seats, department capabilities และ policies รวมถึงวิธีให้สิทธิ์กับฝ่ายใหม่
+icon: KeyRound
+---
+
+<PageHero spot="code">
+  สิทธิ์ทั้งหมดตัดสินที่ server จาก DB ทุก request หน้าเว็บแค่ซ่อนปุ่มตามข้อมูลที่ API ส่งมา
+</PageHero>
+
+<RightsFormula />
+
+## สามส่วนของสิทธิ์
+
+| ส่วน         | เก็บที่                                         | helper                                   |
+| ------------ | ---------------------------------------------- | ---------------------------------------- |
+| บทบาท       | `user.role` สตริงคั่นด้วยจุลภาค                    | `parseRoles`, `hasRole`, `isMember` (`packages/auth/src/permissions.ts`) |
+| ฝ่าย         | `user.departmentId` → `department.code`         | `hasCapability(code, capability)`        |
+| ที่นั่ง       | ตาราง `leadership` (`head` / `vicehead`)         | `mayHoldSeat(institution)`               |
+
+`isMember` = `staff` หรือ `admin` ที่นั่งให้สิทธิ์เฉพาะบัญชีของ สจล. (`HOST_INSTITUTION`)
+
+## Department capabilities
+
+`apps/server/src/policies/department-capabilities.ts`
+
+| รหัส            | capabilities                                                                  |
+| --------------- | ----------------------------------------------------------------------------- |
+| `tech-live`     | `manageAccounts`, `manageShortLinks`, `runSports`, `sendEmail`                |
+| `registration`  | `manageAccounts`, `registerAthletes`, `sendEmailAsLeader`, `manageDepartmentsAsLeader` |
+
+เฉพาะรหัสใน `RESERVED_DEPARTMENT_CODES` (`packages/db/src/department-codes.ts`) ที่ให้สิทธิ์ได้ และ API ไม่ยอมให้ตั้งรหัสเหล่านี้
+รหัสฝ่ายถูกล็อกด้วย trigger จาก `lock_department_codes` เปลี่ยนไม่ได้และลบฝ่ายที่มีรหัสไม่ได้ ไม่ว่าทาง API, Drizzle Studio หรือ SQL
+
+## Policies
+
+route ถาม policy เสมอ ห้ามเช็กบทบาท ที่นั่ง รหัส หรือสถาบันตรง ๆ แต่ละ policy มีคู่ SQL `…IsAsRead` สำหรับ `abortUnless`
+
+| ไฟล์                       | ตัดสินเรื่อง                                                        |
+| -------------------------- | ----------------------------------------------------------------- |
+| `leadership.ts`            | ที่นั่ง ช่องทางติดต่อ ใครให้สถานะอะไรได้ (`canAssign`, `hasFullAssignRights`) |
+| `sports.ts`                | `sportAccess` → ชุด permission + ขอบเขตสถาบัน                       |
+| `departments.ts`           | ใครจัดการรายชื่อฝ่าย                                                 |
+| `email.ts`                 | ใครส่งอีเมล                                                        |
+| `short-links.ts`           | ใครสร้างและแก้ลิงก์สั้น / Preset QR                                   |
+| `calendar.ts`              | ใครแก้ปฏิทินของฝ่ายไหน                                               |
+
+### ระบบกีฬา (`sportAccess`)
+
+| ผู้ใช้                                                 | permissions                                   | ขอบเขต        |
+| ----------------------------------------------------- | --------------------------------------------- | ------------- |
+| admin, หัวหน้า/รอง `runSports` หรือ `registerAthletes` (สจล.) | ทั้งหมด                                       | ทุกสถาบัน      |
+| สตาฟ `runSports`                                       | `kiosk.operate`, `athletes.read`              | ทุกสถาบัน      |
+| สตาฟ `registerAthletes` สจล.                           | + `users.setInstitution`                      | ทุกสถาบัน      |
+| สตาฟ `registerAthletes` สถาบันอื่น                       | `athletes.read`, `athletes.export`            | สถาบันตัวเอง   |
+| สตาฟ `registerAthletes` ไม่มีสถาบัน                      | —                                             | —             |
+
+## ให้สิทธิ์กับฝ่าย
+
+<Steps>
+<Step>
+
+### ตรวจว่าฝ่ายไหนถือรหัสนั้นบน prod และ staging
+
+</Step>
+<Step>
+
+### ถ้าฝ่ายยังไม่มีรหัส
+
+คัดลอก `packages/db/templates/add-department-code.sql` เป็น custom migration ใหม่ (ห้ามแก้ migration เดิม)
+
+</Step>
+<Step>
+
+### เพิ่มรหัสใน `RESERVED_DEPARTMENT_CODES` แล้ว map กับ capabilities ใน `DEPARTMENT_CAPABILITIES`
+
+</Step>
+<Step>
+
+### เขียนเทสต์ใน `src/policies/*.test.ts` และอัปเดตคู่มือหน้า [ฝ่ายทั้งหมด](/docs/staff/departments)
+
+</Step>
+</Steps>

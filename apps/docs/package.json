@@ -5,8 +5,10 @@
   "scripts": {
     "build": "vp build",
     "serve": "vp preview",
-    "check-types": "vp build && tsc --noEmit",
-    "dev:bare": "vp dev"
+    "check-types": "vp build && tsc --noEmit && tsc --noEmit -p scripts/screenshots",
+    "dev:bare": "vp dev",
+    "screenshots": "bun scripts/screenshots/capture.ts",
+    "screenshots:seed": "bun scripts/screenshots/seed.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -25,12 +27,16 @@
   },
   "devDependencies": {
     "@it3k/config": "workspace:*",
+    "@it3k/db": "workspace:*",
     "@tailwindcss/vite": "^4.3.5",
+    "@types/bun": "^1.4.4",
     "@types/mdx": "^2.0.14",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^6.3.0",
+    "drizzle-orm": "1.0.0-rc.5",
+    "playwright-core": "1.65.0",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:"

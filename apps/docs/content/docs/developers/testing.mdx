@@ -1,0 +1,48 @@
+---
+title: การทดสอบ
+description: รันเทสต์ ใช้ createTestContext และทดสอบ race condition
+icon: FlaskConical
+---
+
+<PageHero spot="scoreboard">
+  เทสต์ทั้งหมดรันด้วย `bun test` CI ไม่ได้รันเทสต์ให้ จึงต้องรันเองก่อนเปิด PR
+</PageHero>
+
+```bash
+bun test                                  # ทั้งหมด
+bun test apps/server/src/routes/users     # เฉพาะโฟลเดอร์
+bun test -t "pattern"                     # ตามชื่อเทสต์
+```
+
+`bunfig.toml` ที่ root preload `apps/web/src/test/dom.ts` (jsdom) ให้ทุกไฟล์
+
+## เทสต์ฝั่ง server
+
+`apps/server/src/testing.ts` → `createTestContext()` ให้
+
+- `seedUser(id, { role, department, seat, institution, banned, name })` และ `seedParticipant`
+- `as(userId, { method, json })` สำหรับส่งให้ `app.request(...)` (session ปลอมจาก header)
+- `t.mail.jobs` mailer ปลอม
+- DB จาก `packages/db/src/testing.ts`: D1 บน `bun:sqlite` ที่ apply ทุก migration และมีฝ่ายตั้งต้น (`Tech/Live`, `ทะเบียน`, `Art` ฯลฯ)
+
+```ts
+const t = createTestContext();
+const app = createUserRoutes(t.deps);
+await t.seedUser("tech-head", { seat: "head", department: "Tech/Live", institution: "kmitl" });
+const res = await app.request("/", t.as("tech-head"));
+expect(res.status).toBe(200);
+```
+
+### ทดสอบ race
+
+`hooks.beforeBatch` ให้เทสต์เปลี่ยนข้อมูลระหว่างที่ route อ่านแล้วแต่ยังไม่ได้เขียน แล้วตรวจว่า route ตอบ `"stale"` และไม่เขียนทับ
+
+### รหัสฝ่าย
+
+trigger ล็อกรหัสฝ่ายทำงานในเทสต์ด้วย ใช้ `unlockDepartmentCodes(sqlite)` ถ้าเทสต์ต้องแก้รหัส
+`src/department-code-lock.test.ts` ตรวจว่า trigger สุดท้ายยังตรงกับ migration ต้นฉบับ
+
+## เทสต์ฝั่งเว็บ
+
+ไฟล์ `*.test.tsx` อยู่ข้างไฟล์ที่ทดสอบ router ข้ามไฟล์ที่ลงท้าย `.test.tsx` ไม่นับเป็น route
+helper อยู่ที่ `apps/web/src/test/` และใช้ `ApiProvider` ใส่ API ปลอม
