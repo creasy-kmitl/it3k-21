@@ -1,0 +1,37 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 3001
+    },
+    {
+      "name": "web-bare",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "run",
+        "--cwd",
+        "apps/web",
+        "dev:bare",
+        "--port",
+        "3011",
+        "--strictPort"
+      ],
+      "port": 3011
+    },
+    {
+      "name": "email-preview",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "run",
+        "email:dev"
+      ],
+      "port": 3003
+    }
+  ]
+}

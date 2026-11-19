@@ -9,6 +9,7 @@ import {
 } from "@it3k/ui/components/sidebar";
 import { Link } from "@tanstack/react-router";
 import {
+  BookOpenIcon,
   Building2Icon,
   CalendarCheckIcon,
   CalendarDaysIcon,
@@ -26,6 +27,7 @@ import type * as React from "react";
 
 import { NavMain, type NavMainGroup, useCloseSidebarOnMobile } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
+import { staffGuideUrl } from "@/lib/docs";
 import { useMe } from "@/lib/users";
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
@@ -107,6 +109,19 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         <NavMain groups={groups} />
       </SidebarContent>
       <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            {/* The guide is its own site, so it opens in a new tab and keeps the console open. */}
+            <SidebarMenuButton
+              tooltip="คู่มือการใช้งาน"
+              render={<a href={staffGuideUrl} target="_blank" rel="noopener noreferrer" />}
+              onClick={closeOnMobile}
+            >
+              <BookOpenIcon />
+              <span>คู่มือการใช้งาน</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <NavUser />
       </SidebarFooter>
     </Sidebar>
