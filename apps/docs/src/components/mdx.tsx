@@ -7,7 +7,7 @@ import type { MDXComponents } from "mdx/types";
 
 import { AccountJourney, Diagram, Flow, Node, RightsFormula, SignupGate } from "./diagrams";
 import { PageHero, RoleCard, RoleCards } from "./illustration";
-import { Screenshot } from "./screenshot";
+import { Screenshot, SidebarShot } from "./screenshot";
 
 export function getMDXComponents(components?: MDXComponents) {
   return {
@@ -20,6 +20,7 @@ export function getMDXComponents(components?: MDXComponents) {
     Tab,
     Tabs,
     Screenshot,
+    SidebarShot,
     PageHero,
     RoleCard,
     RoleCards,
