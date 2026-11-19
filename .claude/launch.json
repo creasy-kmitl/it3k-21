@@ -32,6 +32,20 @@
         "email:dev"
       ],
       "port": 3003
+    },
+    {
+      "name": "docs-bare",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "run",
+        "--cwd",
+        "apps/docs",
+        "dev:bare",
+        "--port",
+        "3014",
+        "--strictPort"
+      ],
+      "port": 3014
     }
   ]
 }
