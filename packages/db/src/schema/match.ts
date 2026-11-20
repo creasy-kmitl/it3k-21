@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-import { MATCH_STATUSES, UNIVERSITIES } from "../match-rules";
+import { MATCH_STATUSES, type MatchBreak, UNIVERSITIES } from "../match-rules";
 import { user } from "./auth";
 
 export * from "../match-rules";
@@ -25,6 +25,14 @@ export const match = sqliteTable(
     scoreB: integer("score_b"),
     status: text("status", { enum: MATCH_STATUSES }).default("scheduled").notNull(),
     startsAt: integer("starts_at", { mode: "timestamp_ms" }),
+    /** Minutes of play, breaks not included. */
+    durationMinutes: integer("duration_minutes"),
+    /** Pauses in play, e.g. [{ atMinute: 60, minutes: 15 }]. */
+    breaks: text("breaks", { mode: "json" }).$type<MatchBreak[]>(),
+    /** Set while play is stopped for an emergency; the match is still live. */
+    pausedAt: integer("paused_at", { mode: "timestamp_ms" }),
+    /** Milliseconds of emergency stops already over, which push the finish back. */
+    pausedMs: integer("paused_ms").default(0).notNull(),
     version: integer("version").default(1).notNull(),
     updatedById: text("updated_by_id").references(() => user.id, { onDelete: "set null" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" })

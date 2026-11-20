@@ -1,5 +1,9 @@
 import {
+  BREAKS_MAX,
+  BREAK_MAX,
+  DURATION_MAX,
   MATCH_STATUSES,
+  type MatchBreak,
   type MatchStatus,
   ROUND_MAX,
   SCORE_MAX,
@@ -18,24 +22,73 @@ import {
   SelectValue,
 } from "@it3k/ui/components/select";
 import { Spinner } from "@it3k/ui/components/spinner";
+import { Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
 
+import { MatchTimeline } from "@/components/scores/match-timeline";
 import { fromDatetimeLocal, toDatetimeLocal } from "@/lib/bangkok-time";
-import { type Match, type MatchInput, STATUS_LABELS, universityLabel } from "@/lib/matches";
+import {
+  type Match,
+  type MatchInput,
+  type MatchUpdate,
+  STATUS_LABELS,
+  universityLabel,
+} from "@/lib/matches";
 
 const universityItems = UNIVERSITIES.map((value) => ({ value, label: universityLabel(value) }));
 const statusItems = MATCH_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }));
 
-/** Blank means no score yet; anything else must be a whole number in range. */
-function parseScore(text: string): number | null | undefined {
+/** Blank is null; a whole number from `min` to `max` is that number; anything else is undefined. */
+function parseWhole(text: string, min: number, max: number): number | null | undefined {
   const trimmed = text.trim();
   if (trimmed === "") return null;
   if (!/^\d+$/.test(trimmed)) return undefined;
   const value = Number(trimmed);
-  return value <= SCORE_MAX ? value : undefined;
+  return value >= min && value <= max ? value : undefined;
 }
 
-/** Creates a match, or edits every field of one, scores included. */
+/** One break row as typed; `key` keeps React's rows straight when one is removed. */
+type BreakRow = { key: string; atMinute: string; minutes: string };
+
+const newBreakRow = (pause?: MatchBreak): BreakRow => ({
+  key: crypto.randomUUID(),
+  atMinute: pause?.atMinute.toString() ?? "",
+  minutes: pause?.minutes.toString() ?? "",
+});
+
+/**
+ * Reads the break rows against the match length. Fully blank rows are skipped;
+ * a row with only one box filled is an error, as is a break outside the match
+ * or two breaks at the same minute. Good breaks come back sorted by minute.
+ */
+function readBreaks(rows: BreakRow[], duration: number | null | undefined) {
+  const breaks: MatchBreak[] = [];
+  const errors = new Map<string, string>();
+  for (const row of rows) {
+    if (row.atMinute.trim() === "" && row.minutes.trim() === "") continue;
+    const atMinute = parseWhole(row.atMinute, 1, DURATION_MAX);
+    const minutes = parseWhole(row.minutes, 1, BREAK_MAX);
+    if (atMinute == null || minutes == null) {
+      errors.set(row.key, `กรอกทั้งนาทีที่พัก และพักนานกี่นาที (1–${BREAK_MAX})`);
+    } else if (duration && atMinute >= duration) {
+      errors.set(row.key, `ต้องพักก่อนนาทีที่ ${duration}`);
+    } else if (breaks.some((other) => other.atMinute === atMinute)) {
+      errors.set(row.key, "มีพักที่นาทีนี้แล้ว");
+    } else {
+      breaks.push({ atMinute, minutes });
+    }
+  }
+  breaks.sort((a, b) => a.atMinute - b.atMinute);
+  return { breaks, errors };
+}
+
+/** What the form hands back: scores come along only when editing a match. */
+export type MatchFormValues = MatchInput & Pick<MatchUpdate, "scoreA" | "scoreB">;
+
+/**
+ * Creates a match, or edits one. A new match needs its start time and minutes
+ * of play, and always starts at 0 : 0, so scores show only when editing.
+ */
 export function MatchForm({
   initial,
   sports,
@@ -47,10 +100,11 @@ export function MatchForm({
   /** Sports already used, offered as suggestions. */
   sports: string[];
   pending: boolean;
-  onSubmit: (input: MatchInput) => void;
+  onSubmit: (input: MatchFormValues) => void;
   onCancel: () => void;
 }) {
   const id = useId();
+  const editing = initial !== undefined;
   const [sport, setSport] = useState(initial?.sport ?? "");
   const [round, setRound] = useState(initial?.round ?? "");
   const [teamA, setTeamA] = useState<University>(initial?.teamA ?? "kmutt");
@@ -61,39 +115,58 @@ export function MatchForm({
   const [startsAt, setStartsAt] = useState(
     initial?.startsAt ? toDatetimeLocal(initial.startsAt) : "",
   );
+  const [duration, setDuration] = useState(initial?.durationMinutes?.toString() ?? "");
+  const [breakRows, setBreakRows] = useState<BreakRow[]>(
+    () => initial?.breaks.map(newBreakRow) ?? [],
+  );
   const [submitted, setSubmitted] = useState(false);
 
-  const parsedA = parseScore(scoreA);
-  const parsedB = parseScore(scoreB);
+  const parsedA = parseWhole(scoreA, 0, SCORE_MAX);
+  const parsedB = parseWhole(scoreB, 0, SCORE_MAX);
+  const start = startsAt ? fromDatetimeLocal(startsAt) : null;
+  const minutes = parseWhole(duration, 1, DURATION_MAX);
+  const { breaks, errors: breakErrors } = readBreaks(breakRows, minutes);
   const problems = {
     sport: sport.trim() === "" ? "กรุณาใส่ชื่อกีฬา" : null,
     teams: teamA === teamB ? "ต้องเลือกสองสถาบันที่ต่างกัน" : null,
     scores:
-      parsedA === undefined || parsedB === undefined
+      editing && (parsedA === undefined || parsedB === undefined)
         ? `คะแนนต้องเป็นจำนวนเต็ม 0–${SCORE_MAX} หรือเว้นว่าง`
         : null,
+    startsAt: start === null ? "กรุณาเลือกเวลาแข่ง" : null,
+    duration: minutes == null ? `กรุณาใส่เวลาแข่ง 1–${DURATION_MAX} นาที` : null,
+    breaks: breakErrors.size > 0 ? "แก้ช่วงพักที่ขึ้นสีแดงก่อน" : null,
   };
   const valid = Object.values(problems).every((problem) => problem === null);
+
+  const updateBreakRow = (key: string, change: Partial<BreakRow>) =>
+    setBreakRows((rows) => rows.map((row) => (row.key === key ? { ...row, ...change } : row)));
 
   function submit(event: FormEvent) {
     event.preventDefault();
     setSubmitted(true);
-    if (!valid || parsedA === undefined || parsedB === undefined) return;
+    if (!valid || start === null || minutes == null) return;
+    if (parsedA === undefined || parsedB === undefined) return;
     onSubmit({
       sport: sport.trim(),
       round: round.trim() || null,
       teamA,
       teamB,
-      scoreA: parsedA,
-      scoreB: parsedB,
       status,
-      startsAt: startsAt ? fromDatetimeLocal(startsAt) : null,
+      startsAt: start,
+      durationMinutes: minutes,
+      breaks,
+      ...(editing ? { scoreA: parsedA, scoreB: parsedB } : {}),
     });
   }
 
   return (
     <form onSubmit={submit} noValidate>
       <FieldGroup>
+        {minutes != null && (
+          <MatchTimeline durationMinutes={minutes} breaks={breaks} startsAt={start} />
+        )}
+
         <Field data-invalid={submitted && problems.sport ? true : undefined}>
           <FieldLabel htmlFor={`${id}-sport`}>กีฬา</FieldLabel>
           <Input
@@ -150,17 +223,19 @@ export function MatchForm({
                   </SelectContent>
                 </Select>
               </Field>
-              <Field>
-                <FieldLabel htmlFor={`${id}-score-${side}`}>คะแนนทีม {side}</FieldLabel>
-                <Input
-                  id={`${id}-score-${side}`}
-                  inputMode="numeric"
-                  placeholder="–"
-                  value={score}
-                  onChange={(event) => setScore(event.target.value)}
-                  aria-invalid={submitted && problems.scores ? true : undefined}
-                />
-              </Field>
+              {editing && (
+                <Field>
+                  <FieldLabel htmlFor={`${id}-score-${side}`}>คะแนนทีม {side}</FieldLabel>
+                  <Input
+                    id={`${id}-score-${side}`}
+                    inputMode="numeric"
+                    placeholder="–"
+                    value={score}
+                    onChange={(event) => setScore(event.target.value)}
+                    aria-invalid={submitted && problems.scores ? true : undefined}
+                  />
+                </Field>
+              )}
             </div>
           ))}
         </div>
@@ -187,16 +262,100 @@ export function MatchForm({
           </Select>
         </Field>
 
-        <Field>
-          <FieldLabel htmlFor={`${id}-starts`}>เวลาแข่ง (ไม่บังคับ)</FieldLabel>
-          <Input
-            id={`${id}-starts`}
-            type="datetime-local"
-            value={startsAt}
-            onChange={(event) => setStartsAt(event.target.value)}
-          />
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field data-invalid={submitted && problems.startsAt ? true : undefined}>
+            <FieldLabel htmlFor={`${id}-starts`}>เวลาแข่ง</FieldLabel>
+            <Input
+              id={`${id}-starts`}
+              type="datetime-local"
+              value={startsAt}
+              onChange={(event) => setStartsAt(event.target.value)}
+              aria-invalid={submitted && problems.startsAt ? true : undefined}
+            />
+            {submitted && problems.startsAt && <FieldError>{problems.startsAt}</FieldError>}
+          </Field>
 
+          <Field data-invalid={submitted && problems.duration ? true : undefined}>
+            <FieldLabel htmlFor={`${id}-duration`}>แข่งกี่นาที (ไม่รวมพัก)</FieldLabel>
+            <Input
+              id={`${id}-duration`}
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={DURATION_MAX}
+              placeholder="เช่น 90"
+              value={duration}
+              onChange={(event) => setDuration(event.target.value)}
+              aria-invalid={submitted && problems.duration ? true : undefined}
+            />
+            {submitted && problems.duration && <FieldError>{problems.duration}</FieldError>}
+          </Field>
+        </div>
+
+        <fieldset className="m-0 flex flex-col gap-3 border-0 p-0">
+          <legend className="mb-3 text-sm font-medium">ช่วงพัก (ไม่บังคับ)</legend>
+          {breakRows.map((row, index) => {
+            const error = breakErrors.get(row.key);
+            const number = index + 1;
+            return (
+              <Field key={row.key} data-invalid={error ? true : undefined}>
+                <div className="flex items-end gap-2">
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <FieldLabel htmlFor={`${id}-break-${row.key}-at`}>พักครั้งที่ {number} นาทีที่</FieldLabel>
+                    <Input
+                      id={`${id}-break-${row.key}-at`}
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      placeholder="เช่น 45"
+                      value={row.atMinute}
+                      onChange={(event) => updateBreakRow(row.key, { atMinute: event.target.value })}
+                      aria-invalid={error ? true : undefined}
+                    />
+                  </div>
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <FieldLabel htmlFor={`${id}-break-${row.key}-minutes`}>
+                      พักครั้งที่ {number} นานกี่นาที
+                    </FieldLabel>
+                    <Input
+                      id={`${id}-break-${row.key}-minutes`}
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={BREAK_MAX}
+                      placeholder="เช่น 15"
+                      value={row.minutes}
+                      onChange={(event) => updateBreakRow(row.key, { minutes: event.target.value })}
+                      aria-invalid={error ? true : undefined}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    aria-label={`ลบพักครั้งที่ ${number}`}
+                    onClick={() => setBreakRows((rows) => rows.filter((other) => other.key !== row.key))}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+                {error && <FieldError>{error}</FieldError>}
+              </Field>
+            );
+          })}
+          {breakRows.length < BREAKS_MAX && (
+            <Button
+              type="button"
+              variant="outline"
+              className="self-start"
+              onClick={() => setBreakRows((rows) => [...rows, newBreakRow()])}
+            >
+              <Plus data-icon="inline-start" />
+              เพิ่มช่วงพัก
+            </Button>
+          )}
+        </fieldset>
+          
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onCancel}>
             ยกเลิก

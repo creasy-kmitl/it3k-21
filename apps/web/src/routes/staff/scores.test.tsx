@@ -8,8 +8,11 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  useParams,
 } from "@tanstack/react-router";
 
+import { MatchControlPage } from "@/components/scores/match-control-page";
+import { NewMatchPage } from "@/components/scores/new-match-page";
 import { ScoresPage } from "@/components/scores/scores-page";
 import { ApiProvider } from "@/lib/api-context";
 import { ApiError } from "@/lib/leadership";
@@ -18,19 +21,34 @@ import { fakeApis, fakeMatchesApi, match } from "@/test/query";
 
 afterEach(cleanup);
 
-/** The scores page in a memory router, so its link to the public board renders. */
-async function setup(api: Partial<MatchesApi>) {
+function ControlRoute() {
+  const { matchId } = useParams({ strict: false });
+  return <MatchControlPage matchId={matchId ?? ""} />;
+}
+
+/** The scores pages in a memory router at their real paths, so links between them work. */
+async function setup(api: Partial<MatchesApi>, path = "/staff/scores") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const root = createRootRoute({ component: Outlet });
   const routes = [
-    createRoute({ getParentRoute: () => root, path: "/", component: ScoresPage }),
+    createRoute({ getParentRoute: () => root, path: "/staff/scores", component: ScoresPage }),
+    createRoute({
+      getParentRoute: () => root,
+      path: "/staff/scores/new",
+      component: NewMatchPage,
+    }),
+    createRoute({
+      getParentRoute: () => root,
+      path: "/staff/scores/$matchId",
+      component: ControlRoute,
+    }),
     createRoute({ getParentRoute: () => root, path: "/scores", component: () => <p>board</p> }),
   ];
   const router = createRouter({
     routeTree: root.addChildren(routes),
-    history: createMemoryHistory({ initialEntries: ["/"] }),
+    history: createMemoryHistory({ initialEntries: [path] }),
   });
   await act(() => router.load());
   return render(
@@ -43,48 +61,191 @@ async function setup(api: Partial<MatchesApi>) {
 }
 
 describe("staff scores page", () => {
-  test("lists matches with their scores", async () => {
+  test("lists matches with their scores; a card opens that match", async () => {
     await setup({
-      list: async () => ({ items: [match({ scoreA: 2, scoreB: 1, status: "finished" })] }),
+      list: async () => ({
+        items: [match({ id: "m1", scoreA: 2, scoreB: 1, status: "finished" })],
+      }),
     });
     expect(await screen.findByText("ฟุตบอล")).toBeDefined();
     expect(screen.getByLabelText("คะแนน มจธ.").textContent).toBe("2");
     expect(screen.getByLabelText("คะแนน สจล.").textContent).toBe("1");
     expect(screen.queryByLabelText("เพิ่มคะแนน มจธ.")).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: /เปิดแมตช์ ฟุตบอล มจธ\. พบ สจล\./ }));
+    expect(await screen.findByRole("heading", { name: "ฟุตบอล" })).toBeDefined();
+    expect(screen.getByLabelText("เพิ่มคะแนน มจธ.")).toBeDefined();
   });
 
-  test("+ on a live match saves the next score with the version it read", async () => {
+  test("+ on a live match adds the chosen step, with the version it read", async () => {
     let items: Match[] = [match({ id: "m1", scoreA: 1, scoreB: 0, status: "live", version: 4 })];
     const sent: { id: string; input: MatchUpdate }[] = [];
-    await setup({
-      list: async () => ({ items }),
-      update: async (id, input) => {
-        sent.push({ id, input });
-        items = [{ ...(items[0] as Match), scoreA: 2, version: 5 }];
-        return items[0] as Match;
+    await setup(
+      {
+        list: async () => ({ items }),
+        update: async (id, input) => {
+          sent.push({ id, input });
+          items = [{ ...(items[0] as Match), ...input, version: 5 }];
+          return items[0] as Match;
+        },
       },
-    });
-    fireEvent.click(await screen.findByLabelText("เพิ่มคะแนน มจธ."));
-    await waitFor(() => expect(screen.getByLabelText("คะแนน มจธ.").textContent).toBe("2"));
-    expect(sent).toEqual([{ id: "m1", input: { version: 4, scoreA: 2 } }]);
+      "/staff/scores/m1",
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "+3" }));
+    fireEvent.click(screen.getByLabelText("เพิ่มคะแนน มจธ."));
+    await waitFor(() => expect(screen.getByLabelText("คะแนน มจธ.").textContent).toBe("4"));
+    expect(sent).toEqual([{ id: "m1", input: { version: 4, scoreA: 4 } }]);
   });
 
-  test("a stale edit reloads the list", async () => {
+  test("a match starts by itself at its time; there is no start button", async () => {
+    await setup(
+      {
+        list: async () => ({
+          items: [
+            match({ id: "m1", status: "scheduled", startsAt: Date.UTC(2099, 0, 1), scoreA: 0 }),
+          ],
+        }),
+      },
+      "/staff/scores/m1",
+    );
+    const plus = await screen.findByLabelText("เพิ่มคะแนน มจธ.");
+    expect((plus as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/แมตช์เริ่มเองเวลา/)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "เริ่มแข่ง" })).toBeNull();
+    cleanup();
+
+    // Once its start time has passed, the same match is live and scores move.
+    await setup(
+      {
+        list: async () => ({
+          items: [match({ id: "m1", status: "scheduled", startsAt: Date.now() - 60_000 })],
+        }),
+      },
+      "/staff/scores/m1",
+    );
+    const live = await screen.findByLabelText("เพิ่มคะแนน มจธ.");
+    expect((live as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test("points cannot be added during a planned break", async () => {
+    // Kicked off 50 minutes ago with a 15-minute break at minute 45: now inside it.
+    await setup(
+      {
+        list: async () => ({
+          items: [
+            match({
+              id: "m1",
+              status: "live",
+              startsAt: Date.now() - 50 * 60_000,
+              durationMinutes: 90,
+              breaks: [{ atMinute: 45, minutes: 15 }],
+            }),
+          ],
+        }),
+      },
+      "/staff/scores/m1",
+    );
+    expect(await screen.findByText("พักครั้งที่ 1")).toBeDefined();
+    expect((screen.getByLabelText("เพิ่มคะแนน มจธ.") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("เพิ่มคะแนน สจล.") as HTMLButtonElement).disabled).toBe(true);
+    cleanup();
+
+    // Twenty minutes later the break is over and points count again.
+    await setup(
+      {
+        list: async () => ({
+          items: [
+            match({
+              id: "m1",
+              status: "live",
+              startsAt: Date.now() - 70 * 60_000,
+              durationMinutes: 90,
+              breaks: [{ atMinute: 45, minutes: 15 }],
+            }),
+          ],
+        }),
+      },
+      "/staff/scores/m1",
+    );
+    const plus = await screen.findByLabelText("เพิ่มคะแนน มจธ.");
+    expect((plus as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText("พักครั้งที่ 1")).toBeNull();
+  });
+
+  test("an emergency stop pauses the match without ending it, then play carries on", async () => {
+    let items: Match[] = [match({ id: "m1", status: "live", scoreA: 0, scoreB: 0 })];
+    const sent: MatchUpdate[] = [];
+    await setup(
+      {
+        list: async () => ({ items }),
+        update: async (_id, input) => {
+          sent.push(input);
+          const current = items[0] as Match;
+          items = [
+            {
+              ...current,
+              pausedAt: input.paused ? Date.now() : null,
+              version: current.version + 1,
+            },
+          ];
+          return items[0] as Match;
+        },
+      },
+      "/staff/scores/m1",
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "หยุดฉุกเฉิน" }));
+    expect(await screen.findByText("หยุดชั่วคราว")).toBeDefined();
+    // Still live, not finished, but no points while play is stopped.
+    expect((screen.getByLabelText("เพิ่มคะแนน มจธ.") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "จบแมตช์" })).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "แข่งต่อ" }));
+    await waitFor(() =>
+      expect(sent).toEqual([
+        { version: 1, paused: true },
+        { version: 2, paused: false },
+      ]),
+    );
+    expect(await screen.findByRole("button", { name: "หยุดฉุกเฉิน" })).toBeDefined();
+  });
+
+  test("a stale edit reloads the match", async () => {
     let loads = 0;
-    await setup({
-      list: async () => {
-        loads++;
-        return { items: [match({ status: "live", scoreA: 0, scoreB: 0 })] };
+    await setup(
+      {
+        list: async () => {
+          loads++;
+          return { items: [match({ id: "m1", status: "live", scoreA: 0, scoreB: 0 })] };
+        },
+        update: async () => {
+          throw new ApiError(409, "stale", null);
+        },
       },
-      update: async () => {
-        throw new ApiError(409, "stale", null);
-      },
-    });
+      "/staff/scores/m1",
+    );
     fireEvent.click(await screen.findByLabelText("เพิ่มคะแนน สจล."));
     await waitFor(() => expect(loads).toBe(2));
   });
 
-  test("adds a match from the form", async () => {
+  test("the timeline shows when each break falls on the clock", async () => {
+    await setup(
+      {
+        list: async () => ({
+          items: [
+            match({
+              id: "m1",
+              startsAt: Date.UTC(2026, 10, 20, 3),
+              durationMinutes: 90,
+              breaks: [{ atMinute: 45, minutes: 15 }],
+            }),
+          ],
+        }),
+      },
+      "/staff/scores/m1",
+    );
+    expect(await screen.findByText("พักครั้งที่ 1 · 10:45–11:00")).toBeDefined();
+    expect(screen.getByText("จบ 11:45")).toBeDefined();
+  });
+
+  test("adds a match on its own page, then returns to the list", async () => {
     const created: MatchInput[] = [];
     await setup({
       create: async (input) => {
@@ -93,25 +254,64 @@ describe("staff scores page", () => {
       },
     });
     fireEvent.click(await screen.findByRole("button", { name: "เพิ่มแมตช์" }));
+    expect(await screen.findByRole("heading", { name: "เพิ่มแมตช์" })).toBeDefined();
     fireEvent.change(await screen.findByLabelText("กีฬา"), { target: { value: " วอลเลย์บอล " } });
-    fireEvent.change(screen.getByLabelText("คะแนนทีม A"), { target: { value: "3" } });
+    // A new match starts at 0 : 0, so the form asks for no score.
+    expect(screen.queryByLabelText("คะแนนทีม A")).toBeNull();
+    fireEvent.change(screen.getByLabelText("เวลาแข่ง"), { target: { value: "2026-11-20T10:00" } });
+    fireEvent.change(screen.getByLabelText("แข่งกี่นาที (ไม่รวมพัก)"), { target: { value: "90" } });
+    // Two breaks typed out of order come back sorted by minute.
+    for (const [atMinute, minutes] of [
+      ["60", "5"],
+      ["30", "15"],
+    ] as const) {
+      fireEvent.click(screen.getByRole("button", { name: "เพิ่มช่วงพัก" }));
+      const at = screen.getAllByLabelText(/นาทีที่$/).at(-1);
+      const length = screen.getAllByLabelText(/นานกี่นาที$/).at(-1);
+      if (!at || !length) throw new Error("break row missing");
+      fireEvent.change(at, { target: { value: atMinute } });
+      fireEvent.change(length, { target: { value: minutes } });
+    }
+    expect(screen.getByRole("img", { name: /แข่ง 90 นาที พัก 2 ครั้ง รวม 110 นาที/ })).toBeDefined();
+    // Kick-off at 10:00, plus 90 minutes of play and 20 of breaks, ends at 11:50.
+    expect(screen.getByText("เริ่ม 10:00")).toBeDefined();
+    expect(screen.getByText("จบ 11:50")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "บันทึก" }));
     await waitFor(() => expect(created).toHaveLength(1));
-    expect(created[0]).toMatchObject({
+    expect(created[0]).toEqual({
       sport: "วอลเลย์บอล",
+      round: null,
       teamA: "kmutt",
       teamB: "kmutnb",
-      scoreA: 3,
-      scoreB: null,
       status: "scheduled",
+      startsAt: Date.UTC(2026, 10, 20, 3),
+      durationMinutes: 90,
+      breaks: [
+        { atMinute: 30, minutes: 15 },
+        { atMinute: 60, minutes: 5 },
+      ],
     });
+    expect(await screen.findByRole("heading", { name: "คะแนนการแข่งขัน" })).toBeDefined();
   });
 
-  test("refuses a score that is not a whole number", async () => {
-    await setup({});
-    fireEvent.click(await screen.findByRole("button", { name: "เพิ่มแมตช์" }));
+  test("a new match needs its start time and minutes, and a break needs both boxes", async () => {
+    await setup({}, "/staff/scores/new");
     fireEvent.change(await screen.findByLabelText("กีฬา"), { target: { value: "ฟุตบอล" } });
-    fireEvent.change(screen.getByLabelText("คะแนนทีม A"), { target: { value: "1.5" } });
+    fireEvent.click(screen.getByRole("button", { name: "เพิ่มช่วงพัก" }));
+    fireEvent.change(screen.getByLabelText("พักครั้งที่ 1 นาทีที่"), { target: { value: "45" } });
+    fireEvent.click(screen.getByRole("button", { name: "บันทึก" }));
+    expect(await screen.findByText("กรุณาเลือกเวลาแข่ง")).toBeDefined();
+    expect(screen.getByText(/กรุณาใส่เวลาแข่ง/)).toBeDefined();
+    expect(screen.getByText(/กรอกทั้งนาทีที่พัก และพักนานกี่นาที/)).toBeDefined();
+  });
+
+  test("refuses a score that is not a whole number when editing", async () => {
+    await setup(
+      { list: async () => ({ items: [match({ id: "m1", startsAt: Date.UTC(2026, 10, 20, 3) })] }) },
+      "/staff/scores/m1",
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "แก้ไขรายละเอียด" }));
+    fireEvent.change(await screen.findByLabelText("คะแนนทีม A"), { target: { value: "1.5" } });
     fireEvent.click(screen.getByRole("button", { name: "บันทึก" }));
     expect(await screen.findByText(/คะแนนต้องเป็นจำนวนเต็ม/)).toBeDefined();
   });

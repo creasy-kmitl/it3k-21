@@ -13,9 +13,25 @@ export const UNIVERSITY_LABELS: Record<University, string> = {
 export const MATCH_STATUSES = ["scheduled", "live", "finished"] as const;
 export type MatchStatus = (typeof MATCH_STATUSES)[number];
 
+/** A scheduled match goes live by itself once its start time comes; nobody presses start. */
+export function currentStatus(
+  status: MatchStatus,
+  startsAt: number | null,
+  now: number,
+): MatchStatus {
+  return status === "scheduled" && startsAt !== null && startsAt <= now ? "live" : status;
+}
+
 export const SPORT_MAX = 60;
 export const ROUND_MAX = 60;
 export const SCORE_MAX = 9999;
+export const DURATION_MAX = 600;
+export const BREAK_MAX = 120;
+/** Most breaks one match may have. */
+export const BREAKS_MAX = 20;
+
+/** A pause in play: it starts `atMinute` minutes into play and lasts `minutes`. */
+export type MatchBreak = { atMinute: number; minutes: number };
 
 /** Standings points per result. */
 export const POINTS = { win: 3, draw: 1, loss: 0 } as const;

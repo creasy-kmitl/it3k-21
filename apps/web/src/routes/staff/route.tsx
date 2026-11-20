@@ -30,6 +30,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/staff/qr-code": "QR Code",
   "/staff/links": "ลิงก์สั้น",
   "/staff/scores": "คะแนน",
+  "/staff/scores/new": "เพิ่มแมตช์",
   "/staff/sports": "ประเภทกีฬา",
   "/staff/athletes": "นักกีฬา",
   "/staff/events": "กิจกรรม",
