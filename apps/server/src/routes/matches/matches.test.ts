@@ -10,6 +10,7 @@ let publicApp: ReturnType<typeof createPublicScoreRoutes>;
 type Match = {
   id: string;
   sport: string;
+  division: string | null;
   teamA: string;
   teamB: string;
   scoreA: number | null;
@@ -88,6 +89,24 @@ describe("matches", () => {
 
     const fixed = await send<Match>("art", "PATCH", `/${created.id}`, { version: 2, scoreB: 3 });
     expect(fixed.body).toMatchObject({ scoreA: 2, scoreB: 3, version: 3 });
+  });
+
+  test("a match may name its division, which the public scoreboard shows; blank clears it", async () => {
+    const created = await create({
+      sport: "บาสเก็ตบอล",
+      division: " บาสเกตบอล ทีมชาย (5x5) ",
+    });
+    expect(created).toMatchObject({ division: "บาสเกตบอล ทีมชาย (5x5)" });
+    const board = await publicApp.request("/");
+    const { matches } = (await readJson(board)) as { matches: { division: string | null }[] };
+    expect(matches[0]?.division).toBe("บาสเกตบอล ทีมชาย (5x5)");
+
+    const { body } = await send<Match>("art", "PATCH", `/${created.id}`, {
+      version: 1,
+      division: "  ",
+    });
+    expect(body.division).toBeNull();
+    expect((await create()).division).toBeNull();
   });
 
   test("an edit based on an old read is refused and changes nothing", async () => {

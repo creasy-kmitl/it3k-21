@@ -3,6 +3,7 @@ import { user } from "@it3k/db/schema/auth";
 import {
   BREAKS_MAX,
   BREAK_MAX,
+  DIVISION_MAX,
   DURATION_MAX,
   MATCH_STATUSES,
   type MatchBreak,
@@ -50,6 +51,7 @@ function breaksFit(list: MatchBreak[], duration: number) {
 const createInput = z
   .strictObject({
     sport,
+    division: optionalText(DIVISION_MAX),
     round: optionalText(ROUND_MAX),
     teamA: university,
     teamB: university,
@@ -66,6 +68,7 @@ const updateInput = z
     /** The version the client read; a newer one means someone else saved first. */
     version: z.number().int().min(1),
     sport: sport.optional(),
+    division: optionalText(DIVISION_MAX),
     round: optionalText(ROUND_MAX),
     teamA: university.optional(),
     teamB: university.optional(),
@@ -116,6 +119,7 @@ function toPublicMatch(row: typeof match.$inferSelect) {
   return {
     id: row.id,
     sport: row.sport,
+    division: row.division,
     round: row.round,
     teamA: row.teamA,
     teamB: row.teamB,

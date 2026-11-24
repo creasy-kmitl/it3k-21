@@ -13,7 +13,7 @@ export const INSTITUTIONS = [
     id: "kmitl",
     name: "สถาบันเทคโนโลยีพระจอมเกล้าเจ้าคุณทหารลาดกระบัง",
     short: "สจล.",
-    logo: "/institutions/kmitl.svg",
+    logo: "/institutions/kmitl.png",
   },
   {
     id: "kmutt",

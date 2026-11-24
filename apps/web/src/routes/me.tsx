@@ -165,7 +165,7 @@ function MePage() {
                       <img
                         src={institution.logo}
                         alt=""
-                        className="size-10 shrink-0 object-contain"
+                        className="size-10 shrink-0 rounded-full bg-white object-contain"
                       />
                       <p className="text-sm">{institution.name}</p>
                     </div>

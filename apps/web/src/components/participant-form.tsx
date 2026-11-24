@@ -454,7 +454,11 @@ export function ParticipantForm({
                           />
                           {selected && (
                             <span className="mt-2 flex items-center gap-2 text-sm">
-                              <img src={selected.logo} alt="" className="size-8 object-contain" />
+                              <img
+                                src={selected.logo}
+                                alt=""
+                                className="size-8 rounded-full bg-white object-contain"
+                              />
                               {selected.short}
                             </span>
                           )}
@@ -468,7 +472,7 @@ export function ParticipantForm({
                                       <img
                                         src={item.logo}
                                         alt=""
-                                        className="size-8 shrink-0 object-contain"
+                                        className="size-8 shrink-0 rounded-full bg-white object-contain"
                                       />
                                       <span className="whitespace-normal">{item.name}</span>
                                     </ComboboxItem>

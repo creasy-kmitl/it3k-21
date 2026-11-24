@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Trophy } from "lucide-react";
 import { toast } from "sonner";
@@ -16,12 +16,6 @@ export function NewMatchPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const backToList = () => navigate({ to: "/staff/scores" });
-
-  // Same cache as the list, so sports typed before are offered as suggestions.
-  const list = useQuery({ queryKey: QUERY_KEY, queryFn: () => matches.list() });
-  const sports = [...new Set((list.data?.items ?? []).map((item) => item.sport))].sort((a, b) =>
-    a.localeCompare(b, "th"),
-  );
 
   const create = useMutation({
     mutationFn: (input: MatchInput) => matches.create(input),
@@ -49,7 +43,6 @@ export function NewMatchPage() {
       />
       <div className="rounded-2xl border bg-card p-6">
         <MatchForm
-          sports={sports}
           pending={create.isPending}
           onCancel={backToList}
           onSubmit={(input) => create.mutate(input)}

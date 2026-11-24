@@ -18,6 +18,8 @@ export const match = sqliteTable(
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
     sport: text("sport").notNull(),
+    /** The sport's division this game belongs to, by name, e.g. "บาสเกตบอล ทีมชาย (5x5)". */
+    division: text("division"),
     round: text("round"),
     teamA: text("team_a", { enum: UNIVERSITIES }).notNull(),
     teamB: text("team_b", { enum: UNIVERSITIES }).notNull(),

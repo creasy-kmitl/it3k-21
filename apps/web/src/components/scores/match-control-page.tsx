@@ -230,7 +230,7 @@ export function MatchControlPage({ matchId }: { matchId: string }) {
             </p>
             <h1 className="m-0 text-2xl font-bold tracking-tight sm:text-3xl">{match.sport}</h1>
             <p className="m-0 text-sm text-muted-foreground">
-              {[match.round, match.startsAt && formatBangkok(match.startsAt, "dateTime")]
+              {[match.division, match.round, match.startsAt && formatBangkok(match.startsAt, "dateTime")]
                 .filter(Boolean)
                 .join(" · ")}
             </p>
@@ -405,7 +405,6 @@ export function MatchControlPage({ matchId }: { matchId: string }) {
             <MatchForm
               key={`${match.id}-${match.version}`}
               initial={match}
-              sports={[...new Set(list.data.items.map((item) => item.sport))]}
               pending={update.isPending}
               onCancel={() => setEditing(false)}
               onSubmit={(input) => save(input)}

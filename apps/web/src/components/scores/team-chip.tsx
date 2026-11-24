@@ -3,16 +3,22 @@ import { cn } from "@it3k/ui/lib/utils";
 
 import { universityLabel } from "@/lib/matches";
 
-const TEAM_COLOR: Record<University, string> = {
-  kmutt: "bg-blue-600",
-  kmutnb: "bg-red-700",
-  kmitl: "bg-orange-500",
+const TEAM_LOGO: Record<University, string> = {
+  kmutt: "/institutions/kmutt.png",
+  kmutnb: "/institutions/kmutnb.png",
+  kmitl: "/institutions/kmitl.png",
 };
 
 export function TeamChip({ team, size = "sm" }: { team: University; size?: "sm" | "lg" }) {
   return (
-    <div className={cn("rounded-lg","text-white","font-semibold","flex items-center justify-center",size === "sm" && "size-9 text-[10px]",size === "lg" && "size-14 text-xs",TEAM_COLOR[team])}>
-      {universityLabel(team)}
+    <div
+      className={cn(
+        "shrink-0 overflow-hidden rounded-full bg-white",
+        size === "sm" && "size-9",
+        size === "lg" && "size-14",
+      )}
+    >
+      <img src={TEAM_LOGO[team]} alt={universityLabel(team)} className="size-full object-contain" />
     </div>
   );
 }

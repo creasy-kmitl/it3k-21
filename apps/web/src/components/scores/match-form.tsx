@@ -1,6 +1,7 @@
 import {
   BREAKS_MAX,
   BREAK_MAX,
+  DIVISION_MAX,
   DURATION_MAX,
   MATCH_STATUSES,
   type MatchBreak,
@@ -22,10 +23,12 @@ import {
   SelectValue,
 } from "@it3k/ui/components/select";
 import { Spinner } from "@it3k/ui/components/spinner";
+import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
 
 import { MatchTimeline } from "@/components/scores/match-timeline";
+import { useApis } from "@/lib/api-context";
 import { fromDatetimeLocal, toDatetimeLocal } from "@/lib/bangkok-time";
 import {
   type Match,
@@ -34,6 +37,11 @@ import {
   STATUS_LABELS,
   universityLabel,
 } from "@/lib/matches";
+
+/** The "other" choice in the sport and division lists, which opens a box to type the name. */
+const OTHER = "__other";
+/** The "no division" choice in the division list. */
+const NO_DIVISION = "__none";
 
 const universityItems = UNIVERSITIES.map((value) => ({ value, label: universityLabel(value) }));
 const statusItems = MATCH_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }));
@@ -91,21 +99,26 @@ export type MatchFormValues = MatchInput & Pick<MatchUpdate, "scoreA" | "scoreB"
  */
 export function MatchForm({
   initial,
-  sports,
   pending,
   onSubmit,
   onCancel,
 }: {
   initial?: Match;
-  /** Sports already used, offered as suggestions. */
-  sports: string[];
   pending: boolean;
   onSubmit: (input: MatchFormValues) => void;
   onCancel: () => void;
 }) {
   const id = useId();
   const editing = initial !== undefined;
-  const [sport, setSport] = useState(initial?.sport ?? "");
+  const { sports: sportsApi } = useApis();
+  const catalog = useQuery({ queryKey: ["sports"], queryFn: () => sportsApi.list() });
+  // A sport is picked from the sports page, or typed under "other". `customSport`
+  // is the typed one; `sportChoice` holds the picked name, or OTHER.
+  const [sportChoice, setSportChoice] = useState(initial?.sport ?? "");
+  const [customSport, setCustomSport] = useState("");
+  // Same for the division: picked from the sport's list, or typed under OTHER.
+  const [divisionChoice, setDivisionChoice] = useState(initial?.division ?? "");
+  const [customDivision, setCustomDivision] = useState("");
   const [round, setRound] = useState(initial?.round ?? "");
   const [teamA, setTeamA] = useState<University>(initial?.teamA ?? "kmutt");
   const [teamB, setTeamB] = useState<University>(initial?.teamB ?? "kmutnb");
@@ -121,13 +134,39 @@ export function MatchForm({
   );
   const [submitted, setSubmitted] = useState(false);
 
+  const sports = catalog.data?.items ?? [];
+  const known = sports.find((item) => item.name === sportChoice);
+  // A sport saved before and no longer on the sports page reads as "other".
+  const isOther = sportChoice === OTHER || (sportChoice !== "" && !known && catalog.isSuccess);
+  const sport = (sportChoice === OTHER ? customSport : sportChoice).trim();
+  const sportItems = [
+    ...sports.map((item) => ({ value: item.name, label: item.name })),
+    { value: OTHER, label: "อื่นๆ" },
+  ];
+  const divisionNames = known?.divisions.map((item) => item.name) ?? [];
+  // A division saved before and no longer on the sport reads as "other", like a sport does.
+  const divisionIsOther =
+    divisionChoice === OTHER ||
+    (divisionChoice !== "" && known !== undefined && !divisionNames.includes(divisionChoice));
+  const division = (divisionChoice === OTHER ? customDivision : divisionChoice).trim();
+  const divisionItems = [
+    { value: NO_DIVISION, label: "ไม่ระบุประเภท" },
+    ...divisionNames.map((name) => ({ value: name, label: name })),
+    { value: OTHER, label: "อื่นๆ" },
+  ];
+
+  function pickSport(next: string) {
+    setSportChoice(next);
+    setDivisionChoice("");
+  }
+
   const parsedA = parseWhole(scoreA, 0, SCORE_MAX);
   const parsedB = parseWhole(scoreB, 0, SCORE_MAX);
   const start = startsAt ? fromDatetimeLocal(startsAt) : null;
   const minutes = parseWhole(duration, 1, DURATION_MAX);
   const { breaks, errors: breakErrors } = readBreaks(breakRows, minutes);
   const problems = {
-    sport: sport.trim() === "" ? "กรุณาใส่ชื่อกีฬา" : null,
+    sport: sport === "" ? (isOther ? "กรุณาใส่ชื่อกีฬา" : "กรุณาเลือกกีฬา") : null,
     teams: teamA === teamB ? "ต้องเลือกสองสถาบันที่ต่างกัน" : null,
     scores:
       editing && (parsedA === undefined || parsedB === undefined)
@@ -148,7 +187,8 @@ export function MatchForm({
     if (!valid || start === null || minutes == null) return;
     if (parsedA === undefined || parsedB === undefined) return;
     onSubmit({
-      sport: sport.trim(),
+      sport,
+      division: division || null,
       round: round.trim() || null,
       teamA,
       teamB,
@@ -169,20 +209,85 @@ export function MatchForm({
 
         <Field data-invalid={submitted && problems.sport ? true : undefined}>
           <FieldLabel htmlFor={`${id}-sport`}>กีฬา</FieldLabel>
-          <Input
-            id={`${id}-sport`}
-            list={`${id}-sports`}
-            maxLength={SPORT_MAX}
-            value={sport}
-            onChange={(event) => setSport(event.target.value)}
-            aria-invalid={submitted && problems.sport ? true : undefined}
-          />
-          <datalist id={`${id}-sports`}>
-            {sports.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
+          <Select
+            items={sportItems}
+            value={(isOther ? OTHER : sportChoice) || null}
+            onValueChange={(next: string | null) => next && pickSport(next)}
+          >
+            <SelectTrigger id={`${id}-sport`} className="w-full">
+              <SelectValue placeholder="เลือกกีฬา" />
+            </SelectTrigger>
+            <SelectContent>
+              {sportItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {isOther && (
+            <Input
+              aria-label="ชื่อกีฬา"
+              placeholder="ชื่อกีฬา"
+              maxLength={SPORT_MAX}
+              value={sportChoice === OTHER ? customSport : sportChoice}
+              onChange={(event) => {
+                setSportChoice(OTHER);
+                setCustomSport(event.target.value);
+              }}
+              aria-invalid={submitted && problems.sport ? true : undefined}
+            />
+          )}
           {submitted && problems.sport && <FieldError>{problems.sport}</FieldError>}
+        </Field>
+
+        <Field>
+          <FieldLabel htmlFor={`${id}-division`}>ประเภท (ไม่บังคับ)</FieldLabel>
+          {isOther ? (
+            <Input
+              id={`${id}-division`}
+              placeholder="เช่น ทีมชาย"
+              maxLength={DIVISION_MAX}
+              value={divisionChoice}
+              onChange={(event) => setDivisionChoice(event.target.value)}
+            />
+          ) : (
+            <>
+              <Select
+                items={divisionItems}
+                value={(divisionIsOther ? OTHER : divisionChoice) || null}
+                disabled={sportChoice === ""}
+                onValueChange={(next: string | null) =>
+                  next && setDivisionChoice(next === NO_DIVISION ? "" : next)
+                }
+              >
+                <SelectTrigger id={`${id}-division`} className="w-full">
+                  <SelectValue
+                    placeholder={sportChoice === "" ? "เลือกกีฬาก่อน" : "เลือกประเภท"}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {divisionItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {divisionIsOther && (
+                <Input
+                  aria-label="ชื่อประเภท"
+                  placeholder="ชื่อประเภท"
+                  maxLength={DIVISION_MAX}
+                  value={divisionChoice === OTHER ? customDivision : divisionChoice}
+                  onChange={(event) => {
+                    setDivisionChoice(OTHER);
+                    setCustomDivision(event.target.value);
+                  }}
+                />
+              )}
+            </>
+          )}
         </Field>
 
         <Field>

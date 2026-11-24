@@ -72,9 +72,9 @@ function MatchRow({ match }: { match: Match }) {
           <span className="flex min-w-0 items-center gap-2 font-medium">
             <Trophy aria-hidden className="size-4 shrink-0 text-primary" />
             <span className="truncate">{match.sport}</span>
-            {match.round && (
+            {(match.division || match.round) && (
               <span className="truncate text-sm font-normal text-muted-foreground">
-                · {match.round}
+                · {[match.division, match.round].filter(Boolean).join(" · ")}
               </span>
             )}
           </span>

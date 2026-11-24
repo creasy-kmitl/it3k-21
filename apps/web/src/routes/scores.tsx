@@ -12,15 +12,12 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Trophy } from "lucide-react";
 import { useState } from "react";
-import { type Segment, SegmentedControl } from "@/components/segmented-control";
-import { StatusBadge } from "@/components/scores/scores-page";
-import { useApis } from "@/lib/api-context";
-import { formatBangkok } from "@/lib/bangkok-time";
-import { type PublicMatch, universityLabel } from "@/lib/matches";
 import { MatchCard } from "@/components/scores/match-card";
+import { PUBLIC_SCORES_QUERY_KEY, REFRESH_MS } from "@/components/scores/public-match-page";
+import { type Segment, SegmentedControl } from "@/components/segmented-control";
+import { useApis } from "@/lib/api-context";
+import { type PublicMatch, universityLabel } from "@/lib/matches";
 
-/** How often the scoreboard checks for new scores while it is open. */
-const REFRESH_MS = 15_000;
 type Tab = "matches" | "standings";
 
 const TABS: Segment<Tab>[] = [
@@ -64,7 +61,7 @@ function StandingsTable({ rows, caption }: { rows: Standing[]; caption: string }
 export function ScoreboardPage() {
   const { publicScores } = useApis();
   const board = useQuery({
-    queryKey: ["public-scores"],
+    queryKey: PUBLIC_SCORES_QUERY_KEY,
     queryFn: () => publicScores.get(),
     refetchInterval: REFRESH_MS,
   });
@@ -82,7 +79,6 @@ export function ScoreboardPage() {
           <Trophy aria-hidden className="size-7" />
           คะแนนการแข่งขัน IT·3·Kings
         </h1>
-        {/* <p className="text-muted-foreground">อัปเดตอัตโนมัติทุก {REFRESH_MS / 1000} วินาที</p> */}
       </header>
       <SegmentedControl label="เลือกมุมมอง" segments={TABS} value={tab} onChange={setTab} />
       {board.isPending ? (

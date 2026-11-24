@@ -300,6 +300,7 @@ export function match(overrides: Partial<Match> = {}): Match {
   return {
     id: crypto.randomUUID(),
     sport: "ฟุตบอล",
+    division: null,
     round: null,
     teamA: "kmutt",
     teamB: "kmitl",

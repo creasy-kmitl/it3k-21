@@ -23,6 +23,7 @@ export function currentStatus(
 }
 
 export const SPORT_MAX = 60;
+export const DIVISION_MAX = 100;
 export const ROUND_MAX = 60;
 export const SCORE_MAX = 9999;
 export const DURATION_MAX = 600;

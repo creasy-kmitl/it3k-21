@@ -17,9 +17,23 @@ import { ScoresPage } from "@/components/scores/scores-page";
 import { ApiProvider } from "@/lib/api-context";
 import { ApiError } from "@/lib/leadership";
 import type { Match, MatchesApi, MatchInput, MatchUpdate } from "@/lib/matches";
-import { fakeApis, fakeMatchesApi, match } from "@/test/query";
+import type { Sport } from "@/lib/sports";
+import { choose, fakeApis, fakeMatchesApi, fakeSportsApi, match } from "@/test/query";
 
 afterEach(cleanup);
+
+/** What the sports page holds: only the names the match form reads. */
+const SPORTS = [
+  {
+    id: "s-basketball",
+    name: "บาสเก็ตบอล",
+    divisions: [
+      { id: "d-5x5", name: "บาสเกตบอล ทีมชาย (5x5)" },
+      { id: "d-3x3", name: "บาสเกตบอล ทีมหญิง (3x3)" },
+    ],
+  },
+  { id: "s-football", name: "ฟุตบอล", divisions: [] },
+] as Sport[];
 
 function ControlRoute() {
   const { matchId } = useParams({ strict: false });
@@ -53,7 +67,12 @@ async function setup(api: Partial<MatchesApi>, path = "/staff/scores") {
   await act(() => router.load());
   return render(
     <QueryClientProvider client={client}>
-      <ApiProvider value={fakeApis({ matches: fakeMatchesApi(api) })}>
+      <ApiProvider
+        value={fakeApis({
+          matches: fakeMatchesApi(api),
+          sports: fakeSportsApi({ list: async () => ({ items: SPORTS, canManage: false }) }),
+        })}
+      >
         <RouterProvider router={router} />
       </ApiProvider>
     </QueryClientProvider>,
@@ -255,7 +274,11 @@ describe("staff scores page", () => {
     });
     fireEvent.click(await screen.findByRole("button", { name: "เพิ่มแมตช์" }));
     expect(await screen.findByRole("heading", { name: "เพิ่มแมตช์" })).toBeDefined();
-    fireEvent.change(await screen.findByLabelText("กีฬา"), { target: { value: " วอลเลย์บอล " } });
+    // The division is picked after the sport and only from that sport's own list.
+    const divisionBox = await screen.findByLabelText("ประเภท (ไม่บังคับ)");
+    expect(divisionBox.hasAttribute("disabled") || divisionBox.getAttribute("aria-disabled")).toBeTruthy();
+    await choose(await screen.findByLabelText("กีฬา"), "บาสเก็ตบอล");
+    await choose(screen.getByLabelText("ประเภท (ไม่บังคับ)"), "บาสเกตบอล ทีมหญิง (3x3)");
     // A new match starts at 0 : 0, so the form asks for no score.
     expect(screen.queryByLabelText("คะแนนทีม A")).toBeNull();
     fireEvent.change(screen.getByLabelText("เวลาแข่ง"), { target: { value: "2026-11-20T10:00" } });
@@ -279,7 +302,8 @@ describe("staff scores page", () => {
     fireEvent.click(screen.getByRole("button", { name: "บันทึก" }));
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0]).toEqual({
-      sport: "วอลเลย์บอล",
+      sport: "บาสเก็ตบอล",
+      division: "บาสเกตบอล ทีมหญิง (3x3)",
       round: null,
       teamA: "kmutt",
       teamB: "kmutnb",
@@ -294,9 +318,63 @@ describe("staff scores page", () => {
     expect(await screen.findByRole("heading", { name: "คะแนนการแข่งขัน" })).toBeDefined();
   });
 
+  test("a sport that is not on the sports page is typed under other, division and all", async () => {
+    const created: MatchInput[] = [];
+    await setup(
+      {
+        create: async (input) => {
+          created.push(input);
+          return match();
+        },
+      },
+      "/staff/scores/new",
+    );
+    expect(screen.queryByLabelText("ชื่อกีฬา")).toBeNull();
+    await choose(await screen.findByLabelText("กีฬา"), "อื่นๆ");
+    fireEvent.change(screen.getByLabelText("ชื่อกีฬา"), { target: { value: " วอลเลย์บอล " } });
+    fireEvent.change(screen.getByLabelText("ประเภท (ไม่บังคับ)"), { target: { value: "ทีมผสม" } });
+    fireEvent.change(screen.getByLabelText("เวลาแข่ง"), { target: { value: "2026-11-20T10:00" } });
+    fireEvent.change(screen.getByLabelText("แข่งกี่นาที (ไม่รวมพัก)"), { target: { value: "60" } });
+    fireEvent.click(screen.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]?.sport).toBe("วอลเลย์บอล");
+    expect(created[0]?.division).toBe("ทีมผสม");
+  });
+
+  test("a division that is not on the sport is typed under other", async () => {
+    const created: MatchInput[] = [];
+    await setup(
+      {
+        create: async (input) => {
+          created.push(input);
+          return match();
+        },
+      },
+      "/staff/scores/new",
+    );
+    await choose(await screen.findByLabelText("กีฬา"), "บาสเก็ตบอล");
+    expect(screen.queryByLabelText("ชื่อประเภท")).toBeNull();
+    await choose(screen.getByLabelText("ประเภท (ไม่บังคับ)"), "อื่นๆ");
+    fireEvent.change(screen.getByLabelText("ชื่อประเภท"), { target: { value: " ทีมผสม " } });
+    fireEvent.change(screen.getByLabelText("เวลาแข่ง"), { target: { value: "2026-11-20T10:00" } });
+    fireEvent.change(screen.getByLabelText("แข่งกี่นาที (ไม่รวมพัก)"), { target: { value: "60" } });
+    fireEvent.click(screen.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]?.division).toBe("ทีมผสม");
+  });
+
+  test("picking another sport empties the division, so it cannot leak across sports", async () => {
+    await setup({}, "/staff/scores/new");
+    await choose(await screen.findByLabelText("กีฬา"), "บาสเก็ตบอล");
+    await choose(screen.getByLabelText("ประเภท (ไม่บังคับ)"), "อื่นๆ");
+    fireEvent.change(screen.getByLabelText("ชื่อประเภท"), { target: { value: "ทีมผสม" } });
+    await choose(screen.getByLabelText("กีฬา"), "ฟุตบอล");
+    expect(screen.queryByLabelText("ชื่อประเภท")).toBeNull();
+  });
+
   test("a new match needs its start time and minutes, and a break needs both boxes", async () => {
     await setup({}, "/staff/scores/new");
-    fireEvent.change(await screen.findByLabelText("กีฬา"), { target: { value: "ฟุตบอล" } });
+    await choose(await screen.findByLabelText("กีฬา"), "ฟุตบอล");
     fireEvent.click(screen.getByRole("button", { name: "เพิ่มช่วงพัก" }));
     fireEvent.change(screen.getByLabelText("พักครั้งที่ 1 นาทีที่"), { target: { value: "45" } });
     fireEvent.click(screen.getByRole("button", { name: "บันทึก" }));

@@ -1,7 +1,9 @@
 # Institution logos
 
-Original assets downloaded from the institutions' official websites:
+Circular seals, one file per institution (both KMUTNB campuses share `kmutnb.png`):
 
-- KMITL: https://www.kmitl.ac.th/themes/custom/kmitl/logo.svg
-- KMUTT: https://www.kmutt.ac.th/wp-content/uploads/2020/09/KMUTT_CI_Primary_Logo-Full-300x300.png
-- KMUTNB (both campuses): https://kmutnb.ac.th/getattachment/about/symbols/logo_kmutnb-(6).png.aspx?width=250&height=246
+- `kmitl.png`: KMITL (สจล.), 512×512, transparent background
+- `kmutt.png`: KMUTT (มจธ.), 512×512, transparent background
+- `kmutnb.png`: KMUTNB (มจพ.), 250×246, transparent background
+
+They are shown as circles on a white disc (`rounded-full bg-white`), so keep new logos round with a transparent background.
