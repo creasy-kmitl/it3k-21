@@ -291,7 +291,9 @@ export const createEventRoutes = (deps: RouteDeps) =>
               ticketsOpen: false,
               createdBy: c.var.user.id,
             }),
-            db.insert(eventTicketType).values({ eventId: id, ...ticketTypeValues(defaultTicketType(), 0) }),
+            db
+              .insert(eventTicketType)
+              .values({ eventId: id, ...ticketTypeValues(defaultTicketType(), 0) }),
           ]);
           break;
         } catch (error) {
@@ -516,7 +518,8 @@ export const createEventRoutes = (deps: RouteDeps) =>
         const target = scanned ?? tickets.find((ticket) => !ticket.checkinId) ?? null;
         if (!target) {
           const last = checkins.at(-1);
-          if (tickets.length > 0) return duplicate(last?.createdAt, ALL_USED, last?.ticketId ?? undefined);
+          if (tickets.length > 0)
+            return duplicate(last?.createdAt, ALL_USED, last?.ticketId ?? undefined);
           if (checkins.some((row) => !row.ticketId)) return duplicate(last?.createdAt, ALREADY_IN);
           if (!(force && canForce)) {
             if (otherEvent) {
@@ -531,7 +534,10 @@ export const createEventRoutes = (deps: RouteDeps) =>
                 409,
               );
             }
-            return c.json({ code: "no-ticket" as const, message: NO_TICKET, person, canForce }, 409);
+            return c.json(
+              { code: "no-ticket" as const, message: NO_TICKET, person, canForce },
+              409,
+            );
           }
         }
         const forced = !target;

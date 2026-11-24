@@ -18,6 +18,7 @@ import {
 import { renderAtRoot } from "@/test/router";
 
 import { EventEditor } from "./event-editor";
+import { COMPETITION_DEFAULTS } from "@/test/divisions";
 
 afterEach(cleanup);
 
@@ -28,6 +29,7 @@ const END = START + 3 * 60 * 60 * 1000;
 
 function division(overrides: Partial<Division>): Division {
   return {
+    ...COMPETITION_DEFAULTS,
     id: "d-1",
     sportId: "s-football",
     code: "football",
@@ -216,7 +218,9 @@ describe("EventEditor", () => {
   });
 
   test("a sport event needs institutions and sports; a sport's box picks all its divisions", async () => {
-    const view = await setup(detail({ type: "sport", ticketTypes: [ticketType({ listedOnly: true })] }));
+    const view = await setup(
+      detail({ type: "sport", ticketTypes: [ticketType({ listedOnly: true })] }),
+    );
     const name = await view.findByLabelText("ชื่อกิจกรรม");
     fireEvent.change(name, { target: { value: "บาสรอบแรก" } });
     save(view);

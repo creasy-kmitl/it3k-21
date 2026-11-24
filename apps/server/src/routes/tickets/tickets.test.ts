@@ -132,8 +132,11 @@ async function send<T = Record<string, unknown>>(
 const claim = (userId: string, eventRef: string, ticketTypeId = TYPE[eventRef] ?? "nope") =>
   send<{ ticket: Ticket; code?: string }>(userId, "POST", `/events/${eventRef}`, { ticketTypeId });
 
-const addType = (id: string, eventId: string, values: Partial<typeof eventTicketType.$inferInsert>) =>
-  t.db.insert(eventTicketType).values({ id, eventId, name: id, ...values });
+const addType = (
+  id: string,
+  eventId: string,
+  values: Partial<typeof eventTicketType.$inferInsert>,
+) => t.db.insert(eventTicketType).values({ id, eventId, name: id, ...values });
 
 describe("claiming", () => {
   test("any account claims a general event's ticket, once", async () => {
@@ -214,7 +217,10 @@ describe("claiming", () => {
 
 describe("ticket types", () => {
   test("a type allowing several per person hands out several, up to its limit", async () => {
-    await t.db.update(eventTicketType).set({ maxPerUser: 2 }).where(eq(eventTicketType.id, "tt-general"));
+    await t.db
+      .update(eventTicketType)
+      .set({ maxPerUser: 2 })
+      .where(eq(eventTicketType.id, "tt-general"));
     const first = await claim("guest", "e-general");
     const second = await claim("guest", "e-general");
     expect([first.res.status, second.res.status]).toEqual([201, 201]);
@@ -268,7 +274,10 @@ describe("ticket types", () => {
   });
 
   test("a second ticket taken meanwhile in another tab stops at the limit", async () => {
-    await t.db.update(eventTicketType).set({ maxPerUser: 2 }).where(eq(eventTicketType.id, "tt-general"));
+    await t.db
+      .update(eventTicketType)
+      .set({ maxPerUser: 2 })
+      .where(eq(eventTicketType.id, "tt-general"));
     await claim("guest", "e-general");
     t.hooks.beforeBatch = () => {
       t.hooks.beforeBatch = undefined;
@@ -354,7 +363,11 @@ describe("one event", () => {
     expect(after.body).toMatchObject({
       claimed: true,
       tickets: [
-        { id: claimed.ticket.id, ticketType: { id: "tt-general", name: "ทั่วไป" }, checkedInAt: null },
+        {
+          id: claimed.ticket.id,
+          ticketType: { id: "tt-general", name: "ทั่วไป" },
+          checkedInAt: null,
+        },
       ],
     });
     // The QR code stays on the ticket's own page.

@@ -9,6 +9,7 @@ import { fakeApis, fakeRegistrationsApi, fakeSportsApi } from "@/test/query";
 import { renderAtRoot } from "@/test/router";
 
 import { SportsRegistrationPage, filterSports } from "./sports";
+import { COMPETITION_DEFAULTS } from "@/test/divisions";
 
 afterEach(cleanup);
 
@@ -16,6 +17,7 @@ const NOW = "2026-11-14T00:00:00.000Z";
 
 function division(overrides: Partial<Division> = {}): Division {
   return {
+    ...COMPETITION_DEFAULTS,
     id: "d-football",
     sportId: "s-football",
     code: "football-male",

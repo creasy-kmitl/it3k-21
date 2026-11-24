@@ -92,10 +92,12 @@ beforeEach(async () => {
     { id: "tt-general", eventId: "e-general", name: "ทั่วไป" },
   ]);
   // The expected athletes have claimed their tickets.
-  await t.db.insert(eventTicket).values([
-    ticket("t-kmitl-1", "e-sport", "kmitl-1", "tt-sport"),
-    ticket("t-kmutt-1", "e-sport", "kmutt-1", "tt-sport"),
-  ]);
+  await t.db
+    .insert(eventTicket)
+    .values([
+      ticket("t-kmitl-1", "e-sport", "kmitl-1", "tt-sport"),
+      ticket("t-kmutt-1", "e-sport", "kmutt-1", "tt-sport"),
+    ]);
 });
 
 function ticket(id: string, eventId: string, userId: string, ticketTypeId: string) {
@@ -153,7 +155,9 @@ describe("participants", () => {
   });
 
   test("a general event lists its ticket holders and whoever checked in", async () => {
-    await t.db.insert(eventTicket).values(ticket("g-kmutnb", "e-general", "kmutnb-1", "tt-general"));
+    await t.db
+      .insert(eventTicket)
+      .values(ticket("g-kmutnb", "e-general", "kmutnb-1", "tt-general"));
     const general = (userId: string, extra: Record<string, unknown> = {}) =>
       send("tech", "POST", "/e-general/checkins", { userId, method: "manual", ...extra });
     expect((await general("kmutnb-1")).res.status).toBe(201);
@@ -197,10 +201,12 @@ describe("checking in", () => {
   });
 
   test("each ticket checks in once, so two tickets let their holder in twice", async () => {
-    await t.db.insert(eventTicket).values([
-      ticket("f-1", "e-sport", "kmutnb-1", "tt-fans"),
-      ticket("f-2", "e-sport", "kmutnb-1", "tt-fans"),
-    ]);
+    await t.db
+      .insert(eventTicket)
+      .values([
+        ticket("f-1", "e-sport", "kmutnb-1", "tt-fans"),
+        ticket("f-2", "e-sport", "kmutnb-1", "tt-fans"),
+      ]);
     // The second ticket's QR checks in that ticket.
     const second = await send("tech", "POST", "/e-sport/checkins", {
       ticketCode: code("f-2"),
@@ -280,7 +286,10 @@ describe("checking in", () => {
 
   test("a ticket to another event is refused, unless its holder has one here too", async () => {
     const scan = () =>
-      send("tech", "POST", "/e-general/checkins", { ticketCode: code("t-kmitl-1"), method: "scan" });
+      send("tech", "POST", "/e-general/checkins", {
+        ticketCode: code("t-kmitl-1"),
+        method: "scan",
+      });
     const refused = await scan();
     expect(refused.res.status).toBe(409);
     expect(refused.body).toMatchObject({

@@ -424,7 +424,15 @@ describe("institution", () => {
     expect((await send("reg-staff", "GET", "/me")).body).toMatchObject({
       institution: "kmitl",
       sportAccess: {
-        permissions: ["athletes.read", "kiosk.operate", "rules.edit", "users.setInstitution"],
+        permissions: [
+          "athletes.read",
+          "kiosk.operate",
+          "rules.edit",
+          "competition.read",
+          "matches.score",
+          "matches.checkin",
+          "users.setInstitution",
+        ],
         scope: { kind: "all" },
       },
     });

@@ -1,1 +1,17 @@
-{ "title": "วิธีทำงานทีละขั้น", "icon": "ListChecks", "pages": ["users", "invitations", "leadership", "departments", "athletes", "sports-catalog", "events", "check-in", "venues", "email"] }
+{
+  "title": "วิธีทำงานทีละขั้น",
+  "icon": "ListChecks",
+  "pages": [
+    "users",
+    "invitations",
+    "leadership",
+    "departments",
+    "athletes",
+    "sports-catalog",
+    "events",
+    "check-in",
+    "competition",
+    "venues",
+    "email"
+  ]
+}

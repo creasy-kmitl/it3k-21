@@ -7,5 +7,6 @@ export * from "./qr-preset";
 export * from "./profile";
 export * from "./sport";
 export * from "./event";
+export * from "./competition";
 export * from "./email";
 export * from "./invitation";

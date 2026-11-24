@@ -8,5 +8,5 @@ export const DEPARTMENT_CODE_MAX_LENGTH = 32;
 
 // Codes the server grants rights to (apps/server/src/policies/department-capabilities.ts).
 // Only a migration may give one to a department; the API refuses them.
-export const RESERVED_DEPARTMENT_CODES = ["tech-live", "registration"] as const;
+export const RESERVED_DEPARTMENT_CODES = ["tech-live", "registration", "sports"] as const;
 export type ReservedDepartmentCode = (typeof RESERVED_DEPARTMENT_CODES)[number];

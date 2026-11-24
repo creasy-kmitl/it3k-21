@@ -16,6 +16,12 @@ import { type VenuesApi, venuesApi } from "./venues";
 import { type TicketsApi, ticketsApi } from "./tickets";
 import { type EmailsApi, emailsApi } from "./emails";
 import { type InvitationsApi, invitationsApi } from "./invitations";
+import { type CompetitionDivisionsApi, competitionDivisionsApi } from "./competition-divisions";
+import { type CompetitionTeamsApi, competitionTeamsApi } from "./competition-teams";
+import { type CompetitionMatchesApi, competitionMatchesApi } from "./competition-matches";
+import { type CompetitionScoresApi, competitionScoresApi } from "./competition-scores";
+import { type CompetitionCheckinsApi, competitionCheckinsApi } from "./competition-checkins";
+import { type PublicCompetitionApi, publicCompetitionApi } from "./public-competition";
 
 /** The API clients route pages call; tests swap in fakes with ApiProvider. */
 export type Apis = {
@@ -35,6 +41,12 @@ export type Apis = {
   tickets: TicketsApi;
   emails: EmailsApi;
   invitations: InvitationsApi;
+  competitionDivisions: CompetitionDivisionsApi;
+  competitionTeams: CompetitionTeamsApi;
+  competitionMatches: CompetitionMatchesApi;
+  competitionScores: CompetitionScoresApi;
+  competitionCheckins: CompetitionCheckinsApi;
+  publicCompetition: PublicCompetitionApi;
 };
 
 const ApiContext = createContext<Apis>({
@@ -54,6 +66,12 @@ const ApiContext = createContext<Apis>({
   tickets: ticketsApi,
   emails: emailsApi,
   invitations: invitationsApi,
+  competitionDivisions: competitionDivisionsApi,
+  competitionTeams: competitionTeamsApi,
+  competitionMatches: competitionMatchesApi,
+  competitionScores: competitionScoresApi,
+  competitionCheckins: competitionCheckinsApi,
+  publicCompetition: publicCompetitionApi,
 });
 
 export const ApiProvider = ApiContext.Provider;

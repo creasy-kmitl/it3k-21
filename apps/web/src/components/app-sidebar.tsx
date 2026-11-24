@@ -19,23 +19,32 @@ import {
   MapPinnedIcon,
   MedalIcon,
   QrCodeIcon,
+  ScanLineIcon,
+  SwordsIcon,
   TrophyIcon,
   UserCogIcon,
   UsersIcon,
+  Users2Icon,
 } from "lucide-react";
 import type * as React from "react";
 
 import { NavMain, type NavMainGroup, useCloseSidebarOnMobile } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
 import { staffGuideUrl } from "@/lib/docs";
-import { useMe } from "@/lib/users";
+import { type Me, type SportPermission, useMe } from "@/lib/users";
 
-export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
-  const { data: me } = useMe();
-  const closeOnMobile = useCloseSidebarOnMobile();
+type NavAccess = Pick<
+  Me,
+  "canManageUsers" | "canManageDepartments" | "canSendEmail" | "sportAccess"
+>;
+
+/** The console's menu for an account; each page and the API still check their own rights. */
+export function staffNavGroups(me: NavAccess | undefined): NavMainGroup[] {
   // Shown to anyone with a right in the sport system; the API enforces each one.
   const inSports = (me?.sportAccess.permissions.length ?? 0) > 0;
-  const groups: NavMainGroup[] = [
+  const can = (permission: SportPermission) =>
+    me?.sportAccess.permissions.includes(permission) ?? false;
+  return [
     {
       label: "ภาพรวม",
       items: [
@@ -64,8 +73,23 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
               { title: "ประเภทกีฬา", to: "/staff/sports", icon: <MedalIcon /> },
             ] as const)
           : []),
-        ...(me?.sportAccess.permissions.includes("athletes.read")
+        ...(can("athletes.read")
           ? [{ title: "นักกีฬา", to: "/staff/athletes", icon: <TrophyIcon /> } as const]
+          : []),
+        ...(can("competition.read")
+          ? ([
+              { title: "ทีมแข่ง", to: "/staff/teams", icon: <Users2Icon /> },
+              { title: "แมตช์", to: "/staff/matches", icon: <SwordsIcon /> },
+            ] as const)
+          : []),
+        ...(can("matches.checkin")
+          ? [
+              {
+                title: "รายงานตัวแข่งขัน",
+                to: "/staff/match-checkin",
+                icon: <ScanLineIcon />,
+              } as const,
+            ]
           : []),
         ...(inSports
           ? [{ title: "สถานที่", to: "/staff/venues", icon: <MapPinnedIcon /> } as const]
@@ -83,6 +107,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       ],
     },
   ];
+}
+
+export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
+  const { data: me } = useMe();
+  const closeOnMobile = useCloseSidebarOnMobile();
+  const groups = staffNavGroups(me);
 
   return (
     <Sidebar variant="inset" {...props}>

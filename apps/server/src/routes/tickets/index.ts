@@ -64,10 +64,7 @@ const refusal = (code: RefusalCode): ClaimRefusal => ({ code, message: REFUSALS[
 /** At most this many events are listed. */
 const MAX_OPEN_EVENTS = 200;
 
-type EventRow = Pick<
-  typeof event.$inferSelect,
-  "id" | "ticketsOpen" | "endAt" | "ticketCapacity"
->;
+type EventRow = Pick<typeof event.$inferSelect, "id" | "ticketsOpen" | "endAt" | "ticketCapacity">;
 
 /** Tickets handed out per type, and those `userId` holds per type. */
 async function typeCounts(db: Database, typeIds: string[], userId: string) {
