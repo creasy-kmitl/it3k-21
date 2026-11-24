@@ -33,6 +33,10 @@ export function TagInput({
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Enter" || event.key === ",") {
       event.preventDefault();
+      // An IME (Japanese, Chinese, Korean…) uses Enter to confirm a word, so
+      // that Enter must not add a half-typed tag. Safari reports
+      // isComposing as false on that keydown but keyCode as 229.
+      if (event.nativeEvent.isComposing || event.keyCode === 229) return;
       add(draft);
     } else if (event.key === "Backspace" && draft === "" && value.length > 0) {
       onChange(value.slice(0, -1));

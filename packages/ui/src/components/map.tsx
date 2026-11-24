@@ -1533,7 +1533,7 @@ function MapRoute({
       // `moveLayer` fires "styledata" itself, so reacting to order would loop
       // — with one route against its own move, and with two `active` routes
       // against each other, forever.
-      const layerSet = [...order].sort().join("|");
+      const layerSet = order.toSorted().join("|");
       if (layerSet === lastLayerSet) return;
       lastLayerSet = layerSet;
 

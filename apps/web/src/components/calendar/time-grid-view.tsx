@@ -24,7 +24,7 @@ type Placed = { item: CalendarItem; top: number; height: number; lane: number; l
  * share its lane until that drawn height has passed.
  */
 export function layoutDay(items: CalendarItem[], day: number): Placed[] {
-  const sorted = [...items].sort((a, b) => a.startAt - b.startAt || b.endAt - a.endAt);
+  const sorted = items.toSorted((a, b) => a.startAt - b.startAt || b.endAt - a.endAt);
   const placed: Placed[] = [];
   let group: { entry: Placed; drawnEnd: number }[] = [];
   let groupEnd = Number.NEGATIVE_INFINITY;
