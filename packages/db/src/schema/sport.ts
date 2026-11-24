@@ -1,6 +1,12 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
+import {
+  CHECKIN_MODES,
+  type GenderMinimums,
+  type ScoringConfig,
+  type StandingsConfig,
+} from "../competition-rules";
 import type { Institution } from "../profile";
 import {
   DIVISION_FORMATS,
@@ -82,6 +88,32 @@ export const sportDivision = sqliteTable(
     maxPerInstitution: integer("max_per_institution"),
     registrationOpen: integer("registration_open", { mode: "boolean" }).notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),
+
+    // How the division competes (competition-rules.ts checks every value).
+    // Added after rules and registrations pointed here, so these columns have
+    // no CHECK: a CHECK would rebuild the table and cascade-delete its rules.
+    maxTeamsPerInstitution: integer("max_teams_per_institution").notNull().default(1),
+    // Null: as many as the format implies (1 alone, 2 for a pair).
+    teamMinSize: integer("team_min_size"),
+    teamMaxSize: integer("team_max_size"),
+    genderMinimums: text("gender_minimums", { mode: "json" }).$type<GenderMinimums>(),
+    maxOfficials: integer("max_officials").notNull().default(3),
+    // Null: matches need no lineup; everyone in the team plays.
+    lineupStarters: integer("lineup_starters"),
+    lineupMaxSubs: integer("lineup_max_subs"),
+    // Null: presetFor(division).
+    scoringConfig: text("scoring_config", { mode: "json" }).$type<ScoringConfig>(),
+    // Null: the division has no group table.
+    standingsConfig: text("standings_config", { mode: "json" }).$type<StandingsConfig>(),
+    checkinMode: text("checkin_mode", { enum: CHECKIN_MODES }).notNull().default("kiosk"),
+    checkinOpensMin: integer("checkin_opens_min").notNull().default(40),
+    checkinClosesMin: integer("checkin_closes_min").notNull().default(10),
+    // Null: lineupStarters, else teamMinSize.
+    checkinMinPlayers: integer("checkin_min_players"),
+    awardsMedals: integer("awards_medals", { mode: "boolean" }).notNull().default(true),
+    // Bumped by every change to the settings above, so two editors cannot
+    // overwrite each other.
+    competitionVersion: integer("competition_version").notNull().default(1),
     ...timestamps(),
   },
   (table) => [

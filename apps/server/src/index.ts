@@ -19,6 +19,12 @@ import { createRegistrationRoutes } from "./routes/registrations";
 import { createAthleteRoutes } from "./routes/athletes";
 import { createEventRoutes } from "./routes/events";
 import { createPublicEventRoutes } from "./routes/public-events";
+import { createCompetitionDivisionRoutes } from "./routes/competition-divisions";
+import { createCompetitionTeamRoutes } from "./routes/competition-teams";
+import { createCompetitionMatchRoutes } from "./routes/competition-matches";
+import { createCompetitionScoreRoutes } from "./routes/competition-scores";
+import { createCompetitionCheckinRoutes } from "./routes/competition-checkins";
+import { createPublicCompetitionRoutes } from "./routes/public-competition";
 import { createTicketRoutes } from "./routes/tickets";
 import { createVenueRoutes } from "./routes/venues";
 import type { DiscordDeps } from "./routes/registrations/shared";
@@ -69,9 +75,10 @@ const privateCors = cors({
   credentials: true,
 });
 const publicCors = cors({ origin: "*", allowMethods: ["GET", "HEAD", "OPTIONS"] });
-app.use("/*", (c, next) =>
-  (c.req.path.startsWith("/api/files/public/") ? publicCors : privateCors)(c, next),
-);
+// Public files and pages are read signed out from any site, so they send no cookies.
+const isPublic = (path: string) =>
+  path.startsWith("/api/files/public/") || path.startsWith("/api/public/");
+app.use("/*", (c, next) => (isPublic(c.req.path) ? publicCors : privateCors)(c, next));
 
 app.on(["POST", "GET"], "/api/auth/*", async (c) =>
   handleAuthRequest(c.req.raw, await createAuth(), c.get("log")),
@@ -132,8 +139,15 @@ app.route("/api/venues", createVenueRoutes(deps));
 app.route("/api/events", createEventRoutes(deps));
 app.route("/api/tickets", createTicketRoutes({ ...deps, ...mailDeps }));
 app.route("/api/emails", createEmailRoutes({ ...deps, ...mailDeps, emailContext }));
+app.route("/api/competition/divisions", createCompetitionDivisionRoutes(deps));
+app.route("/api/competition/teams", createCompetitionTeamRoutes(deps));
+app.route("/api/competition/matches", createCompetitionMatchRoutes(deps));
+app.route("/api/competition/scores", createCompetitionScoreRoutes(deps));
+app.route("/api/competition/checkins", createCompetitionCheckinRoutes(deps));
 // Public: link previews (Open Graph) for event pages, fetched signed out.
 app.route("/api/public/events", createPublicEventRoutes(deps));
+// Public: matches, the live board, standings and medals.
+app.route("/api/public/competition", createPublicCompetitionRoutes(deps));
 
 // Public: the web worker forwards its `/l/<slug>` paths here.
 app.route("/l", createShortLinkRedirect(deps));

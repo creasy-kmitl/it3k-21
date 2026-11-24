@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { Institution } from "@it3k/db/profile";
 
-import { SPORT_PERMISSIONS, type SportActor, sportAccess, sportAccessJson } from "./sports";
+import {
+  SPORT_PERMISSIONS,
+  type SportActor,
+  type SportPermission,
+  sportAccess,
+  sportAccessJson,
+} from "./sports";
 
 const actor = (overrides: Partial<SportActor> = {}): SportActor => ({
   role: "staff",
@@ -17,6 +23,25 @@ const registration = (institution: Institution | null, seat: SportActor["leaders
 
 const permissions = (who: SportActor | null) => [...sportAccess(who).can].toSorted();
 const ALL = [...SPORT_PERMISSIONS].toSorted();
+const TECH_STAFF: SportPermission[] = [
+  "athletes.read",
+  "competition.read",
+  "kiosk.operate",
+  "matches.checkin",
+  "matches.manage",
+  "matches.score",
+  "rules.edit",
+  "teams.manage",
+];
+const REG_KMITL: SportPermission[] = [
+  "athletes.read",
+  "competition.read",
+  "kiosk.operate",
+  "matches.checkin",
+  "matches.score",
+  "rules.edit",
+  "users.setInstitution",
+];
 
 describe("sport access", () => {
   test("admins and the KMITL heads and viceheads of Tech/Live and ทะเบียน run everything", () => {
@@ -35,13 +60,9 @@ describe("sport access", () => {
     }
   });
 
-  test("Tech/Live staff of any institution run the kiosk and read athletes", () => {
+  test("Tech/Live staff of any institution run the kiosk, read athletes and run competitions", () => {
     for (const institution of [null, "kmutt", "kmitl"] as const) {
-      expect(permissions(actor({ departmentCode: "tech-live", institution }))).toEqual([
-        "athletes.read",
-        "kiosk.operate",
-        "rules.edit",
-      ]);
+      expect(permissions(actor({ departmentCode: "tech-live", institution }))).toEqual(TECH_STAFF);
     }
   });
 
@@ -51,7 +72,7 @@ describe("sport access", () => {
       leadershipRole: "vicehead",
       institution: "kmutt",
     });
-    expect(permissions(tech)).toEqual(["athletes.read", "kiosk.operate", "rules.edit"]);
+    expect(permissions(tech)).toEqual(TECH_STAFF);
     expect(permissions(registration("kmutt", "head"))).toEqual([
       "athletes.export",
       "athletes.read",
@@ -59,12 +80,7 @@ describe("sport access", () => {
   });
 
   test("host registration staff run the kiosk, read athletes, edit rules and set institutions", () => {
-    expect(permissions(registration("kmitl"))).toEqual([
-      "athletes.read",
-      "kiosk.operate",
-      "rules.edit",
-      "users.setInstitution",
-    ]);
+    expect(permissions(registration("kmitl"))).toEqual(REG_KMITL);
     expect(sportAccess(registration("kmitl")).scope).toEqual({ kind: "all" });
   });
 
@@ -83,7 +99,7 @@ describe("sport access", () => {
     for (const who of [
       null,
       actor(),
-      actor({ departmentCode: "sports", leadershipRole: "head", institution: "kmitl" }),
+      actor({ departmentCode: "art", leadershipRole: "head", institution: "kmitl" }),
       actor({ role: "participant", departmentCode: "tech-live" }),
       actor({ role: "athlete", departmentCode: "registration", institution: "kmitl" }),
       actor({ role: "admin", banned: true }),
@@ -93,9 +109,50 @@ describe("sport access", () => {
     }
   });
 
+  test("the sports department's KMITL leaders run competitions and edit rules", () => {
+    for (const seat of ["head", "vicehead"] as const) {
+      for (const institution of ["kmitl", null] as const) {
+        const who = actor({ departmentCode: "sports", leadershipRole: seat, institution });
+        expect(permissions(who)).toEqual([
+          "competition.read",
+          "matches.checkin",
+          "matches.manage",
+          "matches.score",
+          "rules.edit",
+          "teams.manage",
+        ]);
+        expect(sportAccess(who).scope).toEqual({ kind: "all" });
+      }
+    }
+  });
+
+  test("the sports department's KMITL staff read competitions and keep score, nothing else", () => {
+    expect(permissions(actor({ departmentCode: "sports", institution: "kmitl" }))).toEqual([
+      "competition.read",
+      "matches.score",
+    ]);
+    for (const who of [
+      actor({ departmentCode: "sports" }),
+      actor({ departmentCode: "sports", institution: "kmutt" }),
+      // A seat left from before seats were KMITL's.
+      actor({ departmentCode: "sports", leadershipRole: "head", institution: "kmutt" }),
+      actor({ role: "participant", departmentCode: "sports", institution: "kmitl" }),
+    ]) {
+      expect(permissions(who)).toEqual([]);
+    }
+  });
+
   test("the JSON form lists permissions in a stable order", () => {
     expect(sportAccessJson(registration("kmitl"))).toEqual({
-      permissions: ["athletes.read", "kiosk.operate", "rules.edit", "users.setInstitution"],
+      permissions: [
+        "athletes.read",
+        "kiosk.operate",
+        "rules.edit",
+        "competition.read",
+        "matches.score",
+        "matches.checkin",
+        "users.setInstitution",
+      ],
       scope: { kind: "all" },
     });
   });

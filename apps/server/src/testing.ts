@@ -106,7 +106,13 @@ export function createTestContext() {
     await db.insert(userProfile).values({
       userId: id,
       draft: EMPTY_PROFILE,
-      values: { ...EMPTY_PROFILE, firstName: "สมชาย", lastName: id, phone: "0812345678", institution },
+      values: {
+        ...EMPTY_PROFILE,
+        firstName: "สมชาย",
+        lastName: id,
+        phone: "0812345678",
+        institution,
+      },
       submittedAt: new Date(),
       dirty: false,
     });

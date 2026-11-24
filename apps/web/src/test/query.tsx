@@ -47,6 +47,20 @@ function unexpected(name: string) {
   return () => Promise.reject(new Error(`Unexpected call to ${name}`));
 }
 
+/**
+ * A fake of any API client: methods a test passes in answer, every other one
+ * fails loudly. Clients that grow new methods need no change here.
+ */
+export function loudFake<T extends object>(name: string, overrides: Partial<T> = {}): T {
+  return new Proxy(overrides as T, {
+    get(target, prop, receiver) {
+      if (typeof prop === "symbol" || prop === "then") return Reflect.get(target, prop, receiver);
+      if (prop in target) return Reflect.get(target, prop, receiver);
+      return unexpected(`${name}.${prop}`);
+    },
+  });
+}
+
 export function fakeUsersApi(overrides: Partial<UsersApi> = {}): UsersApi {
   return {
     me: unexpected("me"),
@@ -86,6 +100,12 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
     tickets: apis.tickets ?? fakeTicketsApi(),
     emails: apis.emails ?? fakeEmailsApi(),
     invitations: apis.invitations ?? fakeInvitationsApi(),
+    competitionDivisions: apis.competitionDivisions ?? loudFake("competitionDivisions"),
+    competitionTeams: apis.competitionTeams ?? loudFake("competitionTeams"),
+    competitionMatches: apis.competitionMatches ?? loudFake("competitionMatches"),
+    competitionScores: apis.competitionScores ?? loudFake("competitionScores"),
+    competitionCheckins: apis.competitionCheckins ?? loudFake("competitionCheckins"),
+    publicCompetition: apis.publicCompetition ?? loudFake("publicCompetition"),
   };
 }
 

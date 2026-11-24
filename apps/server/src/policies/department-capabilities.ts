@@ -19,6 +19,9 @@ export type Capability =
   // Members work on athlete registrations; how far depends on their seat
   // and institution (policies/sports.ts).
   | "registerAthletes"
+  // Members help run competitions: seat holders manage teams, matches and
+  // check-in, the host institution's staff keep score (policies/sports.ts).
+  | "assistSports"
   // Every member may write and send staff emails, to anyone (policies/email.ts).
   | "sendEmail"
   // Seat holders may send staff emails; how far depends on their institution
@@ -37,6 +40,7 @@ export const DEPARTMENT_CAPABILITIES = {
     "sendEmailAsLeader",
     "manageDepartmentsAsLeader",
   ],
+  sports: ["assistSports"],
 } as const satisfies Record<ReservedDepartmentCode, readonly Capability[]>;
 
 function isReserved(code: string): code is ReservedDepartmentCode {

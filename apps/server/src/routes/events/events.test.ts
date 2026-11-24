@@ -247,7 +247,9 @@ describe("ticket types", () => {
       version: 2,
     });
     expect(stolen.res.status).toBe(409);
-    expect(await t.db.select().from(eventTicketType).where(eq(eventTicketType.id, typeId))).toHaveLength(1);
+    expect(
+      await t.db.select().from(eventTicketType).where(eq(eventTicketType.id, typeId)),
+    ).toHaveLength(1);
   });
 
   test("a ticket claimed meanwhile keeps its type from being removed", async () => {
@@ -355,7 +357,9 @@ describe("slugs", () => {
   const remake = async (id: string, version: number, overrides: Record<string, unknown>) => {
     const current = (await send("tech", "GET", `/${id}`)).body as unknown as EventBody;
     const { body } = await send("tech", "PUT", `/${id}`, {
-      ...sportEvent({ ticketTypes: [ticketType({ id: current.ticketTypes[0]?.id, listedOnly: true })] }),
+      ...sportEvent({
+        ticketTypes: [ticketType({ id: current.ticketTypes[0]?.id, listedOnly: true })],
+      }),
       ...overrides,
       slug: "",
       version,
@@ -384,7 +388,11 @@ describe("slugs", () => {
     expect((await remake(second.id, 1, { name: "ฟุตบอลรอบสอง" })).slug).toBe("sport-2026-12-05-2");
     const evening = (await create({ name: "พิธีปิด" })).event;
     const general2 = await remake(evening.id, 1, {
-      ...general({ name: "พิธีปิด", startAt: Date.UTC(2026, 11, 5, 18), endAt: Date.UTC(2026, 11, 5, 20) }),
+      ...general({
+        name: "พิธีปิด",
+        startAt: Date.UTC(2026, 11, 5, 18),
+        endAt: Date.UTC(2026, 11, 5, 20),
+      }),
       ticketTypes: [ticketType({ id: evening.ticketTypes[0]?.id })],
     });
     expect(general2.slug).toBe("general-2026-12-06");
@@ -433,7 +441,10 @@ describe("slugs", () => {
     const typeId = event.ticketTypes[0]?.id;
     const put = (version: number, overrides: Record<string, unknown>) =>
       send("tech", "PUT", `/${event.id}`, {
-        ...sportEvent({ ticketTypes: [ticketType({ id: typeId, listedOnly: true })], ...overrides }),
+        ...sportEvent({
+          ticketTypes: [ticketType({ id: typeId, listedOnly: true })],
+          ...overrides,
+        }),
         version,
       });
     // Omitted: kept, even though the name changed.
