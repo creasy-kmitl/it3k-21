@@ -50,7 +50,7 @@ route ถาม policy เสมอ ห้ามเช็กบทบาท ท�
 | ผู้ใช้                                                 | permissions                                   | ขอบเขต        |
 | ----------------------------------------------------- | --------------------------------------------- | ------------- |
 | admin, หัวหน้า/รอง `runSports` หรือ `registerAthletes` (สจล.) | ทั้งหมด                                       | ทุกสถาบัน      |
-| สตาฟ `runSports`                                       | `kiosk.operate`, `athletes.read`              | ทุกสถาบัน      |
+| สตาฟ `runSports`                                       | `kiosk.operate`, `athletes.read`, `rules.edit` | ทุกสถาบัน      |
 | สตาฟ `registerAthletes` สจล.                           | + `users.setInstitution`                      | ทุกสถาบัน      |
 | สตาฟ `registerAthletes` สถาบันอื่น                       | `athletes.read`, `athletes.export`            | สถาบันตัวเอง   |
 | สตาฟ `registerAthletes` ไม่มีสถาบัน                      | —                                             | —             |

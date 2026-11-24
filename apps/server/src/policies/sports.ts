@@ -4,9 +4,10 @@
 //
 //   admin                                              everything, every institution
 //   runSports or registerAthletes, head/vice (KMITL)   everything, every institution
-//   runSports, staff                                   kiosk and reading athletes, every institution
-//   registerAthletes, KMITL staff                      kiosk and reading athletes, every institution;
-//                                                      also set accounts' institutions
+//   runSports, staff                                   kiosk, sport rules and reading athletes,
+//                                                      every institution
+//   registerAthletes, KMITL staff                      kiosk, sport rules and reading athletes, every
+//                                                      institution; also set accounts' institutions
 //   registerAthletes, any other institution            read and export its own athletes
 //   registerAthletes without an institution            nothing
 //
@@ -33,6 +34,8 @@ export const SPORT_PERMISSIONS = [
   "athletes.edit",
   "athletes.export",
   "kiosk.operate",
+  // Write the Markdown rules of sports and divisions. Everyone signed in reads them.
+  "rules.edit",
   "users.setInstitution",
 ] as const;
 export type SportPermission = (typeof SPORT_PERMISSIONS)[number];
@@ -52,13 +55,13 @@ export type SportAccess = { can: ReadonlySet<SportPermission>; scope: SportScope
 const NONE: SportAccess = { can: new Set(), scope: { kind: "none" } };
 const FULL: SportAccess = { can: new Set(SPORT_PERMISSIONS), scope: { kind: "all" } };
 const STAFF: SportAccess = {
-  can: new Set(["kiosk.operate", "athletes.read"]),
+  can: new Set(["kiosk.operate", "athletes.read", "rules.edit"]),
   scope: { kind: "all" },
 };
 // Account holders cannot change their own institution once it is set
 // (routes/profile); KMITL's ทะเบียน staff can, along with full rights.
 const REG_KMITL_STAFF: SportAccess = {
-  can: new Set(["kiosk.operate", "athletes.read", "users.setInstitution"]),
+  can: new Set(["kiosk.operate", "athletes.read", "rules.edit", "users.setInstitution"]),
   scope: { kind: "all" },
 };
 

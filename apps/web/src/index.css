@@ -74,6 +74,42 @@ html {
       content: attr(data-placeholder);
     }
   }
+  /* Markdown (MarkdownView) adds what rich text has no blocks for. */
+  .markdown {
+    & h1 {
+      @apply text-2xl font-semibold tracking-tight;
+    }
+    & h2 {
+      @apply mt-6 border-b pb-1;
+    }
+    & h4 {
+      @apply text-sm font-semibold;
+    }
+    & li + li,
+    & li > ul,
+    & li > ol {
+      @apply mt-1;
+    }
+    & code {
+      @apply rounded bg-muted px-1 py-0.5 font-mono text-[0.85em];
+    }
+    & pre {
+      @apply overflow-x-auto rounded-lg bg-muted p-3;
+      & code {
+        @apply bg-transparent p-0;
+      }
+    }
+    & table {
+      @apply w-full border-collapse text-left;
+    }
+    & th,
+    & td {
+      @apply border px-2 py-1 align-top;
+    }
+    & th {
+      @apply bg-muted font-semibold;
+    }
+  }
   .rich-text-lg {
     @apply text-base leading-7;
 

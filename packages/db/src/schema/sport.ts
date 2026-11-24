@@ -153,7 +153,10 @@ export const sportRegistration = sqliteTable(
       .where(sql`badminton_rank IS NOT NULL AND ${notRejected}`),
     index("sport_registration_division_idx").on(table.divisionId, table.institution),
     index("sport_registration_institution_idx").on(table.institution, table.status),
-    check("sport_registration_status_check", sql`${table.status} IN (${inList(REGISTRATION_STATUSES)})`),
+    check(
+      "sport_registration_status_check",
+      sql`${table.status} IN (${inList(REGISTRATION_STATUSES)})`,
+    ),
     check(
       "sport_registration_rank_check",
       sql`${table.badmintonRank} IS NULL OR ${table.badmintonRank} IN (1, 2)`,
@@ -161,6 +164,36 @@ export const sportRegistration = sqliteTable(
     check(
       "sport_registration_shirt_check",
       sql`${table.shirtNumber} IS NULL OR ${table.shirtNumber} BETWEEN 0 AND 99`,
+    ),
+  ],
+);
+
+/**
+ * A sport's rules, or one division's own rules, as Markdown. A division with
+ * no row of its own shows its sport's rules.
+ */
+export const sportRule = sqliteTable(
+  "sport_rule",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    // Exactly one of these is set.
+    sportId: text("sport_id").references(() => sport.id, { onDelete: "cascade" }),
+    divisionId: text("division_id").references(() => sportDivision.id, { onDelete: "cascade" }),
+    markdown: text("markdown").notNull(),
+    updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+    // Bumped by every write, so an edit based on an old read is refused.
+    version: integer("version").notNull().default(1),
+    ...timestamps(),
+  },
+  (table) => [
+    // SQLite lets any number of rows share a null, so each index only binds its own kind.
+    uniqueIndex("sport_rule_sport_uidx").on(table.sportId),
+    uniqueIndex("sport_rule_division_uidx").on(table.divisionId),
+    check(
+      "sport_rule_owner_check",
+      sql`(${table.sportId} IS NULL) <> (${table.divisionId} IS NULL)`,
     ),
   ],
 );

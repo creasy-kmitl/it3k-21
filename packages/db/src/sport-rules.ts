@@ -76,6 +76,24 @@ export const divisionInput = z.strictObject({
 });
 export type DivisionInput = z.infer<typeof divisionInput>;
 
+// ---- Rules ---------------------------------------------------------------
+
+/** Longest rules, in characters; the longest announcement so far is about 10,000. */
+export const RULES_MAX_LENGTH = 30_000;
+
+/**
+ * Saves a sport's or division's rules. `version` is the one the editor read,
+ * 0 when there were none. Blank Markdown removes the rules, so a division goes
+ * back to showing its sport's.
+ */
+export const rulesInput = z.strictObject({
+  markdown: z
+    .string()
+    .max(RULES_MAX_LENGTH, `กติกายาวได้ไม่เกิน ${RULES_MAX_LENGTH.toLocaleString("en-US")} ตัวอักษร`),
+  version: z.number().int().min(0),
+});
+export type RulesInput = z.infer<typeof rulesInput>;
+
 // ---- Registrations -------------------------------------------------------
 
 /** review: waiting for registration staff; approved and rejected are their call. */
@@ -119,7 +137,10 @@ export const registrationFields = z.strictObject({
     .string()
     .trim()
     .max(300)
-    .refine((value) => value === "" || FACEBOOK_URL.test(value), "ใช้ลิงก์ Facebook ที่ขึ้นต้นด้วย https://"),
+    .refine(
+      (value) => value === "" || FACEBOOK_URL.test(value),
+      "ใช้ลิงก์ Facebook ที่ขึ้นต้นด้วย https://",
+    ),
 });
 export type RegistrationFields = z.infer<typeof registrationFields>;
 

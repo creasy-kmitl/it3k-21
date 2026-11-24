@@ -40,6 +40,7 @@ describe("sport access", () => {
       expect(permissions(actor({ departmentCode: "tech-live", institution }))).toEqual([
         "athletes.read",
         "kiosk.operate",
+        "rules.edit",
       ]);
     }
   });
@@ -50,17 +51,18 @@ describe("sport access", () => {
       leadershipRole: "vicehead",
       institution: "kmutt",
     });
-    expect(permissions(tech)).toEqual(["athletes.read", "kiosk.operate"]);
+    expect(permissions(tech)).toEqual(["athletes.read", "kiosk.operate", "rules.edit"]);
     expect(permissions(registration("kmutt", "head"))).toEqual([
       "athletes.export",
       "athletes.read",
     ]);
   });
 
-  test("host registration staff run the kiosk, read athletes and set institutions", () => {
+  test("host registration staff run the kiosk, read athletes, edit rules and set institutions", () => {
     expect(permissions(registration("kmitl"))).toEqual([
       "athletes.read",
       "kiosk.operate",
+      "rules.edit",
       "users.setInstitution",
     ]);
     expect(sportAccess(registration("kmitl")).scope).toEqual({ kind: "all" });
@@ -93,7 +95,7 @@ describe("sport access", () => {
 
   test("the JSON form lists permissions in a stable order", () => {
     expect(sportAccessJson(registration("kmitl"))).toEqual({
-      permissions: ["athletes.read", "kiosk.operate", "users.setInstitution"],
+      permissions: ["athletes.read", "kiosk.operate", "rules.edit", "users.setInstitution"],
       scope: { kind: "all" },
     });
   });

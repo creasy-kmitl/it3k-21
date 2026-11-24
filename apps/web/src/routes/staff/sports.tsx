@@ -15,7 +15,7 @@ import { Checkbox } from "@it3k/ui/components/checkbox";
 import { Field } from "@it3k/ui/components/field";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   ArrowDownUp,
   DoorOpen,
@@ -28,6 +28,7 @@ import {
   Palette,
   Pencil,
   Plus,
+  ScrollText,
   Shirt,
   TextAlignStart,
   Trash2,
@@ -225,18 +226,27 @@ function SportCard({
           </li>
         ))}
       </ul>
-      {canManage && (
-        <div className="border-t p-2">
+      <div className="flex gap-1 border-t p-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="flex-1"
+          render={<Link to="/staff/sports/$sportId/rules" params={{ sportId: sport.id }} />}
+          nativeButton={false}
+        >
+          <ScrollText /> กติกา
+        </Button>
+        {canManage && (
           <Button
             variant="ghost"
             size="sm"
-            className="w-full"
+            className="flex-1"
             onClick={() => onEdit({ kind: "division", sport, division: null })}
           >
             <Plus /> เพิ่มประเภท
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </li>
   );
 }

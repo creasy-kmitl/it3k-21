@@ -38,6 +38,8 @@
     "react": "catalog:",
     "react-day-picker": "^10.0.2",
     "react-dom": "catalog:",
+    "react-markdown": "^10",
+    "remark-gfm": "^4",
     "sonner": "catalog:",
     "tailwindcss": "catalog:",
     "uqr": "^0.1.3",
