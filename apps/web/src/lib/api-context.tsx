@@ -8,6 +8,7 @@ import { type UsersApi, usersApi } from "./users";
 import { type ProfileApi, profileApi } from "./profile";
 import { type FilesApi, filesApi } from "./files";
 import { type SportsApi, sportsApi } from "./sports";
+import { type SportRulesApi, sportRulesApi } from "./sport-rules";
 import { type RegistrationsApi, registrationsApi } from "./registrations";
 import { type AthletesApi, athletesApi } from "./athletes";
 import { type EventsApi, eventsApi } from "./events";
@@ -26,6 +27,7 @@ export type Apis = {
   profile: ProfileApi;
   files: FilesApi;
   sports: SportsApi;
+  sportRules: SportRulesApi;
   registrations: RegistrationsApi;
   athletes: AthletesApi;
   venues: VenuesApi;
@@ -44,6 +46,7 @@ const ApiContext = createContext<Apis>({
   profile: profileApi,
   files: filesApi,
   sports: sportsApi,
+  sportRules: sportRulesApi,
   registrations: registrationsApi,
   athletes: athletesApi,
   venues: venuesApi,

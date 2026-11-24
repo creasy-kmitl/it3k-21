@@ -11,6 +11,7 @@ import type { LeadershipApi, LeadershipPage, LeadershipSummary } from "@/lib/lea
 import type { LinksApi, ShortLink } from "@/lib/links";
 import type { QrPresetsApi } from "@/lib/qr-presets";
 import type { SportsApi } from "@/lib/sports";
+import type { SportRulesApi } from "@/lib/sport-rules";
 import type { RegistrationsApi } from "@/lib/registrations";
 import type { AthletesApi } from "@/lib/athletes";
 import type { EventsApi } from "@/lib/events";
@@ -77,6 +78,7 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
       upload: unexpected("files.upload"),
     },
     sports: apis.sports ?? fakeSportsApi(),
+    sportRules: apis.sportRules ?? fakeSportRulesApi(),
     registrations: apis.registrations ?? fakeRegistrationsApi(),
     athletes: apis.athletes ?? fakeAthletesApi(),
     venues: apis.venues ?? fakeVenuesApi(),
@@ -175,6 +177,16 @@ export function fakeSportsApi(overrides: Partial<SportsApi> = {}): SportsApi {
     createDivision: unexpected("sports.createDivision"),
     updateDivision: unexpected("sports.updateDivision"),
     removeDivision: unexpected("sports.removeDivision"),
+    ...overrides,
+  };
+}
+
+export function fakeSportRulesApi(overrides: Partial<SportRulesApi> = {}): SportRulesApi {
+  return {
+    sport: unexpected("sportRules.sport"),
+    division: unexpected("sportRules.division"),
+    saveSport: unexpected("sportRules.saveSport"),
+    saveDivision: unexpected("sportRules.saveDivision"),
     ...overrides,
   };
 }

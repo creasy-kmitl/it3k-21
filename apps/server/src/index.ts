@@ -13,6 +13,7 @@ import { createDepartmentRoutes } from "./routes/departments";
 import { createLinkRoutes } from "./routes/links";
 import { createShortLinkRedirect } from "./routes/links/redirect";
 import { createQrPresetRoutes } from "./routes/qr-presets";
+import { createSportRuleRoutes } from "./routes/sport-rules";
 import { createSportRoutes } from "./routes/sports";
 import { createRegistrationRoutes } from "./routes/registrations";
 import { createAthleteRoutes } from "./routes/athletes";
@@ -115,6 +116,7 @@ app.route("/api/calendar", createCalendarRoutes(deps));
 app.route("/api/links", createLinkRoutes({ ...deps, webOrigin: env.CORS_ORIGIN }));
 app.route("/api/qr-presets", createQrPresetRoutes(deps));
 app.route("/api/sports", createSportRoutes(deps));
+app.route("/api/sport-rules", createSportRuleRoutes(deps));
 const discordDeps: DiscordDeps = {
   discordEnabled: discordEnabled(env),
   // Asks Discord with the athlete's stored token; best effort.

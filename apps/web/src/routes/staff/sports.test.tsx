@@ -2,7 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 
 import type { Division, Sport, SportList, SportsApi } from "@/lib/sports";
-import { fakeSportsApi, renderRoute } from "@/test/query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+import { ApiProvider } from "@/lib/api-context";
+import { fakeApis, fakeSportsApi } from "@/test/query";
+import { renderAtRoot } from "@/test/router";
 
 import { SportsPage } from "./sports";
 
@@ -48,12 +52,25 @@ function sport(overrides: Partial<Sport> = {}): Sport {
 
 function setup(list: SportList, overrides: Partial<SportsApi> = {}) {
   const api = fakeSportsApi({ list: async () => list, ...overrides });
-  return renderRoute({ options: { component: SportsPage } }, { sports: api });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  // In a router, because each card links to its rules page.
+  return renderAtRoot(
+    () => (
+      <QueryClientProvider client={client}>
+        <ApiProvider value={fakeApis({ sports: api })}>
+          <SportsPage />
+        </ApiProvider>
+      </QueryClientProvider>
+    ),
+    "/staff/sports",
+  );
 }
 
 describe("/staff/sports", () => {
   test("shows sports with the generated illustration and division requirements", async () => {
-    const view = setup({
+    const view = await setup({
       items: [
         sport({
           divisions: [
@@ -79,7 +96,7 @@ describe("/staff/sports", () => {
   });
 
   test("uses the thumbnail when one is set", async () => {
-    const view = setup({
+    const view = await setup({
       items: [sport({ thumbnailUrl: "https://cdn.test/badminton.jpg" })],
       canManage: false,
     });
@@ -89,7 +106,7 @@ describe("/staff/sports", () => {
 
   test("managers add a sport, and invalid input is caught before sending", async () => {
     const created: unknown[] = [];
-    const view = setup(
+    const view = await setup(
       { items: [], canManage: true },
       {
         create: async (input) => {
@@ -125,7 +142,7 @@ describe("/staff/sports", () => {
   test("managers close registration for a division", async () => {
     const updates: [string, unknown][] = [];
     const target = division({ id: "d-1" });
-    const view = setup(
+    const view = await setup(
       { items: [sport({ divisions: [target] })], canManage: true },
       {
         updateDivision: async (id, input) => {
@@ -146,7 +163,7 @@ describe("/staff/sports", () => {
   });
 
   test("shows the server's reason when a delete is refused", async () => {
-    const view = setup(
+    const view = await setup(
       { items: [sport()], canManage: true },
       {
         remove: async () => {
@@ -155,7 +172,9 @@ describe("/staff/sports", () => {
       },
     );
     fireEvent.click(await view.findByRole("button", { name: "ลบ กีฬาแบดมินตัน" }));
-    fireEvent.click(within(await view.findByRole("alertdialog")).getByRole("button", { name: "ลบ" }));
+    fireEvent.click(
+      within(await view.findByRole("alertdialog")).getByRole("button", { name: "ลบ" }),
+    );
     expect(await view.findByRole("alertdialog")).toBeTruthy();
   });
 });
