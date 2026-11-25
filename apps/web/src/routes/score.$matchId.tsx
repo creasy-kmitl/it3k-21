@@ -1,14 +1,12 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { Construction } from "lucide-react";
 
-import { StreamPlaceholder } from "@/components/competition/stream-placeholder";
+import { ScorerPage } from "@/components/competition/scorer/scorer-page";
 import { SessionBoundary } from "@/components/session-boundary";
 import { getSessionOrThrow } from "@/lib/auth-client";
 import { clearCacheOnUserChange } from "@/lib/query-cache";
 import { staffRedirect } from "./staff/route";
 
 // Full-screen scorer for one match, held sideways by the court.
-// Placeholder: the scoring stream (B3) builds this page.
 export const Route = createFileRoute("/score/$matchId")({
   ssr: false,
   beforeLoad: async ({ context, location }) => {
@@ -26,11 +24,10 @@ export const Route = createFileRoute("/score/$matchId")({
 
 function RouteComponent() {
   const { session } = Route.useRouteContext();
+  const { matchId } = Route.useParams();
   return (
     <SessionBoundary key={session.data?.user.id} userId={session.data?.user.id ?? ""}>
-      <main className="mx-auto flex min-h-svh w-full max-w-3xl p-4">
-        <StreamPlaceholder icon={Construction} title="ใส่คะแนน" description="" />
-      </main>
+      <ScorerPage matchId={matchId} />
     </SessionBoundary>
   );
 }
