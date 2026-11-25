@@ -23,11 +23,19 @@ describe("match results", () => {
     const [home, away] = state.participants;
     Object.assign(defined(home), { score: 2, rank: 1, outcome: "win", detail: { parts: [1, 1] } });
     Object.assign(defined(away), { score: 0, rank: 2, outcome: "loss", detail: { parts: [0, 0] } });
+    const goal = {
+      eventId: "e1",
+      at: 1_000,
+      period: 1,
+      participantId: defined(home).participantId,
+      text: "+1",
+      registrationId: null,
+    };
     const finishedAt = new Date();
     await t.db.batch(
       resultStatements(t.db, {
         matchId: match.id,
-        state: { ...state, decided: true },
+        state: { ...state, decided: true, timeline: [goal] },
         status: "finished",
         outcome: "played",
         scoreSeq: 3,
@@ -41,7 +49,7 @@ describe("match results", () => {
       outcome: "played",
       scoreSeq: 3,
       version: 2,
-      liveState: { decided: true, period: 1, phase: "regular" },
+      liveState: { decided: true, period: 1, phase: "regular", timeline: [goal] },
     });
     expect(loaded.participants.map((p) => [p.score, p.rank, p.outcome])).toEqual([
       [2, 1, "win"],
