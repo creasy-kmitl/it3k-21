@@ -1,4 +1,9 @@
 import {
+  ANNOUNCE_MODES,
+  type AnnounceMode,
+  SCORING_MODES,
+  SETS_TO_WIN_OPTIONS,
+  type ScoringMode,
   BREAKS_MAX,
   BREAK_MAX,
   DIVISION_MAX,
@@ -31,6 +36,9 @@ import { MatchTimeline } from "@/components/scores/match-timeline";
 import { useApis } from "@/lib/api-context";
 import { fromDatetimeLocal, toDatetimeLocal } from "@/lib/bangkok-time";
 import {
+  ANNOUNCE_LABELS,
+  SCORING_LABELS,
+  SETS_TO_WIN_LABELS,
   type Match,
   type MatchInput,
   type MatchUpdate,
@@ -44,6 +52,12 @@ const OTHER = "__other";
 const NO_DIVISION = "__none";
 
 const universityItems = UNIVERSITIES.map((value) => ({ value, label: universityLabel(value) }));
+const scoringItems = SCORING_MODES.map((value) => ({ value, label: SCORING_LABELS[value] }));
+const setsItems = SETS_TO_WIN_OPTIONS.map((value) => ({
+  value: String(value),
+  label: SETS_TO_WIN_LABELS[value] ?? String(value),
+}));
+const announceItems = ANNOUNCE_MODES.map((value) => ({ value, label: ANNOUNCE_LABELS[value] }));
 const statusItems = MATCH_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }));
 
 /** Blank is null; a whole number from `min` to `max` is that number; anything else is undefined. */
@@ -120,11 +134,20 @@ export function MatchForm({
   const [divisionChoice, setDivisionChoice] = useState(initial?.division ?? "");
   const [customDivision, setCustomDivision] = useState("");
   const [round, setRound] = useState(initial?.round ?? "");
-  const [teamA, setTeamA] = useState<University>(initial?.teamA ?? "kmutt");
-  const [teamB, setTeamB] = useState<University>(initial?.teamB ?? "kmutnb");
+  // How the result reaches the audience; fixed once the match exists.
+  const [announce, setAnnounce] = useState<AnnounceMode | "">(initial?.announce ?? "");
+  const after = announce === "after";
+  // A pair match says how it is reported; a match with many teams is always a ranking.
+  const [scoring, setScoring] = useState<ScoringMode | "">(initial?.scoring ?? "");
+  const [setsToWin, setSetsToWin] = useState(initial?.setsToWin?.toString() ?? "");
+  const pair = announce === "live";
+  // Only a score counted point by point has a length, breaks and a timeline.
+  const points = pair && scoring === "points";
+  const [teamA, setTeamA] = useState<University | "">(initial?.teamA ?? "");
+  const [teamB, setTeamB] = useState<University | "">(initial?.teamB ?? "");
   const [scoreA, setScoreA] = useState(initial?.scoreA?.toString() ?? "");
   const [scoreB, setScoreB] = useState(initial?.scoreB?.toString() ?? "");
-  const [status, setStatus] = useState<MatchStatus>(initial?.status ?? "scheduled");
+  const [status, setStatus] = useState<MatchStatus | "">(initial?.status ?? "");
   const [startsAt, setStartsAt] = useState(
     initial?.startsAt ? toDatetimeLocal(initial.startsAt) : "",
   );
@@ -167,14 +190,26 @@ export function MatchForm({
   const { breaks, errors: breakErrors } = readBreaks(breakRows, minutes);
   const problems = {
     sport: sport === "" ? (isOther ? "กรุณาใส่ชื่อกีฬา" : "กรุณาเลือกกีฬา") : null,
-    teams: teamA === teamB ? "ต้องเลือกสองสถาบันที่ต่างกัน" : null,
+    announce: !editing && announce === "" ? "กรุณาเลือกรูปแบบการแข่งขัน" : null,
+    scoring: !editing && pair && scoring === "" ? "กรุณาเลือกวิธีรายงานผลการแข่งขัน" : null,
+    setsToWin:
+      !editing && scoring === "sets" && setsToWin === "" ? "กรุณาเลือกจำนวนเซตที่ต้องชนะ" : null,
+    teams: !pair
+      ? null
+      : teamA === "" || teamB === ""
+        ? "กรุณาเลือกทีมทั้งสองฝั่ง"
+        : teamA === teamB
+          ? "ต้องเลือกสองสถาบันที่ต่างกัน"
+          : null,
+    status: status === "" ? "กรุณาเลือกสถานะ" : null,
     scores:
-      editing && (parsedA === undefined || parsedB === undefined)
+      editing && points && (parsedA === undefined || parsedB === undefined)
         ? `คะแนนต้องเป็นจำนวนเต็ม 0–${SCORE_MAX} หรือเว้นว่าง`
         : null,
     startsAt: start === null ? "กรุณาเลือกเวลาแข่ง" : null,
-    duration: minutes == null ? `กรุณาใส่เวลาแข่ง 1–${DURATION_MAX} นาที` : null,
-    breaks: breakErrors.size > 0 ? "แก้ช่วงพักที่ขึ้นสีแดงก่อน" : null,
+    duration:
+      points && minutes == null ? `กรุณาใส่เวลาแข่ง 1–${DURATION_MAX} นาที` : null,
+    breaks: points && breakErrors.size > 0 ? "แก้ช่วงพักที่ขึ้นสีแดงก่อน" : null,
   };
   const valid = Object.values(problems).every((problem) => problem === null);
 
@@ -184,12 +219,37 @@ export function MatchForm({
   function submit(event: FormEvent) {
     event.preventDefault();
     setSubmitted(true);
-    if (!valid || start === null || minutes == null) return;
-    if (parsedA === undefined || parsedB === undefined) return;
+    if (!valid || start === null || status === "" || announce === "") return;
+    const common = {
+      sport,
+      division: division || null,
+      round: round.trim() || null,
+      status,
+      startsAt: start,
+    };
+    if (after) {
+      // No sides, scores or length: the audience only sees the schedule, then the ranking.
+      onSubmit(editing ? common : { ...common, announce });
+      return;
+    }
+    if (teamA === "" || teamB === "" || scoring === "") return;
+    const sides = { ...common, teamA, teamB };
+    if (scoring === "sets") {
+      onSubmit(
+        editing ? sides : { ...sides, announce, scoring, setsToWin: Number(setsToWin) },
+      );
+      return;
+    }
+    if (scoring === "after") {
+      onSubmit(editing ? sides : { ...sides, announce, scoring });
+      return;
+    }
+    if (minutes == null || parsedA === undefined || parsedB === undefined) return;
     onSubmit({
       sport,
       division: division || null,
       round: round.trim() || null,
+      ...(editing ? {} : { announce, scoring }),
       teamA,
       teamB,
       status,
@@ -203,7 +263,7 @@ export function MatchForm({
   return (
     <form onSubmit={submit} noValidate>
       <FieldGroup>
-        {minutes != null && (
+        {points && minutes != null && (
           <MatchTimeline durationMinutes={minutes} breaks={breaks} startsAt={start} />
         )}
 
@@ -301,6 +361,77 @@ export function MatchForm({
           />
         </Field>
 
+        {!editing && (
+          <Field data-invalid={submitted && problems.announce ? true : undefined}>
+            <FieldLabel htmlFor={`${id}-announce`}>รูปแบบการแข่งขัน</FieldLabel>
+            <Select
+              items={announceItems}
+              value={announce || null}
+              onValueChange={(next: string | null) => next && setAnnounce(next as AnnounceMode)}
+            >
+              <SelectTrigger id={`${id}-announce`} className="w-full">
+                <SelectValue placeholder="เลือกรูปแบบการแข่งขัน" />
+              </SelectTrigger>
+              <SelectContent>
+                {announceItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {submitted && problems.announce && <FieldError>{problems.announce}</FieldError>}
+          </Field>
+        )}
+
+        {!editing && pair && (
+          <Field data-invalid={submitted && problems.scoring ? true : undefined}>
+            <FieldLabel htmlFor={`${id}-scoring`}>วิธีรายงานผลการแข่งขัน</FieldLabel>
+            <Select
+              items={scoringItems}
+              value={scoring || null}
+              onValueChange={(next: string | null) => next && setScoring(next as ScoringMode)}
+            >
+              <SelectTrigger id={`${id}-scoring`} className="w-full">
+                <SelectValue placeholder="เลือกวิธีรายงานผลการแข่งขัน" />
+              </SelectTrigger>
+              <SelectContent>
+                {scoringItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {submitted && problems.scoring && <FieldError>{problems.scoring}</FieldError>}
+          </Field>
+        )}
+
+        {!editing && scoring === "sets" && (
+          <Field data-invalid={submitted && problems.setsToWin ? true : undefined}>
+            <FieldLabel htmlFor={`${id}-sets`}>จำนวนเซต</FieldLabel>
+            <Select
+              items={setsItems}
+              value={setsToWin || null}
+              onValueChange={(next: string | null) => next && setSetsToWin(next)}
+            >
+              <SelectTrigger id={`${id}-sets`} className="w-full">
+                <SelectValue placeholder="เลือกจำนวนเซต" />
+              </SelectTrigger>
+              <SelectContent>
+                {setsItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {submitted && problems.setsToWin && <FieldError>{problems.setsToWin}</FieldError>}
+          </Field>
+        )}
+
+        {pair && (
+          <>
         <div className="grid grid-cols-2 gap-4">
           {(
             [
@@ -313,11 +444,11 @@ export function MatchForm({
                 <FieldLabel htmlFor={`${id}-team-${side}`}>ทีม {side}</FieldLabel>
                 <Select
                   items={universityItems}
-                  value={team}
+                  value={team || null}
                   onValueChange={(next: string | null) => next && setTeam(next as University)}
                 >
                   <SelectTrigger id={`${id}-team-${side}`} className="w-full">
-                    <SelectValue />
+                    <SelectValue placeholder="เลือกทีม" />
                   </SelectTrigger>
                   <SelectContent>
                     {universityItems.map((item) => (
@@ -328,7 +459,7 @@ export function MatchForm({
                   </SelectContent>
                 </Select>
               </Field>
-              {editing && (
+              {editing && points && (
                 <Field>
                   <FieldLabel htmlFor={`${id}-score-${side}`}>คะแนนทีม {side}</FieldLabel>
                   <Input
@@ -346,16 +477,18 @@ export function MatchForm({
         </div>
         {submitted && problems.teams && <FieldError>{problems.teams}</FieldError>}
         {submitted && problems.scores && <FieldError>{problems.scores}</FieldError>}
+          </>
+        )}
 
-        <Field>
+        <Field data-invalid={submitted && problems.status ? true : undefined}>
           <FieldLabel htmlFor={`${id}-status`}>สถานะ</FieldLabel>
           <Select
             items={statusItems}
-            value={status}
+            value={status || null}
             onValueChange={(next: string | null) => next && setStatus(next as MatchStatus)}
           >
             <SelectTrigger id={`${id}-status`} className="w-full">
-              <SelectValue />
+              <SelectValue placeholder="เลือกสถานะ" />
             </SelectTrigger>
             <SelectContent>
               {statusItems.map((item) => (
@@ -365,6 +498,7 @@ export function MatchForm({
               ))}
             </SelectContent>
           </Select>
+          {submitted && problems.status && <FieldError>{problems.status}</FieldError>}
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -380,6 +514,7 @@ export function MatchForm({
             {submitted && problems.startsAt && <FieldError>{problems.startsAt}</FieldError>}
           </Field>
 
+          {points && (
           <Field data-invalid={submitted && problems.duration ? true : undefined}>
             <FieldLabel htmlFor={`${id}-duration`}>แข่งกี่นาที (ไม่รวมพัก)</FieldLabel>
             <Input
@@ -395,8 +530,10 @@ export function MatchForm({
             />
             {submitted && problems.duration && <FieldError>{problems.duration}</FieldError>}
           </Field>
+          )}
         </div>
 
+        {points && (
         <fieldset className="m-0 flex flex-col gap-3 border-0 p-0">
           <legend className="mb-3 text-sm font-medium">ช่วงพัก (ไม่บังคับ)</legend>
           {breakRows.map((row, index) => {
@@ -460,6 +597,7 @@ export function MatchForm({
             </Button>
           )}
         </fieldset>
+        )}
           
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onCancel}>

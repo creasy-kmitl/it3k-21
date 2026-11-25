@@ -1,19 +1,24 @@
 import type { Database } from "@it3k/db";
 import { user } from "@it3k/db/schema/auth";
 import {
+  ANNOUNCE_MODES,
   BREAKS_MAX,
   BREAK_MAX,
   DIVISION_MAX,
   DURATION_MAX,
   MATCH_STATUSES,
   type MatchBreak,
+  RANKING_MAX,
   ROUND_MAX,
   SCORE_MAX,
+  SCORING_MODES,
+  SETS_TO_WIN_OPTIONS,
   SPORT_MAX,
   UNIVERSITIES,
   computeStandings,
-  currentStatus,
   match,
+  setsProblem,
+  setsWon,
 } from "@it3k/db/schema/match";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
@@ -48,20 +53,58 @@ function breaksFit(list: MatchBreak[], duration: number) {
   });
 }
 
+const ranking = z.array(university).max(RANKING_MAX);
+const setsToWin = z.number().refine((value) => (SETS_TO_WIN_OPTIONS as readonly number[]).includes(value));
+const matchSet = z.strictObject({
+  a: z.number().int().min(0).max(SCORE_MAX),
+  b: z.number().int().min(0).max(SCORE_MAX),
+  done: z.boolean(),
+});
+const BAD_LIVE = "A match between two sides needs two different universities";
+const BAD_AFTER = "A match announced after it ends has no sides, scores, length or breaks";
+const BAD_SCORING = "This match is not reported that way";
+
 const createInput = z
   .strictObject({
     sport,
     division: optionalText(DIVISION_MAX),
     round: optionalText(ROUND_MAX),
-    teamA: university,
-    teamB: university,
-    durationMinutes,
+    announce: z.enum(ANNOUNCE_MODES).default("live"),
+    scoring: z.enum(SCORING_MODES).default("points"),
+    setsToWin: setsToWin.optional(),
+    teamA: university.optional(),
+    teamB: university.optional(),
+    durationMinutes: durationMinutes.optional(),
     breaks: breaks.optional(),
     status: z.enum(MATCH_STATUSES).optional(),
     startsAt: epochMs,
   })
-  .refine((input) => input.teamA !== input.teamB, SAME_TEAMS)
-  .refine((input) => breaksFit(input.breaks ?? [], input.durationMinutes), BAD_BREAKS);
+  .superRefine((input, ctx) => {
+    const fail = (message: string) => ctx.addIssue({ code: "custom", message });
+    if (input.announce === "after") {
+      // Many teams: only a ranking, so nothing of a pair match may come with it.
+      const extras =
+        input.teamA ||
+        input.teamB ||
+        input.durationMinutes !== undefined ||
+        input.breaks ||
+        input.setsToWin !== undefined;
+      if (extras || input.scoring !== "points") fail(BAD_AFTER);
+      return;
+    }
+    if (!input.teamA || !input.teamB) return fail(BAD_LIVE);
+    if (input.teamA === input.teamB) return fail(SAME_TEAMS);
+    const timed = input.durationMinutes !== undefined || input.breaks !== undefined;
+    if (input.scoring === "points") {
+      if (input.setsToWin !== undefined) return fail(BAD_SCORING);
+      if (input.durationMinutes === undefined) return fail("A scored match needs its length");
+      if (!breaksFit(input.breaks ?? [], input.durationMinutes)) fail(BAD_BREAKS);
+      return;
+    }
+    if (timed) return fail(BAD_SCORING);
+    if (input.scoring === "sets" && input.setsToWin === undefined) fail("Sets need a series length");
+    if (input.scoring === "after" && input.setsToWin !== undefined) fail(BAD_SCORING);
+  });
 
 const updateInput = z
   .strictObject({
@@ -78,6 +121,12 @@ const updateInput = z
     startsAt: epochMs.nullable().optional(),
     durationMinutes: durationMinutes.optional(),
     breaks: breaks.optional(),
+    /** Each set's points, for a series of sets; the scores then follow from them. */
+    sets: z.array(matchSet).max(Math.max(...SETS_TO_WIN_OPTIONS) * 2 - 1).optional(),
+    /** The side that won a pair match reported after it ends. */
+    winner: university.nullable().optional(),
+    /** Who placed 1st, 2nd and 3rd, for a match announced after it ends. */
+    ranking: ranking.nullable().optional(),
     /** Stop play for an emergency, or carry on. The server keeps the time, not the client. */
     paused: z.boolean().optional(),
   })
@@ -121,13 +170,19 @@ function toPublicMatch(row: typeof match.$inferSelect) {
     sport: row.sport,
     division: row.division,
     round: row.round,
+    announce: row.announce,
+    scoring: row.scoring,
+    setsToWin: row.setsToWin,
+    sets: row.sets ?? [],
+    winner: row.winner,
+    ranking: row.ranking ?? [],
     teamA: row.teamA,
     teamB: row.teamB,
     scoreA: row.scoreA,
     scoreB: row.scoreB,
     durationMinutes: row.durationMinutes,
     breaks: row.breaks ?? [],
-    status: currentStatus(row.status, row.startsAt?.getTime() ?? null, Date.now()),
+    status: row.status,
     startsAt: row.startsAt ? row.startsAt.getTime() : null,
     pausedAt: row.pausedAt ? row.pausedAt.getTime() : null,
     pausedMs: row.pausedMs,
@@ -176,11 +231,15 @@ export const createMatchRoutes = (deps: RouteDeps) =>
       const { startsAt, ...input } = c.req.valid("json");
       const db = c.var.db;
       const matchId = crypto.randomUUID();
+      // Only a match scored live starts at 0 : 0; the others have no score yet.
+      const scored = input.announce === "live" && input.scoring !== "after";
       await db.insert(match).values({
         ...input,
         id: matchId,
-        scoreA: 0,
-        scoreB: 0,
+        scoring: input.announce === "after" ? "after" : input.scoring,
+        scoreA: scored ? 0 : null,
+        scoreB: scored ? 0 : null,
+        sets: input.scoring === "sets" && scored ? [{ a: 0, b: 0, done: false }] : null,
         breaks: input.breaks ?? [],
         startsAt: new Date(startsAt),
         updatedById: c.var.user.id,
@@ -197,8 +256,37 @@ export const createMatchRoutes = (deps: RouteDeps) =>
       const [current] = await db.select().from(match).where(eq(match.id, matchId));
       if (!current) return c.json({ message: "Match not found" }, 404);
       if (current.version !== version) return c.json({ message: STALE_MESSAGE }, 409);
-      if ((fields.teamA ?? current.teamA) === (fields.teamB ?? current.teamB)) {
-        return c.json({ message: SAME_TEAMS }, 400);
+      const many = current.announce === "after";
+      const points = !many && current.scoring === "points";
+      const scoredFields = [fields.scoreA, fields.scoreB, fields.breaks, fields.durationMinutes];
+      if (many) {
+        const notRanked = [fields.teamA, fields.teamB, fields.sets, fields.winner, ...scoredFields];
+        if (paused !== undefined || notRanked.some((value) => value !== undefined)) {
+          return c.json({ message: BAD_AFTER }, 400);
+        }
+      } else if (fields.ranking !== undefined) {
+        return c.json({ message: "Only a match announced after it ends has a ranking" }, 400);
+      }
+      if (!many && !points && (paused !== undefined || scoredFields.some((value) => value !== undefined))) {
+        return c.json({ message: BAD_SCORING }, 400);
+      }
+      if (fields.sets !== undefined && (many || current.scoring !== "sets")) {
+        return c.json({ message: BAD_SCORING }, 400);
+      }
+      if (fields.winner !== undefined && (many || current.scoring !== "after")) {
+        return c.json({ message: BAD_SCORING }, 400);
+      }
+      const teamA = fields.teamA ?? current.teamA;
+      const teamB = fields.teamB ?? current.teamB;
+      if (!many && teamA === teamB) return c.json({ message: SAME_TEAMS }, 400);
+      if (fields.winner && fields.winner !== teamA && fields.winner !== teamB) {
+        return c.json({ message: "The winner must be one of the two sides" }, 400);
+      }
+      const wins = fields.sets ? setsWon(fields.sets) : null;
+      const toWin = current.setsToWin ?? 0;
+      if (fields.sets) {
+        const bad = setsProblem(fields.sets, toWin);
+        if (bad) return c.json({ message: bad }, 400);
       }
       // A new length or new breaks must still fit with whichever one is not being changed.
       const duration = fields.durationMinutes ?? current.durationMinutes;
@@ -206,14 +294,17 @@ export const createMatchRoutes = (deps: RouteDeps) =>
         return c.json({ message: BAD_BREAKS }, 400);
       }
       const now = new Date();
-      const startsAtMs = current.startsAt?.getTime() ?? null;
-      const status = fields.status ?? currentStatus(current.status, startsAtMs, now.getTime());
+      const decided = wins !== null && (wins.a === toWin || wins.b === toWin);
+      // Nothing starts by itself: a match is live only once staff say so.
+      const status = fields.status ?? (decided ? "finished" : current.status);
       if (paused && status !== "live") return c.json({ message: NOT_LIVE }, 400);
 
       const updated = await db
         .update(match)
         .set({
           ...fields,
+          // A series scores the sets won, so the standings and cards read it like any score.
+          ...(wins ? { scoreA: wins.a, scoreB: wins.b } : {}),
           ...(startsAt === undefined
             ? {}
             : { startsAt: startsAt === null ? null : new Date(startsAt) }),

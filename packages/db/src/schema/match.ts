@@ -1,7 +1,15 @@
 import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-import { MATCH_STATUSES, type MatchBreak, UNIVERSITIES } from "../match-rules";
+import {
+  ANNOUNCE_MODES,
+  MATCH_STATUSES,
+  type MatchBreak,
+  type MatchSet,
+  SCORING_MODES,
+  UNIVERSITIES,
+  type University,
+} from "../match-rules";
 import { user } from "./auth";
 
 export * from "../match-rules";
@@ -21,8 +29,21 @@ export const match = sqliteTable(
     /** The sport's division this game belongs to, by name, e.g. "บาสเกตบอล ทีมชาย (5x5)". */
     division: text("division"),
     round: text("round"),
-    teamA: text("team_a", { enum: UNIVERSITIES }).notNull(),
-    teamB: text("team_b", { enum: UNIVERSITIES }).notNull(),
+    /** The two sides; empty when the result is announced as a ranking. */
+    teamA: text("team_a", { enum: UNIVERSITIES }),
+    teamB: text("team_b", { enum: UNIVERSITIES }),
+    /** Live score, or only the final ranking once the match is over. */
+    announce: text("announce", { enum: ANNOUNCE_MODES }).default("live").notNull(),
+    /** Universities from 1st place down, set after a match announced as a ranking. */
+    ranking: text("ranking", { mode: "json" }).$type<University[]>(),
+    /** How the match is reported: a running score, set by set, or only who won afterwards. */
+    scoring: text("scoring", { enum: SCORING_MODES }).default("points").notNull(),
+    /** For a series of sets: how many sets a side needs to win it. */
+    setsToWin: integer("sets_to_win"),
+    /** Each set's points; the scores below are then the sets won. */
+    sets: text("sets", { mode: "json" }).$type<MatchSet[]>(),
+    /** The side that won a pair match reported after it ends. */
+    winner: text("winner", { enum: UNIVERSITIES }),
     scoreA: integer("score_a"),
     scoreB: integer("score_b"),
     status: text("status", { enum: MATCH_STATUSES }).default("scheduled").notNull(),

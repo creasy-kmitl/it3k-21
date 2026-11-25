@@ -1,4 +1,10 @@
-import { type MatchStatus, UNIVERSITY_LABELS, type University } from "@it3k/db/match-rules";
+import {
+  type AnnounceMode,
+  type MatchStatus,
+  type ScoringMode,
+  UNIVERSITY_LABELS,
+  type University,
+} from "@it3k/db/match-rules";
 import { hc } from "hono/client";
 import type { ClientRequestOptions, InferRequestType, InferResponseType } from "hono/client";
 
@@ -71,10 +77,32 @@ export type PublicScoresApi = ReturnType<typeof createPublicScoresApi>;
 export const publicScoresApi = createPublicScoresApi(ENV.VITE_SERVER_URL);
 
 export const STATUS_LABELS: Record<MatchStatus, string> = {
-  scheduled: "ยังไม่แข่ง",
-  live: "กำลังแข่ง",
-  finished: "จบแล้ว",
+  scheduled: "รอแข่งขัน",
+  live: "กำลังแข่งขัน",
+  finished: "สิ้นสุดการแข่งขัน",
 };
+
+export const SCORING_LABELS: Record<ScoringMode, string> = {
+  points: "นับคะแนนสะสม",
+  sets: "แบบเซต",
+  after: "รายงานหลังจบการแข่งขัน",
+};
+
+export const SETS_TO_WIN_LABELS: Record<number, string> = {
+  2: "2 ใน 3 เซต",
+  3: "3 ใน 5 เซต",
+  4: "4 ใน 7 เซต",
+};
+
+export const ANNOUNCE_LABELS: Record<AnnounceMode, string> = {
+  live: "การแข่งขันแบบคู่",
+  after: "การแข่งแบบหลายทีมพร้อมกัน (มากกว่า 2 ทีม)",
+};
+
+/** The two sides of a match announced live; none for one announced by ranking. */
+export function sidesOf(match: { teamA: University | null; teamB: University | null }) {
+  return match.teamA && match.teamB ? { a: match.teamA, b: match.teamB } : null;
+}
 
 export const universityLabel = (university: University) => UNIVERSITY_LABELS[university];
 

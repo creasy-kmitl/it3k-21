@@ -1,5 +1,20 @@
-import { type MatchStatus, currentStatus } from "@it3k/db/match-rules";
+import {
+  MATCH_STATUSES,
+  type MatchSet,
+  type MatchStatus,
+  RANKING_MAX,
+  UNIVERSITIES,
+  type University,
+  setsWon,
+} from "@it3k/db/match-rules";
 import { Button } from "@it3k/ui/components/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@it3k/ui/components/select";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -22,11 +37,20 @@ import { SideDrawer } from "@/components/calendar/side-drawer";
 import { MatchForm } from "@/components/scores/match-form";
 import { MatchTimeline, breakAt, timelineSegments } from "@/components/scores/match-timeline";
 import { MATCHES_QUERY_KEY } from "@/components/scores/scores-page";
+import { SetsBoard } from "@/components/scores/sets-board";
 import { TeamChip } from "@/components/scores/team-chip";
 import { type Segment, SegmentedControl } from "@/components/segmented-control";
 import { useApis } from "@/lib/api-context";
 import { formatBangkok } from "@/lib/bangkok-time";
-import { type Match, type MatchUpdate, STATUS_LABELS, isStale, universityLabel } from "@/lib/matches";
+import {
+  type Match,
+  type MatchUpdate,
+  SETS_TO_WIN_LABELS,
+  isStale,
+  sidesOf,
+  STATUS_LABELS,
+  universityLabel,
+} from "@/lib/matches";
 
 /** How much one press of + or − moves a score. */
 const STEPS: Segment<number>[] = [
@@ -34,6 +58,12 @@ const STEPS: Segment<number>[] = [
   { value: 2, label: "+2" },
   { value: 3, label: "+3" },
 ];
+
+/** The status of a match with many teams is set by hand, since nothing starts it by itself. */
+const STATUS_SEGMENTS: Segment<MatchStatus>[] = MATCH_STATUSES.map((value) => ({
+  value,
+  label: STATUS_LABELS[value],
+}));
 
 const MINUTE_MS = 60 * 1000;
 /** How often the page checks for scores other staff saved. */
@@ -50,23 +80,23 @@ function useNow(everyMs = 10_000) {
 }
 
 function ScoreControl({
-  match,
-  side,
+  team,
+  score: saved,
   step,
   canScore,
   busy,
   onChange,
 }: {
-  match: Match;
-  side: "A" | "B";
+  team: University;
+  score: number | null;
   step: number;
   /** Scores move only while play is on: not before kick-off, in a break, or in a stop. */
   canScore: boolean;
   busy: boolean;
   onChange: (next: number) => void;
 }) {
-  const score = (side === "A" ? match.scoreA : match.scoreB) ?? 0;
-  const name = universityLabel(side === "A" ? match.teamA : match.teamB);
+  const score = saved ?? 0;
+  const name = universityLabel(team);
   return (
     <div className="flex items-center justify-center gap-2 sm:gap-4">
       <Button
@@ -94,6 +124,221 @@ function ScoreControl({
       >
         <Plus className="size-5 sm:size-6" />
       </Button>
+    </div>
+  );
+}
+
+const NO_PLACE = "__none";
+const PLACE_ITEMS = [
+  { value: NO_PLACE, label: "ยังไม่ระบุ" },
+  ...UNIVERSITIES.map((value) => ({ value, label: universityLabel(value) })),
+];
+
+/**
+ * Who placed 1st, 2nd and 3rd, for a match announced after it ends. A place
+ * needs the one above it; a university may hold several places.
+ */
+function RankingControl({
+  saved,
+  busy,
+  onSave,
+}: {
+  saved: University[];
+  busy: boolean;
+  onSave: (ranking: University[]) => void;
+}) {
+  const [places, setPlaces] = useState<(University | null)[]>(() =>
+    Array.from({ length: RANKING_MAX }, (_, index) => saved[index] ?? null),
+  );
+  const ranking = places.filter((team): team is University => team !== null);
+  const gap = places.some((team, index) => team === null && places[index + 1] != null);
+  const problem = gap ? "ต้องใส่อันดับที่สูงกว่าก่อน" : null;
+  return (
+    <form
+      className="mx-auto flex w-full max-w-sm flex-col gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!problem) onSave(ranking);
+      }}
+    >
+      <p className="m-0 text-center font-medium">ผลการแข่งขัน</p>
+      {places.map((team, index) => (
+        <div key={index} className="flex items-center gap-3">
+          <span className="w-8 text-center text-2xl font-bold tabular-nums">{index + 1}</span>
+          <Select
+            items={PLACE_ITEMS}
+            value={team ?? NO_PLACE}
+            onValueChange={(next: string | null) =>
+              next &&
+              setPlaces((current) =>
+                current.map((other, at) =>
+                  at === index ? (next === NO_PLACE ? null : (next as University)) : other,
+                ),
+              )
+            }
+          >
+            <SelectTrigger aria-label={`อันดับ ${index + 1}`} className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PLACE_ITEMS.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ))}
+      {problem && <p className="m-0 text-center text-sm text-destructive">{problem}</p>}
+      <Button type="submit" disabled={busy || problem !== null}>
+        บันทึกผล
+      </Button>
+    </form>
+  );
+}
+
+type Sides = { a: University; b: University };
+
+const STATUS_CONTROL_LABEL = "สถานะแมตช์";
+
+/**
+ * A series of sets: the board, the running set's points with + and −, the
+ * button that ends the set, and a way back if a set was ended by mistake.
+ * Ending the set that decides the series finishes the match.
+ */
+function SetsControl({
+  match,
+  sides,
+  status,
+  step,
+  busy,
+  save,
+}: {
+  match: Match;
+  sides: Sides;
+  status: MatchStatus;
+  step: number;
+  busy: boolean;
+  save: (input: Omit<MatchUpdate, "version">) => void;
+}) {
+  const sets = match.sets;
+  const toWin = match.setsToWin ?? 2;
+  const last = sets.at(-1);
+  const running = last && !last.done ? last : null;
+  const wins = setsWon(sets);
+  const decided = wins.a === toWin || wins.b === toWin;
+  const canScore = status === "live" && running !== null && !decided;
+  const withRunning = (change: Partial<MatchSet>): MatchSet[] =>
+    running ? [...sets.slice(0, -1), { ...running, ...change }] : sets;
+
+  function endSet() {
+    const finished = withRunning({ done: true });
+    const result = setsWon(finished);
+    const over = result.a === toWin || result.b === toWin;
+    save({ sets: over ? finished : [...finished, { a: 0, b: 0, done: false }] });
+  }
+
+  function undoSet() {
+    const kept = running ? sets.slice(0, -1) : sets;
+    const previous = kept.at(-1);
+    if (!previous) return;
+    save({
+      sets: [...kept.slice(0, -1), { ...previous, done: false }],
+      ...(status === "finished" ? { status: "live" as const } : {}),
+    });
+  }
+
+  return (
+    <>
+      <SetsBoard a={sides.a} b={sides.b} sets={sets} setsToWin={match.setsToWin} />
+      {running && !decided && (
+        <p className="m-0 text-center text-sm font-medium text-muted-foreground">
+          เซตที่ {sets.length}
+        </p>
+      )}
+      <div className="grid grid-cols-1 items-center gap-6 sm:grid-cols-[1fr_auto_1fr]">
+        <ScoreControl
+          team={sides.a}
+          score={running?.a ?? null}
+          step={step}
+          canScore={canScore}
+          busy={busy}
+          onChange={(a) => save({ sets: withRunning({ a }) })}
+        />
+        <span aria-hidden className="hidden text-6xl font-light text-muted-foreground sm:block">
+          :
+        </span>
+        <ScoreControl
+          team={sides.b}
+          score={running?.b ?? null}
+          step={step}
+          canScore={canScore}
+          busy={busy}
+          onChange={(b) => save({ sets: withRunning({ b }) })}
+        />
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <Button
+          size="lg"
+          disabled={busy || !canScore || running.a === running.b}
+          onClick={endSet}
+        >
+          <Flag data-icon="inline-start" />
+          จบเซตที่ {sets.length}
+        </Button>
+        <Button
+          size="lg"
+          variant="outline"
+          disabled={busy || !sets.some((set) => set.done)}
+          onClick={undoSet}
+        >
+          <RotateCcw data-icon="inline-start" />
+          ย้อนเซตล่าสุด
+        </Button>
+      </div>
+      <p className="m-0 text-center text-sm text-muted-foreground">
+        {SETS_TO_WIN_LABELS[toWin]} · ใครชนะครบ {toWin} เซตก่อนเป็นฝ่ายชนะ และแมตช์จะจบเอง
+      </p>
+    </>
+  );
+}
+
+/** A pair match reported after it ends: staff finish it, then say who won. */
+function WinnerControl({
+  match,
+  sides,
+  status,
+  busy,
+  onWinner,
+}: {
+  match: Match;
+  sides: Sides;
+  status: MatchStatus;
+  busy: boolean;
+  onWinner: (winner: University) => void;
+}) {
+  if (status !== "finished") {
+    return (
+      <p className="m-0 text-center text-sm text-muted-foreground">
+        ผู้ชมเห็นแค่กำหนดการ เลือก “สิ้นสุดการแข่งขัน” เมื่อแข่งเสร็จ แล้วเลือกผู้ชนะ
+      </p>
+    );
+  }
+  return (
+    <div className="mx-auto flex w-full max-w-sm flex-col gap-3">
+      <p className="m-0 text-center font-medium">ผู้ชนะ</p>
+      {[sides.a, sides.b].map((team) => (
+        <Button
+          key={team}
+          size="lg"
+          variant={match.winner === team ? "default" : "outline"}
+          disabled={busy}
+          onClick={() => onWinner(team)}
+        >
+          {universityLabel(team)} ชนะ
+        </Button>
+      ))}
     </div>
   );
 }
@@ -199,7 +444,7 @@ export function MatchControlPage({ matchId }: { matchId: string }) {
   }
 
   // Goes live by itself at its start time, even before the next reload.
-  const status = currentStatus(match.status, match.startsAt, now);
+  const status = match.status;
   const live = status === "live";
   const stopped = live && match.pausedAt !== null;
   const elapsed = elapsedFor(match, status, now);
@@ -207,6 +452,9 @@ export function MatchControlPage({ matchId }: { matchId: string }) {
   // No play, no points: not before kick-off, not in a planned break, not in an emergency stop.
   const canScore = live && !stopped && !onBreak;
   const delay = stoppedMinutes(match, now);
+  const sides = sidesOf(match);
+  // Which screen the match gets: a running score, a series of sets, a winner, or a ranking.
+  const mode = sides ? match.scoring : "multi";
   const save = (input: Omit<MatchUpdate, "version">) =>
     update.mutate({ ...input, version: match.version });
 
@@ -220,10 +468,14 @@ export function MatchControlPage({ matchId }: { matchId: string }) {
       >
         {/* Teams in the corners, the match and its state between them. */}
         <div className="grid grid-cols-[auto_1fr_auto] items-start gap-3">
-          <div className="flex flex-col items-center gap-1.5">
-            <TeamChip team={match.teamA} size="lg" />
-            <span className="text-sm font-medium">{universityLabel(match.teamA)}</span>
-          </div>
+          {sides && mode !== "sets" ? (
+            <div className="flex flex-col items-center gap-1.5">
+              <TeamChip team={sides.a} size="lg" />
+              <span className="text-sm font-medium">{universityLabel(sides.a)}</span>
+            </div>
+          ) : (
+            <span />
+          )}
           <div className="flex flex-col items-center gap-2 text-center">
             <p className="m-0 text-xs font-semibold tracking-[0.2em] text-primary uppercase">
               กีฬา
@@ -248,10 +500,14 @@ export function MatchControlPage({ matchId }: { matchId: string }) {
               {stopped ? "หยุดชั่วคราว" : STATUS_LABELS[status]}
             </span>
           </div>
-          <div className="flex flex-col items-center gap-1.5">
-            <TeamChip team={match.teamB} size="lg" />
-            <span className="text-sm font-medium">{universityLabel(match.teamB)}</span>
-          </div>
+          {sides && mode !== "sets" ? (
+            <div className="flex flex-col items-center gap-1.5">
+              <TeamChip team={sides.b} size="lg" />
+              <span className="text-sm font-medium">{universityLabel(sides.b)}</span>
+            </div>
+          ) : (
+            <span />
+          )}
         </div>
 
         {stopped && match.pausedAt && (
@@ -284,11 +540,13 @@ export function MatchControlPage({ matchId }: { matchId: string }) {
           </div>
         )}
 
+        {mode === "points" && sides && (
+          <>
         {/* The scores, as large as the screen allows. */}
         <div className="grid grid-cols-1 items-center gap-6 sm:grid-cols-[1fr_auto_1fr]">
           <ScoreControl
-            match={match}
-            side="A"
+            team={sides.a}
+            score={match.scoreA}
             step={step}
             canScore={canScore}
             busy={update.isPending}
@@ -298,8 +556,8 @@ export function MatchControlPage({ matchId }: { matchId: string }) {
             :
           </span>
           <ScoreControl
-            match={match}
-            side="B"
+            team={sides.b}
+            score={match.scoreB}
             step={step}
             canScore={canScore}
             busy={update.isPending}
@@ -313,11 +571,17 @@ export function MatchControlPage({ matchId }: { matchId: string }) {
             <SegmentedControl label="บวกทีละ" segments={STEPS} value={step} onChange={setStep} />
           </div>
           {status === "scheduled" && (
-            <p className="m-0 text-sm text-muted-foreground">
-              {match.startsAt
-                ? `แมตช์เริ่มเองเวลา ${formatBangkok(match.startsAt, "dateTime")} แล้วจึงบวกคะแนนได้`
-                : "ยังไม่กำหนดเวลาแข่ง กด “แก้ไขรายละเอียด” เพื่อเพิ่ม"}
-            </p>
+            <>
+              <p className="m-0 text-sm text-muted-foreground">
+                {match.startsAt
+                  ? `กำหนดแข่งเวลา ${formatBangkok(match.startsAt, "dateTime")} กด “เริ่มแมตช์” เมื่อเริ่มแข่งจริง แล้วจึงบวกคะแนนได้`
+                  : "ยังไม่กำหนดเวลาแข่ง กด “แก้ไขรายละเอียด” เพื่อเพิ่ม"}
+              </p>
+              <Button size="lg" disabled={update.isPending} onClick={() => save({ status: "live" })}>
+                <Play data-icon="inline-start" />
+                เริ่มแมตช์
+              </Button>
+            </>
           )}
           {live && (
             <div className="flex flex-wrap items-center justify-center gap-2">
@@ -365,6 +629,87 @@ export function MatchControlPage({ matchId }: { matchId: string }) {
           )}
         </div>
 
+          </>
+        )}
+
+        {mode === "sets" && sides && (
+          <>
+            <SetsControl
+              match={match}
+              sides={sides}
+              status={status}
+              step={step}
+              busy={update.isPending}
+              save={save}
+            />
+            <div className="flex flex-col items-center gap-3">
+              <SegmentedControl
+                label={STATUS_CONTROL_LABEL}
+                segments={STATUS_SEGMENTS}
+                value={status}
+                onChange={(next) => next !== status && save({ status: next })}
+              />
+            </div>
+          </>
+        )}
+
+        {mode === "after" && sides && (
+          <div className="flex flex-col items-center gap-4">
+            <SegmentedControl
+              label={STATUS_CONTROL_LABEL}
+              segments={STATUS_SEGMENTS}
+              value={status}
+              onChange={(next) => next !== status && save({ status: next })}
+            />
+            <WinnerControl
+              match={match}
+              sides={sides}
+              status={status}
+              busy={update.isPending}
+              onWinner={(winner) =>
+                // Naming the winner is the last thing a match needs, so it goes back to the list.
+                update.mutate(
+                  { winner, version: match.version },
+                  { onSuccess: () => navigate({ to: "/staff/scores" }) },
+                )
+              }
+            />
+          </div>
+        )}
+
+        {mode === "multi" && (
+          <>
+        {/* Many teams: no live score, so staff set the status by hand and record the places. */}
+        <div className="flex flex-col items-center gap-4">
+          <SegmentedControl
+            label="สถานะแมตช์"
+            segments={STATUS_SEGMENTS}
+            value={status}
+            onChange={(next) => next !== status && save({ status: next })}
+          />
+          {status === "finished" ? (
+            <RankingControl
+              key={match.version}
+              saved={match.ranking}
+              busy={update.isPending}
+              onSave={(ranking) =>
+                // The places are the last thing a match needs, so saving them goes back to the list.
+                update.mutate(
+                  { ranking, version: match.version },
+                  { onSuccess: () => navigate({ to: "/staff/scores" }) },
+                )
+              }
+            />
+          ) : (
+            <p className="m-0 text-sm text-muted-foreground">
+              ผู้ชมเห็นแค่กำหนดการ เลือก “สิ้นสุดการแข่งขัน” เมื่อแข่งเสร็จ แล้วใส่อันดับ 1–3
+            </p>
+          )}
+        </div>
+
+          </>
+        )}
+
         {match.durationMinutes != null ? (
           <MatchTimeline
             size="lg"
@@ -374,11 +719,11 @@ export function MatchControlPage({ matchId }: { matchId: string }) {
             elapsedMinutes={elapsed}
             delayMinutes={delay}
           />
-        ) : (
+        ) : mode === "points" ? (
           <p className="m-0 text-center text-sm text-muted-foreground">
             แมตช์นี้ยังไม่มีเวลาแข่ง กด “แก้ไขรายละเอียด” เพื่อเพิ่ม
           </p>
-        )}
+        ) : null}
       </section>
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
