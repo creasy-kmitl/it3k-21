@@ -1,0 +1,622 @@
+import { beforeEach, describe, expect, test } from "bun:test";
+import {
+  competitionChange,
+  competitionGroup,
+  competitionLineup,
+  competitionMatch,
+  competitionMatchParticipant,
+  competitionTeam,
+  venue,
+} from "@it3k/db/schema/index";
+import { eq } from "drizzle-orm";
+
+import { seedMatch } from "../../competition/testing";
+import { createTestContext, defined, readJson } from "../../testing";
+import { createCompetitionMatchRoutes } from ".";
+
+let t: ReturnType<typeof createTestContext>;
+let app: ReturnType<typeof createCompetitionMatchRoutes>;
+
+beforeEach(async () => {
+  t = createTestContext();
+  app = createCompetitionMatchRoutes(t.deps);
+  await t.seedUser("tech", { department: "Tech/Live" });
+  await t.seedUser("sports-head", { department: "กีฬา", seat: "head", institution: "kmitl" });
+  await t.seedUser("sports-staff", { department: "กีฬา", institution: "kmitl" });
+  await t.seedUser("athlete", { role: "athlete" });
+});
+
+async function send(userId: string, method: string, path: string, json?: unknown) {
+  const res = await app.request(path, t.as(userId, { method, json }));
+  return { res, body: await readJson(res) };
+}
+
+type Side = { id: string; slot: number; teamId: string | null; label: string | null; name: string };
+type Match = {
+  id: string;
+  version: number;
+  status: string;
+  friendly: boolean;
+  subOrder: number | null;
+  coverImageUrl: string | null;
+  participants: Side[];
+  referees: { id: string; name: string; role: string }[];
+  images: { id: string; isCover: boolean; url: string }[];
+  subMatches: Match[];
+};
+
+async function seedTeams(code: string, institutions: string[]) {
+  const divisionId = await t.divisionId(code);
+  const rows = await t.db
+    .insert(competitionTeam)
+    .values(
+      institutions.map((institution) => ({ divisionId, institution: institution as "kmitl" })),
+    )
+    .returning();
+  return { divisionId, teamIds: rows.map((row) => row.id) };
+}
+
+async function seedVenue() {
+  const [row] = await t.db.insert(venue).values({ name: "สนามกลาง" }).returning();
+  return defined(row).id;
+}
+
+const matchBody = (divisionId: string, participants: unknown[], extra: object = {}) => ({
+  divisionId,
+  parentMatchId: null,
+  groupId: null,
+  stageName: "รอบแบ่งกลุ่ม",
+  roundNo: 1,
+  matchNo: 1,
+  startAt: Date.UTC(2026, 11, 1, 2),
+  venueId: null,
+  court: "1",
+  friendly: false,
+  scoringConfig: null,
+  notes: null,
+  participants,
+  ...extra,
+});
+
+const audit = () => t.db.select().from(competitionChange);
+
+describe("reading", () => {
+  test("competition readers list matches with their sides; athletes are refused", async () => {
+    const { match } = await seedMatch(t);
+    const { res, body } = await send("sports-staff", "GET", "/");
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ canManage: false, canScore: true });
+    const items = body.items as Match[];
+    expect(items.map((item) => item.id)).toEqual([match.id]);
+    expect(defined(items[0]).participants.map((p) => p.name)).toEqual(["สจล.", "มจธ."]);
+    expect((await send("athlete", "GET", "/")).res.status).toBe(403);
+  });
+
+  test("filters by division, venue and status", async () => {
+    const { divisionId } = await seedMatch(t);
+    await seedMatch(t, "basketball-3x3-female");
+    expect(
+      ((await send("tech", "GET", `/?divisionId=${divisionId}`)).body.items as unknown[]).length,
+    ).toBe(1);
+    expect(((await send("tech", "GET", "/?status=live")).body.items as unknown[]).length).toBe(0);
+    expect(((await send("tech", "GET", "/?venueId=nope")).body.items as unknown[]).length).toBe(0);
+    expect((await send("tech", "GET", "/?status=bogus")).res.status).toBe(400);
+  });
+
+  test("setup lists a division's teams and says a small division plays friendlies", async () => {
+    const { divisionId } = await seedTeams("football", ["kmitl", "kmutt"]);
+    const { body } = await send("tech", "GET", `/setup/${divisionId}`);
+    expect(body).toMatchObject({ friendlyByDefault: true, nextMatchNo: 1 });
+    expect((body.teams as { name: string }[]).map((team) => team.name)).toEqual(["สจล.", "มจธ."]);
+    expect((await send("tech", "GET", "/setup/nope")).res.status).toBe(404);
+  });
+
+  test("a missing match is 404", async () => {
+    expect((await send("tech", "GET", "/nope")).res.status).toBe(404);
+  });
+});
+
+describe("creating and editing matches", () => {
+  test("managers create a match with a team and a placeholder, audited", async () => {
+    const { divisionId, teamIds } = await seedTeams("football", [
+      "kmitl",
+      "kmutt",
+      "kmutnb-bangkok",
+    ]);
+    const { res, body } = await send(
+      "sports-head",
+      "POST",
+      "/",
+      matchBody(divisionId, [
+        { teamId: teamIds[0], label: null },
+        { teamId: null, label: "ผู้ชนะ M3" },
+      ]),
+    );
+    expect(res.status).toBe(201);
+    const match = body.match as Match;
+    expect(match.participants.map((p) => p.name)).toEqual(["สจล.", "ผู้ชนะ M3"]);
+    expect(match.version).toBe(1);
+    expect(await audit()).toHaveLength(1);
+  });
+
+  test("score keepers may not create; bad teams and venues are refused", async () => {
+    const { divisionId, teamIds } = await seedTeams("football", ["kmitl", "kmutt"]);
+    const other = await seedTeams("basketball-3x3-female", ["kmitl"]);
+    const sides = [
+      { teamId: teamIds[0], label: null },
+      { teamId: teamIds[1], label: null },
+    ];
+    expect((await send("sports-staff", "POST", "/", matchBody(divisionId, sides))).res.status).toBe(
+      403,
+    );
+    const wrong = [{ teamId: other.teamIds[0], label: null }];
+    expect((await send("tech", "POST", "/", matchBody(divisionId, wrong))).res.status).toBe(400);
+    const twice = [sides[0], sides[0]];
+    expect((await send("tech", "POST", "/", matchBody(divisionId, twice))).res.status).toBe(400);
+    const badVenue = matchBody(divisionId, sides, { venueId: "nope" });
+    expect((await send("tech", "POST", "/", badVenue)).res.status).toBe(400);
+    const empty = [{ teamId: null, label: "" }];
+    expect((await send("tech", "POST", "/", matchBody(divisionId, empty))).res.status).toBe(400);
+  });
+
+  test("sub-matches are numbered within their parent", async () => {
+    const { divisionId, match, sides } = await seedMatch(t, "table-tennis-doubles-male");
+    const body = matchBody(
+      divisionId,
+      sides.map((side) => ({ teamId: side.teamId, label: null })),
+      { parentMatchId: match.id },
+    );
+    expect((await send("tech", "POST", "/", body)).body.match).toMatchObject({ subOrder: 1 });
+    expect((await send("tech", "POST", "/", body)).body.match).toMatchObject({ subOrder: 2 });
+    const detail = (await send("tech", "GET", `/${match.id}`)).body.match as Match;
+    expect(detail.subMatches.map((sub) => sub.subOrder)).toEqual([1, 2]);
+    // The list shows only top-level matches.
+    expect(((await send("tech", "GET", "/")).body.items as unknown[]).length).toBe(1);
+  });
+
+  test("an edit keeps sides whose team stays and follows the version read", async () => {
+    const { divisionId, teamIds } = await seedTeams("football", [
+      "kmitl",
+      "kmutt",
+      "kmutnb-bangkok",
+    ]);
+    const created = (
+      await send(
+        "tech",
+        "POST",
+        "/",
+        matchBody(divisionId, [
+          { teamId: teamIds[0], label: null },
+          { teamId: teamIds[1], label: null },
+        ]),
+      )
+    ).body.match as Match;
+    const [home, away] = created.participants;
+    const edit = matchBody(
+      divisionId,
+      [
+        { teamId: teamIds[0], label: null },
+        { teamId: teamIds[2], label: null },
+      ],
+      { court: "2", version: created.version },
+    );
+    const saved = await send("tech", "PUT", `/${created.id}`, edit);
+    expect(saved.res.status).toBe(200);
+    const match = saved.body.match as Match;
+    expect(match.version).toBe(2);
+    expect(match.participants[0]?.id).toBe(defined(home).id);
+    expect(match.participants[1]?.id).not.toBe(defined(away).id);
+    expect(match.participants[1]?.teamId).toBe(teamIds[2] ?? "");
+
+    // The same body again is based on version 1: stale.
+    expect((await send("tech", "PUT", `/${created.id}`, edit)).res.status).toBe(409);
+  });
+
+  test("a match that has started keeps its sides and cannot be deleted", async () => {
+    const { divisionId, match, sides } = await seedMatch(t);
+    const [other] = await t.db
+      .insert(competitionTeam)
+      .values({ divisionId, institution: "kmutnb-bangkok" })
+      .returning();
+    await t.db
+      .update(competitionMatch)
+      .set({ status: "live" })
+      .where(eq(competitionMatch.id, match.id));
+    const edit = matchBody(
+      divisionId,
+      [
+        { teamId: sides[0]?.teamId, label: null },
+        { teamId: defined(other).id, label: null },
+      ],
+      { version: 1 },
+    );
+    expect((await send("tech", "PUT", `/${match.id}`, edit)).res.status).toBe(400);
+    expect((await send("tech", "DELETE", `/${match.id}?version=1`)).res.status).toBe(400);
+  });
+
+  test("deleting follows the version and takes the sides with it", async () => {
+    const { match } = await seedMatch(t);
+    expect((await send("tech", "DELETE", `/${match.id}?version=5`)).res.status).toBe(409);
+    expect((await send("tech", "DELETE", `/${match.id}?version=1`)).res.status).toBe(200);
+    expect(await t.db.select().from(competitionMatchParticipant)).toHaveLength(0);
+    expect((await audit()).map((row) => row.action)).toEqual(["delete"]);
+  });
+});
+
+describe("status and placeholders", () => {
+  test("managers set a manual status, one version at a time", async () => {
+    const { match } = await seedMatch(t);
+    const first = await send("tech", "POST", `/${match.id}/status`, {
+      status: "postponed",
+      version: 1,
+    });
+    expect(first.res.status).toBe(200);
+    expect(first.body.match).toMatchObject({ status: "postponed", version: 2 });
+    const stale = await send("tech", "POST", `/${match.id}/status`, {
+      status: "cancelled",
+      version: 1,
+    });
+    expect(stale.res.status).toBe(409);
+    const live = await send("tech", "POST", `/${match.id}/status`, { status: "live", version: 2 });
+    expect(live.res.status).toBe(400);
+    expect((await audit()).map((row) => row.action)).toEqual(["status"]);
+  });
+
+  test("a finished match keeps its status", async () => {
+    const { match } = await seedMatch(t);
+    await t.db
+      .update(competitionMatch)
+      .set({ status: "finished" })
+      .where(eq(competitionMatch.id, match.id));
+    const { res } = await send("tech", "POST", `/${match.id}/status`, {
+      status: "scheduled",
+      version: 1,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("a placeholder side gets its real team; a side with a team does not", async () => {
+    const { divisionId, teamIds } = await seedTeams("football", ["kmitl", "kmutt"]);
+    const created = (
+      await send(
+        "tech",
+        "POST",
+        "/",
+        matchBody(divisionId, [
+          { teamId: teamIds[0], label: null },
+          { teamId: null, label: "ผู้ชนะ M3" },
+        ]),
+      )
+    ).body.match as Match;
+    const [home, away] = created.participants.map((p) => p.id);
+    const taken = await send("tech", "POST", `/${created.id}/participants/${home}/team`, {
+      teamId: teamIds[1],
+      version: 1,
+    });
+    expect(taken.res.status).toBe(400);
+    const same = await send("tech", "POST", `/${created.id}/participants/${away}/team`, {
+      teamId: teamIds[0],
+      version: 1,
+    });
+    expect(same.res.status).toBe(400);
+    const { res, body } = await send("tech", "POST", `/${created.id}/participants/${away}/team`, {
+      teamId: teamIds[1],
+      version: 1,
+    });
+    expect(res.status).toBe(200);
+    const match = body.match as Match;
+    expect(match.participants[1]).toMatchObject({
+      teamId: teamIds[1],
+      label: "ผู้ชนะ M3",
+      name: "มจธ.",
+    });
+    expect(match.version).toBe(2);
+  });
+});
+
+describe("referees and images", () => {
+  test("managers add, edit and remove referees", async () => {
+    const { match } = await seedMatch(t);
+    const added = await send("tech", "POST", `/${match.id}/referees`, {
+      name: "สมศักดิ์",
+      role: "ผู้ตัดสิน",
+      sortOrder: 0,
+    });
+    expect(added.res.status).toBe(201);
+    const referee = defined((added.body.match as Match).referees[0]);
+    const edited = await send("tech", "PUT", `/${match.id}/referees/${referee.id}`, {
+      name: "สมศักดิ์",
+      role: "ผู้กำกับเส้น",
+      sortOrder: 1,
+    });
+    expect((edited.body.match as Match).referees[0]?.role).toBe("ผู้กำกับเส้น");
+    const removed = await send("tech", "DELETE", `/${match.id}/referees/${referee.id}`);
+    expect((removed.body.match as Match).referees).toHaveLength(0);
+    expect((await send("tech", "DELETE", `/${match.id}/referees/${referee.id}`)).res.status).toBe(
+      404,
+    );
+    expect(
+      (
+        await send("sports-staff", "POST", `/${match.id}/referees`, {
+          name: "x",
+          role: "y",
+          sortOrder: 0,
+        })
+      ).res.status,
+    ).toBe(403);
+  });
+
+  test("one image is the cover, copied onto the match", async () => {
+    const { match } = await seedMatch(t);
+    const image = (url: string, isCover: boolean) => ({
+      url,
+      caption: null,
+      isCover,
+      sortOrder: 0,
+    });
+    const first = await send(
+      "tech",
+      "POST",
+      `/${match.id}/images`,
+      image("https://example.com/a.jpg", true),
+    );
+    expect(first.res.status).toBe(201);
+    const second = await send(
+      "tech",
+      "POST",
+      `/${match.id}/images`,
+      image("https://example.com/b.jpg", true),
+    );
+    const after = second.body.match as Match;
+    expect(after.coverImageUrl).toBe("https://example.com/b.jpg");
+    expect(after.images.filter((i) => i.isCover).map((i) => i.url)).toEqual([
+      "https://example.com/b.jpg",
+    ]);
+
+    const cover = defined(after.images.find((i) => i.isCover));
+    const unset = await send(
+      "tech",
+      "PUT",
+      `/${match.id}/images/${cover.id}`,
+      image(cover.url, false),
+    );
+    expect((unset.body.match as Match).coverImageUrl).toBeNull();
+
+    const other = defined(after.images.find((i) => !i.isCover));
+    await send("tech", "PUT", `/${match.id}/images/${other.id}`, image(other.url, true));
+    const removed = await send("tech", "DELETE", `/${match.id}/images/${other.id}`);
+    expect((removed.body.match as Match).coverImageUrl).toBeNull();
+    expect((removed.body.match as Match).images).toHaveLength(1);
+    const bad = await send(
+      "tech",
+      "POST",
+      `/${match.id}/images`,
+      image("javascript:alert(1)", false),
+    );
+    expect(bad.res.status).toBe(400);
+  });
+});
+
+describe("groups", () => {
+  test("managers create, edit and delete groups; names and teams stay unique per stage", async () => {
+    const { divisionId, teamIds } = await seedTeams("football", [
+      "kmitl",
+      "kmutt",
+      "kmutnb-bangkok",
+    ]);
+    const group = (name: string, ids: (string | undefined)[], extra: object = {}) => ({
+      divisionId,
+      stageName: "รอบแบ่งกลุ่ม",
+      name,
+      teamIds: ids,
+      sortOrder: 0,
+      ...extra,
+    });
+    const created = await send("tech", "POST", "/groups", group("A", [teamIds[0], teamIds[1]]));
+    expect(created.res.status).toBe(201);
+    const id = created.body.id as string;
+    expect((await send("tech", "POST", "/groups", group("A", [teamIds[2]]))).res.status).toBe(400);
+    expect((await send("tech", "POST", "/groups", group("B", [teamIds[1]]))).res.status).toBe(400);
+
+    const edited = await send(
+      "tech",
+      "PUT",
+      `/groups/${id}`,
+      group("A", [teamIds[2]], { version: 1 }),
+    );
+    expect(edited.res.status).toBe(200);
+    expect(edited.body.items).toMatchObject([{ id, version: 2, teamIds: [teamIds[2]] }]);
+    expect(
+      (await send("tech", "PUT", `/groups/${id}`, group("A", [], { version: 1 }))).res.status,
+    ).toBe(409);
+
+    const listed = await send("sports-staff", "GET", `/groups?divisionId=${divisionId}`);
+    expect((listed.body.items as unknown[]).length).toBe(1);
+    expect((await send("tech", "DELETE", `/groups/${id}?version=2`)).res.status).toBe(200);
+    expect(await t.db.select().from(competitionGroup)).toHaveLength(0);
+  });
+});
+
+describe("placements", () => {
+  test("managers set a division's final places as a whole list", async () => {
+    const { divisionId, teamIds } = await seedTeams("football", [
+      "kmitl",
+      "kmutt",
+      "kmutnb-bangkok",
+    ]);
+    const places = teamIds.map((teamId, index) => ({ teamId, place: index + 1 }));
+    const saved = await send("tech", "PUT", "/placements", { divisionId, places });
+    expect(saved.res.status).toBe(200);
+    expect(saved.body.items).toHaveLength(3);
+    const again = await send("tech", "PUT", "/placements", {
+      divisionId,
+      places: places.slice(0, 1),
+    });
+    expect(again.body.items).toEqual([{ teamId: teamIds[0], place: 1 }]);
+    expect(
+      (await send("sports-staff", "GET", `/placements/${divisionId}`)).body.items,
+    ).toHaveLength(1);
+    const twice = [places[0], places[0]];
+    expect(
+      (await send("tech", "PUT", "/placements", { divisionId, places: twice })).res.status,
+    ).toBe(400);
+  });
+});
+
+describe("round-robin schedule", () => {
+  async function scheduleBody(legs = 1) {
+    const { divisionId, teamIds } = await seedTeams("football", [
+      "kmitl",
+      "kmutt",
+      "kmutnb-bangkok",
+      "kmutnb-prachinburi",
+    ]);
+    const venueId = await seedVenue();
+    return {
+      teamIds,
+      body: {
+        divisionId,
+        stageName: "รอบแบ่งกลุ่ม",
+        groups: [{ name: "A", teamIds }],
+        firstStartAt: Date.UTC(2026, 11, 1, 2),
+        slotMinutes: 60,
+        courts: [
+          { venueId, court: "1" },
+          { venueId, court: "2" },
+        ],
+        legs,
+      },
+    };
+  }
+
+  test("preview plans the matches and writes nothing", async () => {
+    const { body } = await scheduleBody();
+    const { res, body: out } = await send("tech", "POST", "/schedule/preview", body);
+    expect(res.status).toBe(200);
+    const plan = out.plan as {
+      matches: { homeName: string; venueName: string; slot: number }[];
+      slots: number;
+      friendly: boolean;
+    };
+    expect(plan.matches).toHaveLength(6);
+    expect(plan.slots).toBe(3);
+    expect(plan.friendly).toBe(false);
+    expect(plan.matches[0]?.venueName).toBe("สนามกลาง");
+    expect(await t.db.select().from(competitionMatch)).toHaveLength(0);
+    expect(await t.db.select().from(competitionGroup)).toHaveLength(0);
+    expect((await send("sports-staff", "POST", "/schedule/preview", body)).res.status).toBe(403);
+  });
+
+  test("commit writes the groups and matches in one go, and refuses the same groups twice", async () => {
+    const { body } = await scheduleBody(2);
+    const { res, body: out } = await send("tech", "POST", "/schedule/commit", body);
+    expect(res.status).toBe(201);
+    expect((out.matchIds as string[]).length).toBe(12);
+    const matches = await t.db.select().from(competitionMatch);
+    expect(matches).toHaveLength(12);
+    expect(matches.every((m) => m.groupId === (out.groupIds as string[])[0])).toBe(true);
+    expect(await t.db.select().from(competitionMatchParticipant)).toHaveLength(24);
+    expect((await audit()).map((row) => row.action)).toEqual(["schedule"]);
+    const listed = (await send("tech", "GET", "/")).body.items as Match[];
+    expect(listed).toHaveLength(12);
+
+    const again = await send("tech", "POST", "/schedule/commit", body);
+    expect(again.res.status).toBe(400);
+  });
+
+  test("match numbers carry on from the division's last match", async () => {
+    const { body } = await scheduleBody();
+    await t.db
+      .insert(competitionMatch)
+      .values({ divisionId: body.divisionId, stageName: "x", matchNo: 40 });
+    const { body: out } = await send("tech", "POST", "/schedule/preview", body);
+    expect((out.plan as { matches: { matchNo: number }[] }).matches[0]?.matchNo).toBe(41);
+  });
+
+  test("refuses teams from another division and duplicate group names", async () => {
+    const { body, teamIds } = await scheduleBody();
+    const other = await seedTeams("basketball-3x3-female", ["kmitl"]);
+    const foreign = { ...body, groups: [{ name: "A", teamIds: [teamIds[0], other.teamIds[0]] }] };
+    expect((await send("tech", "POST", "/schedule/preview", foreign)).res.status).toBe(400);
+    const twice = {
+      ...body,
+      groups: [
+        { name: "A", teamIds: teamIds.slice(0, 2) },
+        { name: "A", teamIds: teamIds.slice(2) },
+      ],
+    };
+    expect((await send("tech", "POST", "/schedule/preview", twice)).res.status).toBe(400);
+  });
+
+  test("a team removed between the preview checks and the write leaves nothing behind", async () => {
+    const { body, teamIds } = await scheduleBody();
+    t.hooks.beforeBatch = () => {
+      t.sqlite.run("delete from competition_team where id = ?", [defined(teamIds[3])]);
+    };
+    const { res } = await send("tech", "POST", "/schedule/commit", body);
+    expect(res.status).toBe(409);
+    expect(await t.db.select().from(competitionMatch)).toHaveLength(0);
+    expect(await t.db.select().from(competitionGroup)).toHaveLength(0);
+    expect(await audit()).toHaveLength(0);
+  });
+});
+
+describe("races", () => {
+  test("a status change loses to an edit that landed in between", async () => {
+    const { match } = await seedMatch(t);
+    t.hooks.beforeBatch = () => {
+      t.sqlite.run("update competition_match set version = version + 1 where id = ?", [match.id]);
+    };
+    const { res } = await send("tech", "POST", `/${match.id}/status`, {
+      status: "checkin",
+      version: 1,
+    });
+    expect(res.status).toBe(409);
+    const [row] = await t.db
+      .select()
+      .from(competitionMatch)
+      .where(eq(competitionMatch.id, match.id));
+    expect(defined(row).status).toBe("scheduled");
+  });
+
+  test("a manager who loses their seat mid-request writes nothing", async () => {
+    const { match } = await seedMatch(t);
+    t.hooks.beforeBatch = () => {
+      t.sqlite.run("delete from leadership where user_id = 'sports-head'");
+    };
+    const { res } = await send("sports-head", "POST", `/${match.id}/referees`, {
+      name: "สมศักดิ์",
+      role: "ผู้ตัดสิน",
+      sortOrder: 0,
+    });
+    expect(res.status).toBe(409);
+    expect(await audit()).toHaveLength(0);
+  });
+
+  test("changing a side's team drops that side's lineup with it", async () => {
+    const { divisionId, match, sides } = await seedMatch(t);
+    const [other] = await t.db
+      .insert(competitionTeam)
+      .values({ divisionId, institution: "kmutnb-bangkok" })
+      .returning();
+    // Fake a lineup row on the away side by turning foreign keys off for the insert.
+    t.sqlite.run("pragma foreign_keys = off");
+    await t.db.insert(competitionLineup).values({
+      participantId: defined(sides[1]).id,
+      matchId: match.id,
+      registrationId: "r-1",
+      role: "starter",
+    });
+    t.sqlite.run("pragma foreign_keys = on");
+    const edit = matchBody(
+      divisionId,
+      [
+        { teamId: sides[0]?.teamId, label: null },
+        { teamId: defined(other).id, label: null },
+      ],
+      { version: 1 },
+    );
+    expect((await send("tech", "PUT", `/${match.id}`, edit)).res.status).toBe(200);
+    expect(await t.db.select().from(competitionLineup)).toHaveLength(0);
+  });
+});
