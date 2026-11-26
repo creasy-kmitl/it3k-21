@@ -268,7 +268,8 @@ export function AthletesPage({ filters: control }: { filters?: FilterControl<Ath
   const approvedToast = (before: AthleteItem[], after: AthleteItem[]) =>
     toast.success(
       after.length === 1 ? `อนุมัติ ${after[0]?.athlete.name} แล้ว` : `อนุมัติ ${after.length} คนแล้ว`,
-      { action: { label: "เลิกทำ", onClick: () => void undo(before, after) } },
+      // Long enough to notice a wrong click and take it back.
+      { duration: 10_000, action: { label: "เลิกทำ", onClick: () => void undo(before, after) } },
     );
 
   const review = useMutation({
