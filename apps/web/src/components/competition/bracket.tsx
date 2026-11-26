@@ -178,7 +178,9 @@ export function BracketView({
             <SportMark icon={bracket.sportIcon} seed={bracket.sportId} />
             {bracket.sportName} · {bracket.divisionName}
           </h2>
-          <div className="overflow-x-auto rounded-2xl border bg-muted/30 p-4">
+          {/* inline-size containment keeps a wide bracket scrolling here instead of
+              widening the page, whose flex layout grows to fit its content. */}
+          <div className="overflow-x-auto rounded-2xl border bg-muted/30 p-4 [contain:inline-size]">
             <div className="flex w-max flex-col gap-6">
               {bracket.roots.map((root) => (
                 <Tree
