@@ -590,10 +590,11 @@ const bd = {
     athletes("badminton-singles-female", "kmitl", 2, "female").slice(0, 1),
     1,
   ),
+  // มจธ. has a second approved athlete in no team, for trying จัดทีมอัตโนมัติ.
   kmutt: team(
     "badminton-singles-female",
     "kmutt",
-    athletes("badminton-singles-female", "kmutt", 1, "female"),
+    athletes("badminton-singles-female", "kmutt", 2, "female").slice(0, 1),
     1,
   ),
   "kmutnb-bangkok": team(
@@ -761,6 +762,136 @@ match({
   court: "ออนไลน์ (Discord)",
 });
 
+// 8) บาส 5x5 ชาย: พร้อมใช้ทันที ไม่ต้องสร้างทีมหรือตารางเอง
+//    BK1 อีก 90 นาที (kiosk ยังไม่เปิด, ใส่คะแนนได้) · BK2 อีก 5 นาที รายงานตัวปิดแล้ว
+//    มจพ. มาไม่ครบ (ปรับแพ้ได้ทันที) · BK3 พรุ่งนี้ (ลองชนะผ่าน)
+//    ทีม มจพ. มีนักกีฬา 1 คนที่ถูกปฏิเสธการสมัครแล้ว (เห็นใน “สิ่งที่ยังไม่ครบ”)
+const bk = Object.fromEntries(
+  INSTITUTIONS.map((inst) => [
+    inst,
+    team("basketball-5x5-male", inst, athletes("basketball-5x5-male", inst, 8, "male"), 1, 1),
+  ]),
+) as Record<Inst, TeamRef>;
+const rejected = registrations.find(
+  (r) => r.id === "mock-reg-basketball-5x5-male-kmutnb-bangkok-08",
+);
+if (rejected) rejected.status = "rejected";
+groups.push({
+  id: "mock-group-basketball-a",
+  divisionId: division("basketball-5x5-male").id,
+  stageName: "รอบแบ่งกลุ่ม",
+  name: "A",
+  sortOrder: 0,
+});
+INSTITUTIONS.forEach((inst, i) =>
+  groupTeams.push({ groupId: "mock-group-basketball-a", teamId: bk[inst].id, seed: i + 1 }),
+);
+const bkBase = {
+  code: "basketball-5x5-male",
+  stageName: "รอบแบ่งกลุ่ม",
+  venueId: "mock-venue-gym",
+  court: "คอร์ทบาส",
+  groupId: "mock-group-basketball-a",
+};
+/** Five starters and three subs a side. */
+function lineup(matchId: string, participantIds: string[], sideTeams: TeamRef[]) {
+  sideTeams.forEach((t, i) =>
+    t.members.forEach((m, n) =>
+      lineups.push({
+        participantId: participantIds[i] ?? "",
+        matchId,
+        registrationId: m.registrationId,
+        role: n < 5 ? "starter" : "sub",
+      }),
+    ),
+  );
+}
+const bk1 = match({
+  ...bkBase,
+  id: "mock-match-bk-1",
+  teams: [bk.kmitl, bk.kmutt],
+  roundNo: 1,
+  matchNo: 1,
+  startAt: inMinutes(90),
+  status: "scheduled",
+});
+lineup("mock-match-bk-1", bk1, [bk.kmitl, bk.kmutt]);
+const bk2 = match({
+  ...bkBase,
+  id: "mock-match-bk-2",
+  teams: [bk.kmutt, bk["kmutnb-bangkok"]],
+  roundNo: 2,
+  matchNo: 2,
+  startAt: inMinutes(5),
+  status: "checkin",
+});
+lineup("mock-match-bk-2", bk2, [bk.kmutt, bk["kmutnb-bangkok"]]);
+// มจธ. checked in 6 (needs 5), มจพ. only 2.
+const bk2Checkins: [TeamRef, number, number][] = [
+  [bk.kmutt, 0, 6],
+  [bk["kmutnb-bangkok"], 1, 2],
+];
+bk2Checkins.forEach(([t, side, n]) =>
+  t.members.slice(0, n).forEach((m, k) =>
+    checkins.push({
+      id: `mock-checkin-bk2-${side}-${k}`,
+      matchId: "mock-match-bk-2",
+      participantId: bk2[side] ?? "",
+      userId: m.userId,
+      method: "scan",
+      checkedInBy: "mock-reg-staff",
+      createdAt: inMinutes(-25 + k),
+    }),
+  ),
+);
+match({
+  ...bkBase,
+  id: "mock-match-bk-3",
+  teams: [bk.kmitl, bk["kmutnb-bangkok"]],
+  roundNo: 3,
+  matchNo: 3,
+  startAt: at(1, "13:00"),
+  status: "scheduled",
+});
+
+// 9) แมตช์ที่ยังไม่แข่ง ไว้ลอง engine คะแนนแต่ละแบบ
+match({
+  id: "mock-match-pt-2",
+  code: "petanque-mixed",
+  teams: [pt["kmutnb-bangkok"], pt.kmutt],
+  stageName: "รอบแรก",
+  matchNo: 2,
+  startAt: inMinutes(60),
+  venueId: "mock-venue-field",
+  court: "ลานเปตอง",
+  status: "scheduled",
+  friendly: true,
+});
+match({
+  id: "mock-match-tw-4",
+  code: "folk-tug-of-war",
+  teams: [tw.kmitl, tw.kmutt],
+  stageName: "นัดอุ่นเครื่อง",
+  matchNo: 4,
+  startAt: inMinutes(120),
+  venueId: "mock-venue-field",
+  court: "ลานชักเย่อ",
+  status: "scheduled",
+  friendly: true,
+});
+match({
+  id: "mock-match-ath-2",
+  code: "athletics-100m-male",
+  teams: ath,
+  stageName: "รอบอุ่นเครื่อง",
+  matchNo: 2,
+  startAt: inMinutes(45),
+  venueId: "mock-venue-track",
+  court: "ลู่ 1-3",
+  status: "scheduled",
+  friendly: true,
+});
+
 // ── Write ──────────────────────────────────────────────────────────────────
 const created = new Date(NOW);
 db.transaction((tx) => {
@@ -890,7 +1021,7 @@ async function signed(token: string, secret: string) {
 let sessionNote = "";
 try {
   const secret = readAuthSecret();
-  const out: Record<string, { note: string; cookie: string }> = {};
+  const out: Record<string, { note: string; cookie: string; paste: string }> = {};
   for (const p of PERSONAS) {
     const token = crypto.randomUUID().replaceAll("-", "");
     db.insert(s.session)
@@ -902,7 +1033,10 @@ try {
         userAgent: "mock-seed",
       })
       .run();
-    out[p.id] = { note: p.note, cookie: await signed(token, secret) };
+    const cookie = await signed(token, secret);
+    // Ready to paste into the browser console on localhost:3001.
+    const paste = `document.cookie = "better-auth.session_token=${cookie}; path=/"; location.href = "/staff/dashboard";`;
+    out[p.id] = { note: p.note, cookie, paste };
   }
   const target = resolve(dirname(file), "../../mock-sessions.json");
   mkdirSync(dirname(target), { recursive: true });
