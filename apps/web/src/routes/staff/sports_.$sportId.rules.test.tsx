@@ -116,6 +116,7 @@ describe("/staff/sports/$sportId/rules", () => {
     const editor = await view.findByRole("textbox", { name: "กติกา" });
     await waitFor(() => expect(editor.querySelector("h1")?.textContent).toBe("กีฬาแบดมินตัน"));
     expect(view.getByRole("toolbar", { name: "จัดรูปแบบ" })).toBeTruthy();
+    expect(await view.findByRole("button", { name: "ตัวหนา" })).toBeTruthy();
     expect((view.getByRole("button", { name: "บันทึก" }) as HTMLButtonElement).disabled).toBe(true);
     expect(view.queryByText("ยังไม่ได้บันทึก")).toBeNull();
   });

@@ -1,7 +1,7 @@
 import { cn } from "@it3k/ui/lib/utils";
 import { Markdown } from "@tiptap/markdown";
 import { Placeholder } from "@tiptap/extensions";
-import { type AnyExtension, EditorContent, useEditor, useEditorState } from "@tiptap/react";
+import { type AnyExtension, type Editor, EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
   Bold,
@@ -53,6 +53,24 @@ export function rulesExtensions(placeholder?: string): AnyExtension[] {
  */
 export function tidyMarkdown(markdown: string) {
   return markdown.replace(/&amp;/g, "&").trim();
+}
+
+function toolbarState(editor: Editor) {
+  return {
+    paragraph: editor.isActive("paragraph"),
+    h1: editor.isActive("heading", { level: 1 }),
+    h2: editor.isActive("heading", { level: 2 }),
+    h3: editor.isActive("heading", { level: 3 }),
+    bold: editor.isActive("bold"),
+    italic: editor.isActive("italic"),
+    strike: editor.isActive("strike"),
+    bullet: editor.isActive("bulletList"),
+    ordered: editor.isActive("orderedList"),
+    quote: editor.isActive("blockquote"),
+    link: editor.isActive("link"),
+    canUndo: editor.can().undo(),
+    canRedo: editor.can().redo(),
+  };
 }
 
 /**
@@ -127,27 +145,13 @@ export function RulesRichEditor({
     editor.commands.setContent(value, { contentType: "markdown", emitUpdate: false });
   }, [editor, value]);
 
-  const state = useEditorState({
+  const watched = useEditorState({
     editor,
-    selector: ({ editor: current }) =>
-      current
-        ? {
-            paragraph: current.isActive("paragraph"),
-            h1: current.isActive("heading", { level: 1 }),
-            h2: current.isActive("heading", { level: 2 }),
-            h3: current.isActive("heading", { level: 3 }),
-            bold: current.isActive("bold"),
-            italic: current.isActive("italic"),
-            strike: current.isActive("strike"),
-            bullet: current.isActive("bulletList"),
-            ordered: current.isActive("orderedList"),
-            quote: current.isActive("blockquote"),
-            link: current.isActive("link"),
-            canUndo: current.can().undo(),
-            canRedo: current.can().redo(),
-          }
-        : null,
+    selector: ({ editor: current }) => (current ? toolbarState(current) : null),
   });
+  // useEditorState only sees the new editor after its first transaction,
+  // which an untouched editor never has, so read it directly until then.
+  const state = watched ?? (editor ? toolbarState(editor) : null);
 
   return (
     <div
