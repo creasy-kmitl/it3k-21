@@ -448,18 +448,43 @@ db.transaction((tx) => {
   const badminton = division("badminton-singles-female").id;
   const team = (institution: "kmitl" | "kmutt" | "kmutnb-bangkok", seq: number) => {
     const id = `demo-team-badminton-${institution}-${seq}`;
-    tx.insert(s.competitionTeam).values({ id, divisionId: badminton, institution, seq }).run();
+    tx.insert(s.competitionTeam)
+      .values({ id, divisionId: badminton, institution, seq })
+      .run();
     return id;
   };
   const kmitl1 = team("kmitl", 1);
   const kmitl2 = team("kmitl", 2);
   const kmutt1 = team("kmutt", 1);
   const kmutnb1 = team("kmutnb-bangkok", 1);
-  const match = (id: string, matchNo: number, stageName: string, startAt: Date, extra: Partial<typeof s.competitionMatch.$inferInsert> = {}) =>
-    tx.insert(s.competitionMatch)
-      .values({ id, divisionId: badminton, stageName, matchNo, roundNo: matchNo > 2 ? 2 : 1, startAt, venueId: "demo-venue-gym", court: `คอร์ท ${((matchNo - 1) % 2) + 1}`, createdBy: techHead.id, ...extra })
+  const match = (
+    id: string,
+    matchNo: number,
+    stageName: string,
+    startAt: Date,
+    extra: Partial<typeof s.competitionMatch.$inferInsert> = {},
+  ) =>
+    tx
+      .insert(s.competitionMatch)
+      .values({
+        id,
+        divisionId: badminton,
+        stageName,
+        matchNo,
+        roundNo: matchNo > 2 ? 2 : 1,
+        startAt,
+        venueId: "demo-venue-gym",
+        court: `คอร์ท ${((matchNo - 1) % 2) + 1}`,
+        createdBy: techHead.id,
+        ...extra,
+      })
       .run();
-  match("demo-match-sf1", 1, "รอบรองชนะเลิศ", at(-1, "10:00"), { status: "finished", outcome: "played", scoreSeq: 0, startedAt: at(-1, "10:05"), finishedAt: at(-1, "10:50") });
+  match("demo-match-sf1", 1, "รอบรองชนะเลิศ", at(-1, "10:00"), {
+    status: "finished",
+    outcome: "played",
+    startedAt: at(-1, "10:05"),
+    finishedAt: at(-1, "10:50"),
+  });
   match("demo-match-sf2", 2, "รอบรองชนะเลิศ", at(1, "10:00"));
   match("demo-match-final", 3, "ชิงชนะเลิศ", at(2, "14:00"));
   match("demo-match-third", 4, "ชิงอันดับ 3", at(2, "13:00"));
