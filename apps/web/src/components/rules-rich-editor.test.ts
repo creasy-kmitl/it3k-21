@@ -9,13 +9,18 @@ const RULES_DIR = join(import.meta.dir, "../../../../packages/db/sport-rules");
 
 const roundTrip = (markdown: string) =>
   tidyMarkdown(
-    new Editor({ extensions: rulesExtensions(), content: markdown, contentType: "markdown" })
-      .getMarkdown(),
+    new Editor({
+      extensions: rulesExtensions(),
+      content: markdown,
+      contentType: "markdown",
+    }).getMarkdown(),
   );
 
 describe("rules as formatted text", () => {
   test("every seeded rule book comes back from the editor exactly as written", () => {
-    const files = readdirSync(RULES_DIR).filter((name) => name.endsWith(".md") && name !== "README.md");
+    const files = readdirSync(RULES_DIR).filter(
+      (name) => name.endsWith(".md") && name !== "README.md",
+    );
     expect(files.length).toBeGreaterThan(10);
     for (const name of files) {
       const markdown = readFileSync(join(RULES_DIR, name), "utf8").trim();

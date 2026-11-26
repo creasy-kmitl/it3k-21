@@ -193,7 +193,11 @@ export function planDivisionTeams<A extends { institution: Institution }>(
   }[],
   approved: readonly A[],
 ) {
-  const create: { institution: Institution; team: { id: string; version: number } | null; athletes: A[] }[] = [];
+  const create: {
+    institution: Institution;
+    team: { id: string; version: number } | null;
+    athletes: A[];
+  }[] = [];
   const skipped: { institution: Institution; reason: AutoTeamsSkip }[] = [];
   for (const institution of INSTITUTION_IDS) {
     const athletes = approved.filter((athlete) => athlete.institution === institution);

@@ -48,7 +48,7 @@ import type { MatchSetup, SchedulePlan } from "@/lib/competition-matches";
 import { toastError } from "@/lib/errors";
 
 export const Route = createFileRoute("/staff/matches_/generate")({
-  head: () => ({ meta: [{ title: "สร้างตารางแข่ง · IT3Kings" }] }),
+  head: () => ({ meta: [{ title: "จัดตารางแข่ง · IT3Kings" }] }),
   component: RouteComponent,
 });
 
@@ -113,8 +113,8 @@ export function GeneratePage({
       </Button>
       <PageHeader
         icon={CalendarRange}
-        title="สร้างตารางแข่ง"
-        description="สร้างเองทีละแมตช์ หรือให้ระบบจัดพบกันหมด แล้วดูตัวอย่างก่อนยืนยัน"
+        title="จัดตารางแข่ง"
+        description="เลือกประเภท แบ่งสาย ตั้งเวลาและสนาม ดูตัวอย่างแล้วยืนยัน ระบบสร้างแมตช์ให้ทุกคู่ (หรือเลือก “สร้างเอง” เพื่อเพิ่มทีละนัด)"
       />
 
       <SegmentedControl<Mode>

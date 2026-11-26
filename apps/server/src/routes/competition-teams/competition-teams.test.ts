@@ -400,9 +400,9 @@ describe("auto for every division", () => {
     }[];
   };
   const teamsOf = (code: string) =>
-    t.divisionId(code).then((id) =>
-      t.db.select().from(competitionTeam).where(eq(competitionTeam.divisionId, id)),
-    );
+    t
+      .divisionId(code)
+      .then((id) => t.db.select().from(competitionTeam).where(eq(competitionTeam.divisionId, id)));
 
   test("a dry run reports the plan without writing, and leaves badminton out", async () => {
     await register("a", "football");
@@ -412,9 +412,9 @@ describe("auto for every division", () => {
     expect(res.status).toBe(200);
     const plan = body as Plan;
     expect(plan.applied).toBe(false);
-    expect(plan.divisions.map((division) => division.create.map((entry) => entry.institution))).toEqual([
-      ["kmitl", "kmutt"],
-    ]);
+    expect(
+      plan.divisions.map((division) => division.create.map((entry) => entry.institution)),
+    ).toEqual([["kmitl", "kmutt"]]);
     expect(plan.skippedDivisions.some((name) => name.includes("แบดมินตัน"))).toBe(true);
     expect(await t.db.select().from(competitionTeam)).toHaveLength(0);
   });
@@ -467,7 +467,9 @@ describe("auto for every division", () => {
   });
 
   test("only team managers may run it", async () => {
-    expect((await send("sports-staff", "POST", "/auto-all", { dryRun: true })).res.status).toBe(403);
+    expect((await send("sports-staff", "POST", "/auto-all", { dryRun: true })).res.status).toBe(
+      403,
+    );
   });
 });
 

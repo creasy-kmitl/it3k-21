@@ -170,8 +170,7 @@ export function LinkButton({ editor, active }: { editor: Editor; active: boolean
   );
 }
 
-const EMAIL_HINT =
-  "วางหรือลากรูปมาใส่ได้เลย รูปจะเก็บไว้ในไฟล์ของคุณ ถ้าลบไฟล์ทีหลัง รูปในอีเมลที่ส่งไปแล้วจะหายด้วย";
+const EMAIL_HINT = "วางหรือลากรูปมาใส่ได้เลย รูปจะเก็บไว้ในไฟล์ของคุณ ถ้าลบไฟล์ทีหลัง รูปในอีเมลที่ส่งไปแล้วจะหายด้วย";
 
 /**
  * A rich-text body: a staff email's, or an event page's. It produces Tiptap

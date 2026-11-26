@@ -8,12 +8,7 @@ import type {
   CompetitionDivisionList,
   CompetitionDivisionsApi,
 } from "@/lib/competition-divisions";
-import type {
-  AutoTeamsPlan,
-  CompetitionTeamsApi,
-  Team,
-  TeamList,
-} from "@/lib/competition-teams";
+import type { AutoTeamsPlan, CompetitionTeamsApi, Team, TeamList } from "@/lib/competition-teams";
 import { fakeApis, loudFake } from "@/test/query";
 import { renderAtRoot } from "@/test/router";
 

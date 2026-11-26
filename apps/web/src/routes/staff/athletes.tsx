@@ -6,7 +6,6 @@ import {
   REGISTRATION_STATUSES,
   type RegistrationStatus,
   STATUS_LABELS,
-  type SportIcon,
   reviewInput,
   studentIdInput,
 } from "@it3k/db/sport-rules";
@@ -84,7 +83,7 @@ import { InstitutionLabel, InstitutionLogo } from "@/components/institution-logo
 import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
 import { SegmentedControl } from "@/components/segmented-control";
-import { SportArt } from "@/components/sport-art";
+import { SportMark } from "@/components/sport-art";
 import { StatusBadge } from "@/components/sport-badges";
 import { type FilterControl, useFilters, useSearchText } from "@/hooks/use-filters";
 import { useApis } from "@/lib/api-context";
@@ -208,15 +207,6 @@ type StatusTab = RegistrationStatus | "all";
 
 const csvName = () => `it3k-athletes-${new Date().toISOString().slice(0, 10)}.csv`;
 const who = (item: AthleteItem) => `${item.athlete.name} ${item.division.name}`;
-
-/** A sport's illustration cropped to a square, as a small mark in a select. */
-function SportMark({ icon, seed }: { icon: SportIcon; seed: string }) {
-  return (
-    <span aria-hidden className="size-5 shrink-0 overflow-hidden rounded-md">
-      <SportArt icon={icon} seed={seed} label="" className="size-5" />
-    </span>
-  );
-}
 
 /**
  * Athlete registrations for registration staff. The flags from the API only
@@ -535,16 +525,19 @@ export function AthletesPage({ filters: control }: { filters?: FilterControl<Ath
       ) : (
         <div className="flex flex-col rounded-2xl border">
           {selectable && (
-            <label className="flex items-center gap-3 border-b px-4 py-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-3 border-b px-4 py-2 text-sm text-muted-foreground">
               <Checkbox
+                aria-label="เลือกทั้งหน้า"
                 checked={allChosen}
                 indeterminate={chosen.length > 0 && !allChosen}
                 onCheckedChange={(on) =>
                   setSelected(new Set(on ? items.map((item) => item.id) : []))
                 }
               />
-              {chosen.length > 0 ? `เลือกแล้ว ${chosen.length} คน` : "เลือกทั้งหน้า"}
-            </label>
+              <span aria-live="polite">
+                {chosen.length > 0 ? `เลือกแล้ว ${chosen.length} คน` : "เลือกทั้งหน้า"}
+              </span>
+            </div>
           )}
           <ul className="flex flex-col divide-y" aria-busy={list.isFetching}>
             {items.map((item) => (
@@ -680,8 +673,7 @@ export function AthletesPage({ filters: control }: { filters?: FilterControl<Ath
       )}
 
       {chosen.length > 0 && (
-        <div
-          role="region"
+        <section
           aria-label="จัดการที่เลือก"
           className="sticky bottom-4 z-10 mx-auto flex w-full max-w-2xl flex-wrap items-center gap-2 rounded-2xl border bg-background/95 p-3 shadow-lg backdrop-blur"
         >
@@ -732,7 +724,7 @@ export function AthletesPage({ filters: control }: { filters?: FilterControl<Ath
           >
             <X />
           </Button>
-        </div>
+        </section>
       )}
 
       {acting?.kind === "reject" && (

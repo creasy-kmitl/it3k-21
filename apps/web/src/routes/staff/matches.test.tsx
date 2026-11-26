@@ -82,7 +82,7 @@ describe("/staff/matches", () => {
   test("managers get the create buttons; filtering by division asks the API again", async () => {
     const { view, list } = await setup([listItem()], true);
     expect(await view.findByRole("button", { name: /สร้างแมตช์/ })).toBeTruthy();
-    expect(view.getByRole("button", { name: /สร้างตารางแข่ง/ })).toBeTruthy();
+    expect(view.getByRole("button", { name: /จัดตารางพบกันหมด/ })).toBeTruthy();
     await choose(view.getByRole("combobox", { name: "ประเภท" }), "ฟุตบอล · ฟุตซอลหญิง");
     await waitFor(() => expect(list).toHaveBeenLastCalledWith({ divisionId: "d-futsal" }));
   });

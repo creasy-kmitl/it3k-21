@@ -21,7 +21,7 @@ import { ErrorState } from "@/components/error-state";
 import { InstitutionLabel } from "@/components/institution-logo";
 import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
-import { SportArt } from "@/components/sport-art";
+import { SportArt, SportMark } from "@/components/sport-art";
 import { useApis } from "@/lib/api-context";
 import type { CompetitionDivision } from "@/lib/competition-divisions";
 import type { AutoTeamsPlan } from "@/lib/competition-teams";
@@ -256,14 +256,7 @@ function AutoTeamsDialog({
             {making.map((division) => (
               <li key={division.id} className="flex flex-col gap-2 px-3 py-2.5">
                 <span className="flex items-center gap-2 text-sm font-medium">
-                  <span aria-hidden className="size-6 shrink-0 overflow-hidden rounded-md">
-                    <SportArt
-                      icon={division.sportIcon}
-                      seed={division.id}
-                      label=""
-                      className="size-6"
-                    />
-                  </span>
+                  <SportMark icon={division.sportIcon} seed={division.id} className="size-6" />
                   {division.name}
                 </span>
                 <ul className="flex flex-wrap gap-1.5">

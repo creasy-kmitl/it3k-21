@@ -2,6 +2,7 @@
 // one match with everything around it.
 import type { Database } from "@it3k/db";
 import { MATCH_STATUSES } from "@it3k/db/competition-rules";
+import type { Institution } from "@it3k/db/profile";
 import {
   competitionGroup,
   competitionMatch,
@@ -109,7 +110,10 @@ async function sidesOf(db: Database, matchIds: string[]) {
               maxTeamsPerInstitution: maxTeamsPerInstitution ?? 1,
             })
           : (side.label ?? "");
-      sides.set(row.matchId, [...(sides.get(row.matchId) ?? []), { ...side, name }]);
+      sides.set(row.matchId, [
+        ...(sides.get(row.matchId) ?? []),
+        { ...side, name, institution: institution ?? null },
+      ]);
     }
   }
   return sides;
@@ -122,6 +126,8 @@ type Side = {
   teamId: string | null;
   label: string | null;
   name: string;
+  /** The team's institution, for its logo; null for a placeholder side. */
+  institution: Institution | null;
   score: number | null;
   detail: (typeof competitionMatchParticipant.$inferSelect)["detail"];
   resultValue: number | null;

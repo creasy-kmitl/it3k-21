@@ -673,7 +673,8 @@ export const createCompetitionTeamRoutes = (deps: RouteDeps) =>
               create: plan.create.map((entry) => ({
                 institution: entry.institution,
                 members: entry.athletes.length,
-                overMax: division.teamMaxSize !== null && entry.athletes.length > division.teamMaxSize,
+                overMax:
+                  division.teamMaxSize !== null && entry.athletes.length > division.teamMaxSize,
               })),
               skipped: plan.skipped,
             })),

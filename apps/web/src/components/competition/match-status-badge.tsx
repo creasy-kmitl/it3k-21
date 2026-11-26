@@ -10,6 +10,16 @@ const VARIANTS: Record<MatchStatus, "default" | "secondary" | "destructive" | "o
   cancelled: "outline",
 };
 
+/** A colour per status, for the dots in status filters. */
+export const MATCH_STATUS_DOT: Record<MatchStatus, string> = {
+  scheduled: "bg-sky-500",
+  checkin: "bg-amber-500",
+  live: "bg-destructive",
+  finished: "bg-success",
+  postponed: "bg-orange-400",
+  cancelled: "bg-muted-foreground",
+};
+
 /** A match's status as a badge; a live match gets a pulsing dot. */
 export function MatchStatusBadge({ status }: { status: MatchStatus }) {
   return (

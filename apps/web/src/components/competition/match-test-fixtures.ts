@@ -13,6 +13,7 @@ export function side(overrides: Partial<MatchSide> = {}): MatchSide {
     teamId: "team-kmitl",
     label: null,
     name: "สจล.",
+    institution: "kmitl",
     score: null,
     detail: null,
     resultValue: null,

@@ -3,12 +3,15 @@ import { Button } from "@it3k/ui/components/button";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CalendarRange, Plus, Swords } from "lucide-react";
+import { CalendarRange, CircleDot, Layers, MapPin, Plus, Swords, Trophy } from "lucide-react";
 import { useState } from "react";
 
 import { MatchCard } from "@/components/competition/match-card";
 import { MatchForm } from "@/components/competition/match-form";
 import { MatchSelect } from "@/components/competition/match-select";
+import { MATCH_STATUS_DOT } from "@/components/competition/match-status-badge";
+import { StatusDot } from "@/components/icon-select";
+import { SportMark } from "@/components/sport-art";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { PageHeader } from "@/components/page-header";
@@ -62,7 +65,10 @@ export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => voi
   const divisionItems = divisions.data?.items ?? [];
   const sports = [
     ...new Map(
-      divisionItems.map((d) => [d.sportId, { id: d.sportId, name: d.sportName }]),
+      divisionItems.map((d) => [
+        d.sportId,
+        { id: d.sportId, name: d.sportName, icon: d.sportIcon },
+      ]),
     ).values(),
   ];
   const shownDivisions = filters.sportId
@@ -83,7 +89,7 @@ export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => voi
               render={<Link to="/staff/matches/generate" />}
               nativeButton={false}
             >
-              <CalendarRange /> สร้างตารางแข่ง
+              <CalendarRange /> จัดตารางพบกันหมด
             </Button>
             <Button onClick={() => setCreating(true)}>
               <Plus /> สร้างแมตช์
@@ -95,15 +101,21 @@ export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => voi
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <MatchSelect
           label="กีฬา"
+          icon={<Trophy aria-hidden className="text-muted-foreground" />}
           items={[
             { value: null, label: "ทุกกีฬา" },
-            ...sports.map((s) => ({ value: s.id, label: s.name })),
+            ...sports.map((s) => ({
+              value: s.id,
+              label: s.name,
+              icon: <SportMark icon={s.icon} seed={s.id} />,
+            })),
           ]}
           value={filters.sportId ?? null}
           onChange={(sportId) => set({ sportId: sportId ?? undefined, divisionId: undefined })}
         />
         <MatchSelect
           label="ประเภท"
+          icon={<Layers aria-hidden className="text-muted-foreground" />}
           items={[
             { value: null, label: "ทุกประเภท" },
             ...shownDivisions.map((d) => ({ value: d.id, label: `${d.sportName} · ${d.name}` })),
@@ -113,6 +125,7 @@ export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => voi
         />
         <MatchSelect
           label="สถานที่"
+          icon={<MapPin aria-hidden className="text-muted-foreground" />}
           items={[
             { value: null, label: "ทุกสถานที่" },
             ...venueItems.map((v) => ({ value: v.id, label: v.name })),
@@ -122,11 +135,13 @@ export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => voi
         />
         <MatchSelect<MatchStatus>
           label="สถานะ"
+          icon={<CircleDot aria-hidden className="text-muted-foreground" />}
           items={[
             { value: null, label: "ทุกสถานะ" },
             ...MATCH_STATUSES.map((status) => ({
               value: status,
               label: MATCH_STATUS_LABELS[status],
+              icon: <StatusDot className={MATCH_STATUS_DOT[status]} />,
             })),
           ]}
           value={filters.status ?? null}

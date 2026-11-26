@@ -226,8 +226,8 @@ export function RulesEditor({
   const tooLong = length > RULES_MAX_LENGTH;
   const counter = (
     <p className={cn("text-right text-xs text-muted-foreground", tooLong && "text-destructive")}>
-      {length.toLocaleString("en-US")} / {RULES_MAX_LENGTH.toLocaleString("en-US")} ตัวอักษร ·
-      ลากไฟล์ .md มาวางได้
+      {length.toLocaleString("en-US")} / {RULES_MAX_LENGTH.toLocaleString("en-US")} ตัวอักษร · ลากไฟล์
+      .md มาวางได้
     </p>
   );
   return (
