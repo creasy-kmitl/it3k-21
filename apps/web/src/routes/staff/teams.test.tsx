@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, within } from "@testing-library/react";
+import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 
 import { ApiProvider } from "@/lib/api-context";
 import type {
@@ -8,7 +8,12 @@ import type {
   CompetitionDivisionList,
   CompetitionDivisionsApi,
 } from "@/lib/competition-divisions";
-import type { CompetitionTeamsApi, Team, TeamList } from "@/lib/competition-teams";
+import type {
+  AutoTeamsPlan,
+  CompetitionTeamsApi,
+  Team,
+  TeamList,
+} from "@/lib/competition-teams";
 import { fakeApis, loudFake } from "@/test/query";
 import { renderAtRoot } from "@/test/router";
 
@@ -26,7 +31,26 @@ const team = (divisionId: string, issues: number) =>
     issues: Array.from({ length: issues }, () => ({ code: "tooFew", message: "x" })),
   }) as unknown as Team;
 
-async function setup(canManage: boolean) {
+const PLAN: AutoTeamsPlan = {
+  applied: false,
+  failed: [],
+  skippedDivisions: ["แบดมินตัน เดี่ยวชาย"],
+  divisions: [
+    {
+      id: "d-football",
+      name: "ฟุตบอลชาย",
+      sportName: "ฟุตบอล",
+      sportIcon: "football",
+      create: [
+        { institution: "kmutt", members: 14, overMax: false },
+        { institution: "kmitl", members: 25, overMax: true },
+      ],
+      skipped: [{ institution: "kmutnb-bangkok", reason: "arranged" }],
+    },
+  ],
+};
+
+async function setup(canManage: boolean, autoAll?: CompetitionTeamsApi["autoAll"]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const divisions = {
     items: [
@@ -49,6 +73,7 @@ async function setup(canManage: boolean) {
           }),
           competitionTeams: loudFake<CompetitionTeamsApi>("competitionTeams", {
             list: async () => teams,
+            ...(autoAll ? { autoAll } : {}),
           }),
         })}
       >
@@ -72,9 +97,28 @@ describe("/staff/teams", () => {
     expect(settings.getAttribute("href")).toBe("/staff/competition/d-football");
   });
 
+  test("auto for every division shows its plan, without badminton, before making teams", async () => {
+    const calls: boolean[] = [];
+    const view = await setup(true, async ({ dryRun }) => {
+      calls.push(dryRun);
+      return { ...PLAN, applied: !dryRun };
+    });
+    fireEvent.click(await view.findByRole("button", { name: "จัดทีมอัตโนมัติทุกประเภท" }));
+    const dialog = await view.findByRole("alertdialog");
+    expect(within(dialog).getByText("จัดทีมอัตโนมัติ 1 ประเภท สร้าง 2 ทีม")).toBeTruthy();
+    expect(within(dialog).getByText("ไม่รวมกีฬาแบดมินตัน")).toBeTruthy();
+    expect(within(dialog).getByText(/ข้ามมหาลัยที่จัดทีมไว้แล้ว 1 รายการ/)).toBeTruthy();
+    expect(within(dialog).getByText("เกินจำนวนสูงสุด")).toBeTruthy();
+    expect(calls).toEqual([true]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "สร้าง 2 ทีม" }));
+    await waitFor(() => expect(calls).toEqual([true, false]));
+    await waitFor(() => expect(view.queryByRole("alertdialog")).toBeNull());
+  });
+
   test("readers get no settings links", async () => {
     const view = await setup(false);
     await view.findByRole("link", { name: /ฟุตบอลชาย/ });
     expect(view.queryByLabelText(/ตั้งค่าการแข่งขัน/)).toBeNull();
+    expect(view.queryByRole("button", { name: "จัดทีมอัตโนมัติทุกประเภท" })).toBeNull();
   });
 });

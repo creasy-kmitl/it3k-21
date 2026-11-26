@@ -26,15 +26,18 @@ import {
   userProfile,
 } from "@it3k/db/schema/index";
 import {
+  AUTO_TEAMS_SKIPPED_SPORTS,
   dealIntoTeams,
   genderFromPrefix,
   nextFreeSeq,
+  planDivisionTeams,
+  teamAutoAllInput,
   teamAutoInput,
   teamIssues,
   teamLabel,
   teamRenameInput,
 } from "@it3k/db/team-rules";
-import { type SQL, and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { type SQL, and, asc, count, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import { z } from "zod";
@@ -511,6 +514,174 @@ export const createCompetitionTeamRoutes = (deps: RouteDeps) =>
       const items = await selectTeams(db, sameInstitution);
       return c.json({ items }, 200);
     })
+
+    // Every division but badminton's at once: one team of all approved athletes
+    // for each institution that has not put anyone in a team yet. `dryRun`
+    // only reports the plan, so staff can confirm it first.
+    .post(
+      "/auto-all",
+      allowSport("teams.manage"),
+      validate("json", teamAutoAllInput),
+      async (c) => {
+        const db = c.var.db;
+        const { dryRun } = c.req.valid("json");
+        const [divisions, teams, approved] = await Promise.all([
+          db
+            .select({
+              id: sportDivision.id,
+              name: sportDivision.name,
+              sportCode: sport.code,
+              sportName: sport.name,
+              sportIcon: sport.icon,
+              teamMaxSize: sportDivision.teamMaxSize,
+            })
+            .from(sportDivision)
+            .innerJoin(sport, eq(sport.id, sportDivision.sportId))
+            .orderBy(asc(sport.sortOrder), asc(sportDivision.sortOrder)),
+          db
+            .select({
+              id: competitionTeam.id,
+              divisionId: competitionTeam.divisionId,
+              institution: competitionTeam.institution,
+              seq: competitionTeam.seq,
+              version: competitionTeam.version,
+              members: count(competitionTeamMember.registrationId),
+            })
+            .from(competitionTeam)
+            .leftJoin(competitionTeamMember, eq(competitionTeamMember.teamId, competitionTeam.id))
+            .groupBy(competitionTeam.id),
+          db
+            .select({
+              id: sportRegistration.id,
+              userId: sportRegistration.userId,
+              divisionId: sportRegistration.divisionId,
+              institution: sportRegistration.institution,
+              firstName,
+            })
+            .from(sportRegistration)
+            .innerJoin(user, eq(user.id, sportRegistration.userId))
+            .leftJoin(userProfile, eq(userProfile.userId, sportRegistration.userId))
+            .where(eq(sportRegistration.status, "approved"))
+            .orderBy(
+              sql`${sportRegistration.shirtNumber} is null`,
+              asc(sportRegistration.shirtNumber),
+              asc(firstName),
+              asc(sportRegistration.id),
+            ),
+        ]);
+        const skippedSports = new Set<string>(AUTO_TEAMS_SKIPPED_SPORTS);
+        const plans = divisions
+          .filter((division) => !skippedSports.has(division.sportCode))
+          .map((division) => ({
+            division,
+            teams: teams.filter((team) => team.divisionId === division.id),
+            approved: approved.filter((athlete) => athlete.divisionId === division.id),
+          }))
+          .map((entry) => ({ ...entry, plan: planDivisionTeams(entry.teams, entry.approved) }))
+          .filter(({ plan }) => plan.create.length > 0 || plan.skipped.length > 0);
+
+        const failed: string[] = [];
+        if (!dryRun) {
+          // One batch per division, each guarded on what was read for it.
+          for (const { division, teams: read, plan } of plans) {
+            if (plan.create.length === 0) continue;
+            const institutions = plan.create.map((entry) => entry.institution);
+            const sameTeams = and(
+              eq(competitionTeam.divisionId, division.id),
+              inArray(competitionTeam.institution, institutions),
+            );
+            const readTeams = read.filter((team) => institutions.includes(team.institution));
+            const ids = plan.create.flatMap((entry) => entry.athletes.map((athlete) => athlete.id));
+            const unchanged = and(
+              sportAccessIsAsRead(c.var.user),
+              sql`(select count(*) from ${competitionTeam} where ${sameTeams}) = ${readTeams.length}`,
+              ...readTeams.map((team) => teamAsRead(team.id, team.version)),
+              sql`not exists (select 1 from ${competitionTeamMember} where ${competitionTeamMember.teamId} in (select ${competitionTeam.id} from ${competitionTeam} where ${sameTeams}))`,
+              sql`(select count(*) from ${sportRegistration} where ${and(
+                eq(sportRegistration.divisionId, division.id),
+                inArray(sportRegistration.institution, institutions),
+                eq(sportRegistration.status, "approved"),
+              )}) = ${ids.length}`,
+              sql`(select count(*) from ${sportRegistration} where ${and(
+                inArray(sportRegistration.id, ids),
+                eq(sportRegistration.status, "approved"),
+              )}) = ${ids.length}`,
+            );
+            const targets = plan.create.map((entry) => ({
+              ...entry,
+              teamId: entry.team?.id ?? crypto.randomUUID(),
+            }));
+            const newTeams = targets
+              .filter((entry) => entry.team === null)
+              .map((entry) => ({
+                id: entry.teamId,
+                divisionId: division.id,
+                institution: entry.institution,
+                seq: 1,
+              }));
+            const memberRows = targets.flatMap((entry) =>
+              entry.athletes.map((athlete, order) => ({
+                teamId: entry.teamId,
+                registrationId: athlete.id,
+                userId: athlete.userId,
+                displayName: athlete.firstName,
+                sortOrder: order,
+              })),
+            );
+            try {
+              await db.batch([
+                abortUnless(db, c.var.user.id, unchanged ?? sql`0`),
+                ...(newTeams.length > 0 ? [db.insert(competitionTeam).values(newTeams)] : []),
+                db.insert(competitionTeamMember).values(memberRows),
+                ...targets
+                  .filter((entry) => entry.team !== null)
+                  .map((entry) =>
+                    db
+                      .update(competitionTeam)
+                      .set({ version: (entry.team?.version ?? 0) + 1 })
+                      .where(eq(competitionTeam.id, entry.teamId)),
+                  ),
+                logCompetitionChange(db, c.var.user, "team", division.id, "auto", {
+                  all: true,
+                  teams: targets.map((entry) => ({
+                    id: entry.teamId,
+                    institution: entry.institution,
+                    registrationIds: entry.athletes.map((athlete) => athlete.id),
+                  })),
+                }),
+              ]);
+            } catch (error) {
+              const kind = constraintError(error);
+              if (kind !== "stale" && kind !== "unique") throw error;
+              failed.push(division.id);
+            }
+          }
+        }
+
+        return c.json(
+          {
+            applied: !dryRun,
+            failed,
+            skippedDivisions: divisions
+              .filter((division) => skippedSports.has(division.sportCode))
+              .map((division) => division.name),
+            divisions: plans.map(({ division, plan }) => ({
+              id: division.id,
+              name: division.name,
+              sportName: division.sportName,
+              sportIcon: division.sportIcon,
+              create: plan.create.map((entry) => ({
+                institution: entry.institution,
+                members: entry.athletes.length,
+                overMax: division.teamMaxSize !== null && entry.athletes.length > division.teamMaxSize,
+              })),
+              skipped: plan.skipped,
+            })),
+          },
+          200,
+        );
+      },
+    )
 
     .get("/lineups/:matchId/:participantId", validate("param", lineupParam), async (c) => {
       const db = c.var.db;

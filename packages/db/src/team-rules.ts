@@ -162,3 +162,55 @@ export const teamAutoInput = z.strictObject({
   teamCount: z.number().int().min(1).max(20),
 });
 export type TeamAutoInput = z.infer<typeof teamAutoInput>;
+
+/**
+ * Sports whose teams are always arranged by hand: badminton singles go by
+ * มือ 1 and มือ 2, and its pairs are chosen, so "auto for every division"
+ * leaves them out.
+ */
+export const AUTO_TEAMS_SKIPPED_SPORTS = ["badminton"] as const;
+
+export const teamAutoAllInput = z.strictObject({
+  /** Only work out what would be made, without writing anything. */
+  dryRun: z.boolean(),
+});
+
+export type AutoTeamsSkip = "arranged";
+
+/**
+ * What "auto for every division" does to one division: each institution with
+ * approved athletes and no members in any team gets one team holding all of
+ * them, reusing its lowest-numbered empty team if it has one. Institutions
+ * that already put anyone in a team are left alone.
+ */
+export function planDivisionTeams<A extends { institution: Institution }>(
+  teams: readonly {
+    id: string;
+    institution: Institution;
+    seq: number;
+    version: number;
+    members: number;
+  }[],
+  approved: readonly A[],
+) {
+  const create: { institution: Institution; team: { id: string; version: number } | null; athletes: A[] }[] = [];
+  const skipped: { institution: Institution; reason: AutoTeamsSkip }[] = [];
+  for (const institution of INSTITUTION_IDS) {
+    const athletes = approved.filter((athlete) => athlete.institution === institution);
+    if (athletes.length === 0) continue;
+    const own = teams
+      .filter((team) => team.institution === institution)
+      .toSorted((a, b) => a.seq - b.seq);
+    if (own.some((team) => team.members > 0)) {
+      skipped.push({ institution, reason: "arranged" });
+      continue;
+    }
+    const empty = own[0];
+    create.push({
+      institution,
+      team: empty ? { id: empty.id, version: empty.version } : null,
+      athletes,
+    });
+  }
+  return { create, skipped };
+}
