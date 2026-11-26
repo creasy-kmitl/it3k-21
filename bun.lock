@@ -99,6 +99,7 @@
         "@tiptap/extension-file-handler": "3.34.0",
         "@tiptap/extension-image": "3.34.0",
         "@tiptap/extensions": "3.34.0",
+        "@tiptap/markdown": "3.34.0",
         "@tiptap/pm": "3.34.0",
         "@tiptap/react": "3.34.0",
         "@tiptap/starter-kit": "3.34.0",
@@ -1098,6 +1099,8 @@
     "@tiptap/extension-underline": ["@tiptap/extension-underline@3.34.0", "", { "peerDependencies": { "@tiptap/core": "3.34.0" } }, "sha512-4/Di2L96tCUo31SalwjeElOQC64bP2lIqXsruYNndo510fAkYEmzGHhfu4Eh0a4Z94lyA9BYI9zAgJS2yTdq8w=="],
 
     "@tiptap/extensions": ["@tiptap/extensions@3.34.0", "", { "peerDependencies": { "@tiptap/core": "3.34.0", "@tiptap/pm": "3.34.0" } }, "sha512-VA5kMiyactt71jqyNrdVB8kyGeD35AvjhcL1bKf12+XTTXTtOJkhS2/IQhNYK4ooCW0bpmNiuBnrdFWaeXyUOg=="],
+
+    "@tiptap/markdown": ["@tiptap/markdown@3.34.0", "", { "dependencies": { "marked": "^17.0.1" }, "peerDependencies": { "@tiptap/core": "3.34.0", "@tiptap/pm": "3.34.0" } }, "sha512-4FdekimtlcHuZcRTnIJzskxhU5KMKD/JVtU89OMT351C3DvXRK415fDUYJB4OUsNt/U6ChnDgQyxa/Cv274z7A=="],
 
     "@tiptap/pm": ["@tiptap/pm@3.34.0", "", { "dependencies": { "prosemirror-changeset": "^2.4.4", "prosemirror-commands": "^1.7.2", "prosemirror-dropcursor": "^1.8.4", "prosemirror-gapcursor": "^1.4.1", "prosemirror-history": "^1.5.1", "prosemirror-inputrules": "^1.5.1", "prosemirror-keymap": "^1.2.3", "prosemirror-model": "^1.25.12", "prosemirror-schema-list": "^1.5.1", "prosemirror-state": "^1.4.4", "prosemirror-tables": "^1.8.5", "prosemirror-transform": "^1.12.2", "prosemirror-view": "^1.42.6" } }, "sha512-/r64RekPVaLw/YUjGes8tH5voz5PYWLW6gahMf+nDZKs6nK4RtoZ4O6YFI+nV8XD1hygseQZPeJkT5OOkI4AdA=="],
 
@@ -2622,6 +2625,8 @@
     "@tanstack/router-utils/diff": ["diff@9.0.0", "", {}, "sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw=="],
 
     "@tanstack/start-plugin-core/source-map": ["source-map@0.7.6", "", {}, "sha512-i5uvt8C3ikiWeNZSVZNWcfZPItFQOsYTUAOkcUPGd8DqDy1uOUikjt5dG+uRlwyvR108Fb9DOd4GvXfT0N2/uQ=="],
+
+    "@tiptap/markdown/marked": ["marked@17.0.6", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-gB0gkNafnonOw0obSTEGZTT86IuhILt2Wfx0mWH/1Au83kybTayroZ/V6nS25mN7u8ASy+5fMhgB3XPNrOZdmA=="],
 
     "@ts-morph/common/minimatch": ["minimatch@10.2.6", "", { "dependencies": { "brace-expansion": "^5.0.8" } }, "sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A=="],
 

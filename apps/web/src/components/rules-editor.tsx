@@ -3,13 +3,25 @@ import { Button } from "@it3k/ui/components/button";
 import { Textarea } from "@it3k/ui/components/textarea";
 import { cn } from "@it3k/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
-import { BookOpen, Download, Eye, FilePlus2, Pencil, Trash2, Undo2, Upload } from "lucide-react";
+import {
+  BookOpen,
+  Code2,
+  Download,
+  Eye,
+  FilePlus2,
+  Pencil,
+  Trash2,
+  Type,
+  Undo2,
+  Upload,
+} from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmDelete } from "@/components/form-dialog";
 import { LoadingButton } from "@/components/loading-button";
 import { MarkdownView } from "@/components/markdown-view";
+import { RulesRichEditor } from "@/components/rules-rich-editor";
 import { SegmentedControl } from "@/components/segmented-control";
 import { toastError } from "@/lib/errors";
 import type { SavedRules } from "@/lib/sport-rules";
@@ -24,6 +36,8 @@ const updatedAtFormat = new Intl.DateTimeFormat("th-TH", {
 });
 
 type Pane = "write" | "preview";
+/** Formatted text by default; Markdown source for people who prefer it. */
+type Mode = "rich" | "markdown";
 
 /** Reads a dropped or chosen Markdown file, or says why it cannot be used. */
 export async function readMarkdownFile(file: File): Promise<string> {
@@ -74,6 +88,7 @@ export function RulesEditor({
   // The text being edited, and what it started from; null while only reading.
   const [draft, setDraft] = useState<{ text: string; base: string } | null>(null);
   const [pane, setPane] = useState<Pane>("write");
+  const [mode, setMode] = useState<Mode>("rich");
   const [confirmRemove, setConfirmRemove] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const textareaId = useId();
@@ -103,7 +118,7 @@ export function RulesEditor({
       const text = await readMarkdownFile(file);
       setDraft((current) => ({ text, base: current?.base ?? saved?.markdown ?? "" }));
       setPane("preview");
-      toast.success(`โหลด ${file.name} แล้ว`, { description: "ตรวจดูตัวอย่าง แล้วกดบันทึก" });
+      toast.success(`โหลด ${file.name} แล้ว`, { description: "ตรวจดูเนื้อหา แล้วกดบันทึก" });
     } catch (error) {
       toastError(error, "ใช้ไฟล์นี้ไม่ได้");
     }
@@ -209,73 +224,106 @@ export function RulesEditor({
 
   const length = draft.text.length;
   const tooLong = length > RULES_MAX_LENGTH;
+  const counter = (
+    <p className={cn("text-right text-xs text-muted-foreground", tooLong && "text-destructive")}>
+      {length.toLocaleString("en-US")} / {RULES_MAX_LENGTH.toLocaleString("en-US")} ตัวอักษร ·
+      ลากไฟล์ .md มาวางได้
+    </p>
+  );
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <SegmentedControl<Pane>
-          label="มุมมอง"
-          className="lg:hidden"
-          value={pane}
-          onChange={setPane}
+        <SegmentedControl<Mode>
+          label="รูปแบบการแก้"
+          value={mode}
+          onChange={setMode}
           segments={[
-            { value: "write", label: "เขียน", icon: Pencil },
-            { value: "preview", label: "ตัวอย่าง", icon: Eye },
+            { value: "rich", label: "จัดรูปแบบ", icon: Type },
+            { value: "markdown", label: "แก้แบบ Markdown", icon: Code2 },
           ]}
         />
+        {mode === "markdown" && (
+          <SegmentedControl<Pane>
+            label="มุมมอง"
+            className="lg:hidden"
+            value={pane}
+            onChange={setPane}
+            segments={[
+              { value: "write", label: "เขียน", icon: Pencil },
+              { value: "preview", label: "ตัวอย่าง", icon: Eye },
+            ]}
+          />
+        )}
         {fileButton}
         <Button variant="ghost" size="sm" onClick={() => download(draft.text, fileName)}>
           <Download /> ดาวน์โหลด .md
         </Button>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className={cn("flex flex-col gap-1", pane !== "write" && "hidden lg:flex")}>
-          <label htmlFor={textareaId} className="sr-only">
-            กติกา (Markdown)
-          </label>
-          <Textarea
+      {mode === "rich" ? (
+        <div className="flex flex-col gap-1">
+          <RulesRichEditor
             id={textareaId}
+            label="กติกา"
             value={draft.text}
-            onChange={(event) => setDraft({ ...draft, text: event.target.value })}
-            onDragOver={(event) => {
-              if (canEdit && event.dataTransfer.types.includes("Files")) event.preventDefault();
-            }}
-            onDrop={(event) => {
-              if (!event.dataTransfer.files.length) return;
-              event.preventDefault();
-              void loadFile(event.dataTransfer.files[0]);
-            }}
-            placeholder={"# ชื่อกีฬา\n\n## ข้อ 1. ...\n\n- **1.1** ..."}
-            spellCheck={false}
-            aria-invalid={tooLong || undefined}
-            className="min-h-[50vh] font-mono text-sm leading-relaxed"
+            invalid={tooLong}
+            placeholder={fallback ? `เว้นว่างไว้เพื่อใช้${fallback.label}` : "เริ่มเขียนกติกา…"}
+            onChange={(text) => setDraft((current) => current && { ...current, text })}
+            onNormalize={(text) =>
+              setDraft((current) => {
+                if (!current) return current;
+                // Untouched text takes the editor's spelling on both sides,
+                // so opening the editor alone is not an unsaved change.
+                if (current.text === current.base) return { text, base: text };
+                return { ...current, text };
+              })
+            }
+            onDropFile={(file) => void loadFile(file)}
           />
-          <p
+          {counter}
+        </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className={cn("flex flex-col gap-1", pane !== "write" && "hidden lg:flex")}>
+            <label htmlFor={textareaId} className="sr-only">
+              กติกา (Markdown)
+            </label>
+            <Textarea
+              id={textareaId}
+              value={draft.text}
+              onChange={(event) => setDraft({ ...draft, text: event.target.value })}
+              onDragOver={(event) => {
+                if (canEdit && event.dataTransfer.types.includes("Files")) event.preventDefault();
+              }}
+              onDrop={(event) => {
+                if (!event.dataTransfer.files.length) return;
+                event.preventDefault();
+                void loadFile(event.dataTransfer.files[0]);
+              }}
+              placeholder={"# ชื่อกีฬา\n\n## ข้อ 1. ...\n\n- **1.1** ..."}
+              spellCheck={false}
+              aria-invalid={tooLong || undefined}
+              className="min-h-[50vh] font-mono text-sm leading-relaxed"
+            />
+            {counter}
+          </div>
+          <article
+            aria-label="ตัวอย่าง"
             className={cn(
-              "text-right text-xs text-muted-foreground",
-              tooLong && "text-destructive",
+              "min-h-[50vh] rounded-2xl border bg-card p-4 sm:p-6",
+              pane !== "preview" && "hidden lg:block",
             )}
           >
-            {length.toLocaleString("en-US")} / {RULES_MAX_LENGTH.toLocaleString("en-US")} ตัวอักษร ·
-            ลากไฟล์ .md มาวางได้
-          </p>
+            {draft.text.trim() ? (
+              <MarkdownView markdown={draft.text} className="rich-text-lg" />
+            ) : (
+              <p className="text-muted-foreground">
+                {fallback ? `เว้นว่างไว้เพื่อใช้${fallback.label}` : "เว้นว่างไว้คือไม่มีกติกา"}
+              </p>
+            )}
+          </article>
         </div>
-        <article
-          aria-label="ตัวอย่าง"
-          className={cn(
-            "min-h-[50vh] rounded-2xl border bg-card p-4 sm:p-6",
-            pane !== "preview" && "hidden lg:block",
-          )}
-        >
-          {draft.text.trim() ? (
-            <MarkdownView markdown={draft.text} className="rich-text-lg" />
-          ) : (
-            <p className="text-muted-foreground">
-              {fallback ? `เว้นว่างไว้เพื่อใช้${fallback.label}` : "เว้นว่างไว้คือไม่มีกติกา"}
-            </p>
-          )}
-        </article>
-      </div>
+      )}
 
       <div className="sticky bottom-0 z-10 -mx-4 flex items-center justify-end gap-2 border-t bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         {dirty && <span className="mr-auto text-xs text-muted-foreground">ยังไม่ได้บันทึก</span>}

@@ -97,6 +97,7 @@ describe("/staff/sports/$sportId/rules", () => {
       }),
     );
     fireEvent.click(await view.findByRole("button", { name: "แก้ไข" }));
+    fireEvent.click(view.getByRole("button", { name: "แก้แบบ Markdown" }));
     const textarea = view.getByLabelText("กติกา (Markdown)") as HTMLTextAreaElement;
     expect(textarea.value).toContain("# กีฬาแบดมินตัน");
     const save = view.getByRole("button", { name: "บันทึก" }) as HTMLButtonElement;
@@ -107,6 +108,16 @@ describe("/staff/sports/$sportId/rules", () => {
     fireEvent.click(save);
     await waitFor(() => expect(saved).toEqual([{ markdown: "# ใหม่\n\n15 คะแนน", version: 1 }]));
     await waitFor(() => expect(view.queryByLabelText("กติกา (Markdown)")).toBeNull());
+  });
+
+  test("the editor opens as formatted text, and opening it alone changes nothing", async () => {
+    const view = await setup(fakeSportRulesApi({ sport: async () => sportPage() }));
+    fireEvent.click(await view.findByRole("button", { name: "แก้ไข" }));
+    const editor = await view.findByRole("textbox", { name: "กติกา" });
+    await waitFor(() => expect(editor.querySelector("h1")?.textContent).toBe("กีฬาแบดมินตัน"));
+    expect(view.getByRole("toolbar", { name: "จัดรูปแบบ" })).toBeTruthy();
+    expect((view.getByRole("button", { name: "บันทึก" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(view.queryByText("ยังไม่ได้บันทึก")).toBeNull();
   });
 
   test("an uploaded .md file replaces the draft and shows its preview", async () => {
@@ -147,6 +158,7 @@ describe("/staff/sports/$sportId/rules", () => {
     expect(view.getByRole("heading", { name: "ข้อ 1. ระเบียบ" })).toBeTruthy();
 
     fireEvent.click(view.getByRole("button", { name: /เริ่มจากกติกาของกีฬา/ }));
+    fireEvent.click(view.getByRole("button", { name: "แก้แบบ Markdown" }));
     const textarea = view.getByLabelText("กติกา (Markdown)") as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: `${textarea.value}\n\n- มือ 1 และมือ 2` } });
     fireEvent.click(view.getByRole("button", { name: "บันทึก" }));

@@ -49,7 +49,7 @@ export function normalizeHref(raw: string) {
   return `https://${href}`;
 }
 
-function ToolButton({
+export function ToolButton({
   icon: Icon,
   label,
   active,
@@ -80,7 +80,7 @@ function ToolButton({
   );
 }
 
-function LinkButton({ editor, active }: { editor: Editor; active: boolean }) {
+export function LinkButton({ editor, active }: { editor: Editor; active: boolean }) {
   const [open, setOpen] = useState(false);
   const [href, setHref] = useState("");
   const [error, setError] = useState("");
