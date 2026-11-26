@@ -137,7 +137,12 @@ export const SHOTS: Shot[] = [
   { file: "tech-head/bracket-builder", as: "techHead", path: "/staff/matches", act: click(/^เพิ่มสายการแข่ง$/) },
   { file: "public/matches-bracket", path: "/matches?view=bracket" },
   // Sport ids are random per database, so open the first sport's rules from its card.
-  { file: "tech-head/sport-rules", as: "techHead", path: "/staff/sports", act: click(/^กติกา$/, "link") },
+  { file: "tech-head/sport-rules", as: "techHead", path: "/staff/sports", act: async (page) => {
+    // Base UI renders the link with role="button".
+    await click(/^กติกา$/)(page);
+    await page.waitForURL(/\/rules$/);
+    await page.waitForTimeout(800);
+  } },
   { file: "tech-head/teams-auto", as: "techHead", path: "/staff/teams", act: click(/จัดทีมอัตโนมัติทุกประเภท/) },
 
   // Admin
