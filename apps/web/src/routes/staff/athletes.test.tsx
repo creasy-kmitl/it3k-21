@@ -71,6 +71,9 @@ function listPage(overrides: Partial<AthletePage> = {}): AthletePage {
     canReview: true,
     canEdit: false,
     canExport: true,
+    counts: { review: 1, approved: 0, rejected: 0 },
+    total: 1,
+    pageCount: 1,
     ...overrides,
   };
 }
@@ -163,7 +166,9 @@ describe("/staff/athletes", () => {
     expect(await view.findByText("นายสมชาย ใจดี")).toBeTruthy();
     expect(view.getByText("การสมัครของทุกสถาบัน")).toBeTruthy();
     expect(view.getByRole("combobox", { name: "สถาบัน" })).toBeTruthy();
-    expect(view.queryByRole("button", { name: /อนุมัติ|แก้ไข|กลับไปรอตรวจสอบ/ })).toBeNull();
+    // Row actions are named after the athlete; the status tabs are not actions.
+    expect(view.queryByRole("button", { name: /Somchai G/ })).toBeNull();
+    expect(view.queryByRole("checkbox")).toBeNull();
     expect(view.queryByRole("button", { name: "ส่งออก CSV" })).toBeNull();
   });
 
@@ -175,7 +180,8 @@ describe("/staff/athletes", () => {
         return item();
       },
     });
-    fireEvent.click(await view.findByRole("button", { name: "แก้ไข Somchai G ฟุตบอลชาย" }));
+    fireEvent.click(await view.findByRole("button", { name: "ตัวเลือกเพิ่มเติม Somchai G ฟุตบอลชาย" }));
+    fireEvent.click(await view.findByRole("menuitem", { name: "แก้ไขข้อมูล" }));
     fireEvent.change(view.getByLabelText("รหัสนักศึกษา"), { target: { value: "65070002" } });
     fireEvent.change(view.getByLabelText("เบอร์เสื้อ"), { target: { value: "11" } });
     await choose(view.getByRole("combobox", { name: "สถาบันของนักกีฬา" }), "สจล.");
@@ -198,6 +204,69 @@ describe("/staff/athletes", () => {
         ],
       ]),
     );
+  });
+});
+
+describe("/staff/athletes lists", () => {
+  test("status tabs show counts and filter, the sort goes to the API", async () => {
+    const asked: unknown[] = [];
+    const view = setup(listPage({ counts: { review: 4, approved: 7, rejected: 2 }, total: 13 }), {
+      list: async (filters) => {
+        asked.push(filters);
+        return listPage({ counts: { review: 4, approved: 7, rejected: 2 }, total: 13 });
+      },
+    });
+    fireEvent.click(await view.findByRole("button", { name: "อนุมัติแล้ว 7" }));
+    expect(view.getByRole("button", { name: "ทั้งหมด 13" })).toBeTruthy();
+    await waitFor(() =>
+      expect(asked).toContainEqual(expect.objectContaining({ status: "approved" })),
+    );
+    await choose(view.getByRole("combobox", { name: "เรียงตาม" }), "สมัครล่าสุด");
+    await waitFor(() => expect(asked).toContainEqual(expect.objectContaining({ sort: "newest" })));
+    // Filters on screen can be cleared in one go.
+    fireEvent.click(view.getByRole("button", { name: "ล้างตัวกรอง" }));
+    await waitFor(() =>
+      expect(asked.at(-1)).toEqual(expect.objectContaining({ status: undefined })),
+    );
+  });
+
+  test("export offers the filtered list or everything", async () => {
+    const exported: unknown[] = [];
+    const view = setup(listPage({ total: 1 }), {
+      exportAll: async (filters) => {
+        exported.push(filters);
+        return { items: [] };
+      },
+    });
+    fireEvent.click(await view.findByRole("button", { name: "ส่งออก CSV" }));
+    fireEvent.click(await view.findByRole("menuitem", { name: "ทั้งหมด" }));
+    await waitFor(() => expect(exported).toEqual([{}]));
+  });
+
+  test("approving several at once reviews each one", async () => {
+    const reviewed: string[] = [];
+    const other = item({
+      id: "r-2",
+      userId: "u-2",
+      athlete: { ...item().athlete, userId: "u-2", name: "Somsri K" },
+    });
+    const view = setup(listPage({ items: [item(), other] }), {
+      review: async (id) => {
+        reviewed.push(id);
+        return item({ id, status: "approved" });
+      },
+    });
+    fireEvent.click(await view.findByRole("checkbox", { name: "เลือก Somchai G ฟุตบอลชาย" }));
+    fireEvent.click(view.getByRole("checkbox", { name: "เลือก Somsri K ฟุตบอลชาย" }));
+    expect(view.getByText("เลือก 2 คน")).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: "อนุมัติที่เลือก" }));
+    await waitFor(() => expect(reviewed).toEqual(["r-1", "r-2"]));
+  });
+
+  test("an empty filtered list offers to clear the filters", async () => {
+    const view = setup(listPage({ items: [], total: 0 }));
+    expect(await view.findByText("ไม่พบการสมัคร")).toBeTruthy();
+    expect(view.getByText("ยังไม่มีใครสมัครเป็นนักกีฬา")).toBeTruthy();
   });
 });
 

@@ -124,6 +124,39 @@ describe("reading", () => {
     ).toEqual([]);
   });
 
+  test("counts each status under the other filters and pages by the filtered total", async () => {
+    await t.db
+      .update(sportRegistration)
+      .set({ status: "approved" })
+      .where(eq(sportRegistration.userId, "kmutt-1"));
+    type Page = { counts: Record<string, number>; total: number; pageCount: number };
+    const all = (await send<Page>("tech", "GET", "/")).body;
+    expect(all.counts).toEqual({ review: 2, approved: 1, rejected: 0 });
+    expect([all.total, all.pageCount]).toEqual([3, 1]);
+    // The status filter narrows the list and total, but not the counts.
+    const approved = (await send<Page>("tech", "GET", "/?status=approved")).body;
+    expect(approved.counts).toEqual(all.counts);
+    expect(approved.total).toBe(1);
+    // Scope still applies: kmutt staff count only their own.
+    const kmutt = (await send<Page>("kmutt-staff", "GET", "/")).body;
+    expect(kmutt.counts).toEqual({ review: 1, approved: 1, rejected: 0 });
+  });
+
+  test("sorts by shirt number, newest and name; an unknown sort is refused", async () => {
+    await t.db
+      .update(sportRegistration)
+      .set({ shirtNumber: 3, createdAt: new Date("2026-01-01") })
+      .where(eq(sportRegistration.userId, "kmutt-2"));
+    const order = async (sort: string) =>
+      (await send<{ items: Item[] }>("tech", "GET", `/?sort=${sort}`)).body.items.map(
+        (item) => item.athlete.userId,
+      );
+    expect(await order("shirt")).toEqual(["kmutt-2", "kmitl-1", "kmutt-1"]);
+    expect((await order("newest")).at(-1)).toBe("kmutt-2");
+    expect((await order("oldest"))[0]).toBe("kmutt-2");
+    expect((await send("tech", "GET", "/?sort=random")).res.status).toBe(400);
+  });
+
   test("departments without registration rights are refused", async () => {
     expect((await send("art", "GET", "/")).res.status).toBe(403);
   });

@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@it3k/ui/components/select";
-import { AtSign, Gamepad2, type LucideIcon, Shirt, Trophy, Volume2 } from "lucide-react";
+import { AtSign, Gamepad2, type LucideIcon, Medal, Shirt, Trophy, Volume2 } from "lucide-react";
 import type { ComponentProps } from "react";
 
 export type Requirements = {
@@ -234,6 +234,10 @@ export function RegistrationFieldsEditor({
             <SelectContent>
               {ranks.map((rank) => (
                 <SelectItem key={rank.value} value={rank.value}>
+                  <Medal
+                    aria-hidden
+                    className={rank.value === "1" ? "text-amber-500" : "text-slate-400"}
+                  />
                   {rank.label}
                 </SelectItem>
               ))}

@@ -106,6 +106,26 @@ export const STATUS_LABELS: Record<RegistrationStatus, string> = {
   rejected: "ไม่อนุมัติ",
 };
 
+/** How staff may order the athletes list and its export; `division` is the default. */
+export const ATHLETE_SORTS = [
+  "division",
+  "newest",
+  "oldest",
+  "name",
+  "institution",
+  "shirt",
+] as const;
+export type AthleteSort = (typeof ATHLETE_SORTS)[number];
+
+export const ATHLETE_SORT_LABELS: Record<AthleteSort, string> = {
+  division: "ตามประเภทกีฬา",
+  newest: "สมัครล่าสุด",
+  oldest: "สมัครก่อน",
+  name: "ชื่อ ก–ฮ",
+  institution: "สถาบัน",
+  shirt: "เบอร์เสื้อ",
+};
+
 /** มือ 1 or มือ 2 in badminton singles; one of each per institution. */
 export const BADMINTON_RANKS = [1, 2] as const;
 export type BadmintonRank = (typeof BADMINTON_RANKS)[number];

@@ -33,9 +33,9 @@ export function DivisionBadges({ division }: { division: DivisionSummary }) {
   );
 }
 
-const STATUS_VARIANTS: Record<RegistrationStatus, "secondary" | "default" | "destructive"> = {
-  review: "secondary",
-  approved: "default",
+const STATUS_VARIANTS: Record<RegistrationStatus, "outline" | "success" | "destructive"> = {
+  review: "outline",
+  approved: "success",
   rejected: "destructive",
 };
 
