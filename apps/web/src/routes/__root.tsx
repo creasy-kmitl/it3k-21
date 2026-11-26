@@ -99,7 +99,9 @@ function RootDocument() {
           {/*<Header />*/}
           <Outlet />
         </div>
-        <Toaster richColors />
+        {/* Sonner defaults to the bottom-right corner, which is where the
+            floating map button sits. Lifting the stack clears it. */}
+        <Toaster richColors offset={{ bottom: "5rem" }} />
         <TanStackRouterDevtools position="bottom-left" />
         <Scripts />
       </body>

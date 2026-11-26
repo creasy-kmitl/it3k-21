@@ -2,7 +2,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { SiFacebook, SiInstagram } from "@icons-pack/react-simple-icons";
 import { buttonVariants } from "@it3k/ui/components/button";
 import { cn } from "@it3k/ui/lib/utils";
-
 import { MapButton } from "@/components/map/map-button";
 
 export const Route = createFileRoute("/")({
@@ -60,9 +59,6 @@ function HomeComponent() {
           </a>
         </footer>
       </article>
-      {/* The map belongs to /staff, but that area needs a signed-in member.
-          Mounted here as well so the feature can be tried without signing in;
-          drop this block once it has been checked over on /staff. */}
       <MapButton />
     </div>
   );

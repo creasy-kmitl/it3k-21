@@ -1,4 +1,4 @@
-import { LoaderCircleIcon, LocateFixedIcon, MapIcon, MapPinnedIcon, RefreshCwIcon } from "lucide-react";
+import { LocateFixedIcon, MapIcon, MapPinnedIcon, RefreshCwIcon } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 
 import { Badge } from "@it3k/ui/components/badge";
@@ -11,11 +11,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@it3k/ui/components/dialog";
+import { Spinner } from "@it3k/ui/components/spinner";
 
 // Imported as a type on purpose: a value import here would pull map-view into
 // the main bundle and undo the lazy loading above.
 import type { CenterRequest, CenterTarget } from "@/components/map/map-view";
 import { type Segment, SegmentedControl } from "@/components/segmented-control";
+import type { LocationStatus } from "@/hooks/use-user-location";
 import { useUserLocation } from "@/hooks/use-user-location";
 
 /**
@@ -32,6 +34,21 @@ const CENTER_SEGMENTS: Segment<CenterTarget>[] = [
   { value: "user", label: "ตำแหน่งของฉัน", icon: LocateFixedIcon },
   { value: "venue", label: "จุดเริ่มต้น", icon: MapPinnedIcon },
 ];
+
+/**
+ * The hook has five statuses; collapsing them into "granted or not" told the
+ * user "ไม่ได้ระบุตำแหน่ง" while the browser was still asking for permission.
+ */
+const STATUS_BADGE: Record<
+  LocationStatus,
+  { label: string; variant: "default" | "secondary" | "outline" }
+> = {
+  idle: { label: "กำลังระบุตำแหน่ง", variant: "secondary" },
+  loading: { label: "กำลังระบุตำแหน่ง", variant: "secondary" },
+  granted: { label: "ตำแหน่งพร้อม", variant: "default" },
+  denied: { label: "ไม่ได้ระบุตำแหน่ง", variant: "outline" },
+  unavailable: { label: "ไม่ได้ระบุตำแหน่ง", variant: "outline" },
+};
 
 /** Everything inside the dialog: status, the map, and the centre control. */
 function MapPanel() {
@@ -62,8 +79,14 @@ function MapPanel() {
           <h2 className="font-heading text-base font-medium">แผนที่ KMITL</h2>
           <p className="text-sm text-muted-foreground">พิกัดกลางและตำแหน่งของคุณ</p>
         </div>
-        <Badge variant={status === "granted" ? "default" : "secondary"} className="shrink-0">
-          {status === "granted" ? "กำลังระบุตำแหน่ง" : "ไม่ได้ระบุตำแหน่ง"}
+        {/* `aria-live` so a screen reader hears the status change instead of
+            only seeing the badge swap. */}
+        <Badge
+          variant={STATUS_BADGE[status].variant}
+          className="shrink-0"
+          aria-live="polite"
+        >
+          {STATUS_BADGE[status].label}
         </Badge>
       </div>
 
@@ -73,7 +96,7 @@ function MapPanel() {
         <div className="flex flex-col gap-2 border-b bg-muted p-3 text-xs text-muted-foreground">
           <p>{message}</p>
           <Button variant="outline" size="xs" onClick={request} className="w-fit">
-            <RefreshCwIcon />
+            <RefreshCwIcon data-icon="inline-start" aria-hidden />
             ลองอีกครั้ง
           </Button>
         </div>
@@ -86,8 +109,8 @@ function MapPanel() {
         <Suspense
           fallback={
             <div className="flex h-full items-center justify-center text-muted-foreground">
-              <LoaderCircleIcon className="size-5 animate-spin" />
-              <span className="sr-only">กำลังโหลดแผนที่</span>
+              {/* Spinner carries role="status" and an accessible label itself. */}
+              <Spinner className="size-5" />
             </div>
           }
         >
@@ -132,7 +155,7 @@ export function MapButton() {
           />
         }
       >
-        <MapIcon />
+        <MapIcon data-icon="inline-start" aria-hidden />
         แผนที่
       </DialogTrigger>
 

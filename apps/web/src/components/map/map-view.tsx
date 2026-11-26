@@ -4,10 +4,10 @@ import "leaflet/dist/leaflet.css";
 
 import L from "leaflet";
 import { useEffect } from "react";
-import { Circle, MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
+import { Circle, MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 
 import type { Coords } from "@/hooks/use-user-location";
-import { VENUE_CENTER } from "@/lib/map";
+import { CAMPUS_CENTER, USER_LOCATION_COLOR } from "@/lib/map";
 
 /**
  * The user's marker is a styled `<div>` rather than Leaflet's bundled PNG.
@@ -22,9 +22,23 @@ import { VENUE_CENTER } from "@/lib/map";
  */
 const USER_ICON = L.divIcon({
   className: "",
-  html: `<span class="relative flex size-5 items-center justify-center"><span class="absolute size-5 animate-ping rounded-full bg-sky-400/60"></span><span class="size-5 rounded-full bg-sky-500 ring-[3px] ring-background shadow"></span></span>`,
+  // The colour comes from the constant rather than a palette class, so the dot,
+  // its halo and the accuracy circle cannot drift apart.
+  html: `<span class="relative flex size-5 items-center justify-center"><span class="absolute size-5 animate-ping rounded-full opacity-60" style="background-color:${USER_LOCATION_COLOR}"></span><span class="size-5 rounded-full ring-[3px] ring-background shadow" style="background-color:${USER_LOCATION_COLOR}"></span></span>`,
   iconSize: [20, 20],
   iconAnchor: [10, 10],
+});
+
+/**
+ * The campus marker, so the "จุดเริ่มต้น" option flies somewhere that is
+ * visibly labelled rather than to a bare patch of map.
+ */
+const CAMPUS_ICON = L.divIcon({
+  className: "",
+  html: `<span class="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md ring-2 ring-background"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
+  popupAnchor: [0, -18],
 });
 
 /**
@@ -53,12 +67,12 @@ function FocusTarget({
 
   useEffect(() => {
     if (request.target !== "venue") return;
-    map.flyTo([VENUE_CENTER.lat, VENUE_CENTER.lng], VENUE_CENTER.zoom, { duration: 0.6 });
+    map.flyTo([CAMPUS_CENTER.lat, CAMPUS_CENTER.lng], CAMPUS_CENTER.zoom, { duration: 0.6 });
   }, [request, map]);
 
   useEffect(() => {
     if (request.target !== "user" || !coords) return;
-    map.flyTo([coords.lat, coords.lng], Math.max(map.getZoom(), VENUE_CENTER.zoom), {
+    map.flyTo([coords.lat, coords.lng], Math.max(map.getZoom(), CAMPUS_CENTER.zoom), {
       duration: 0.6,
     });
   }, [coords, request, map]);
@@ -96,8 +110,8 @@ export type MapViewProps = {
 export function MapView({ user, request }: MapViewProps) {
   return (
     <MapContainer
-      center={[VENUE_CENTER.lat, VENUE_CENTER.lng]}
-      zoom={VENUE_CENTER.zoom}
+      center={[CAMPUS_CENTER.lat, CAMPUS_CENTER.lng]}
+      zoom={CAMPUS_CENTER.zoom}
       // Leaflet needs a concrete height; the panel gives it one.
       className="h-full w-full"
       scrollWheelZoom
@@ -108,16 +122,27 @@ export function MapView({ user, request }: MapViewProps) {
         maxZoom={19}
       />
 
+      <Marker
+        position={[CAMPUS_CENTER.lat, CAMPUS_CENTER.lng]}
+        icon={CAMPUS_ICON}
+        interactive={false}
+      >
+        <Popup>จุดเริ่มต้น · KMITL</Popup>
+      </Marker>
+
       {user && (
         <>
           {/* A phone fix is only good to perhaps 20m, so draw the uncertainty
-              rather than implying precision the hardware cannot deliver. */}
+              rather than implying precision the hardware cannot deliver.
+              `interactive={false}` keeps both off the click path so dragging
+              the map never catches on them. */}
           <Circle
             center={[user.lat, user.lng]}
             radius={user.accuracy}
-            pathOptions={{ color: "#0ea5e9", fillOpacity: 0.08, weight: 1 }}
+            interactive={false}
+            pathOptions={{ color: USER_LOCATION_COLOR, fillOpacity: 0.08, weight: 1 }}
           />
-          <Marker position={[user.lat, user.lng]} icon={USER_ICON} />
+          <Marker position={[user.lat, user.lng]} icon={USER_ICON} interactive={false} />
         </>
       )}
 
