@@ -225,6 +225,15 @@ function athletes(code: string, institution: Institution, count: number, gender:
 // Staff personas, signed in through mock-sessions.json.
 const PERSONAS = [
   {
+    id: "mock-admin",
+    first: "แอดมิน",
+    dept: "tech-live",
+    seat: false,
+    institution: "kmitl",
+    role: "admin",
+    note: "Admin (อนุมัติ แก้ไขนักกีฬา และทำได้ทุกอย่าง)",
+  },
+  {
     id: "mock-sports-head",
     first: "สมศักดิ์",
     dept: "sports",
@@ -273,7 +282,9 @@ const PERSONAS = [
     note: "สตาฟฝ่าย Art (ไม่มีสิทธิ์กีฬา)",
   },
 ] as const;
-for (const p of PERSONAS) person(p.id, p.first, p.institution, "male", "staff", deptId(p.dept));
+for (const p of PERSONAS) {
+  person(p.id, p.first, p.institution, "male", "role" in p ? p.role : "staff", deptId(p.dept));
+}
 
 // ── Competition data ───────────────────────────────────────────────────────
 type TeamRef = {
