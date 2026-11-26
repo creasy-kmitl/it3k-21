@@ -110,7 +110,8 @@ export function bracketPreset(request: BracketAddRequest): MatchPreset {
 export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => void }) {
   const apis = useApis();
   const [filters, setFilters] = useState<MatchFilters>({});
-  const [view, setView] = useState<View>("list");
+  // The bracket is the main view; the list by day is one click away.
+  const [view, setView] = useState<View>("bracket");
   const [creating, setCreating] = useState(false);
   const [preset, setPreset] = useState<MatchPreset | null>(null);
   const [building, setBuilding] = useState(false);
@@ -151,24 +152,29 @@ export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => voi
     <div className="flex flex-1 flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeader icon={Swords} title="แมตช์" description="ตารางแข่งทุกประเภท" />
-        {canManage &&
-          (view === "bracket" ? (
-            <Button onClick={() => setBuilding(true)}>
-              <Network /> เพิ่มสายการแข่ง
-            </Button>
-          ) : (
-            <Button onClick={() => setCreating(true)}>
+        {canManage && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={view === "bracket" ? "outline" : "default"}
+              onClick={() => setCreating(true)}
+            >
               <Plus /> สร้างแมตช์
             </Button>
-          ))}
+            {view === "bracket" && (
+              <Button onClick={() => setBuilding(true)}>
+                <Network /> เพิ่มสายการแข่ง
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       <SegmentedControl<View>
         label="มุมมอง"
         className="w-fit"
         segments={[
-          { value: "list", label: "รายการ", icon: List },
           { value: "bracket", label: "สายการแข่ง", icon: Network },
+          { value: "list", label: "รายการ", icon: List },
         ]}
         value={view}
         onChange={setView}

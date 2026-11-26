@@ -52,6 +52,11 @@ async function setup(items: MatchListItem[], canManage: boolean) {
   return { view, list, create, createBracket };
 }
 
+/** The page opens on the bracket; the day-by-day list is the second tab. */
+async function showList(view: Awaited<ReturnType<typeof setup>>["view"]) {
+  fireEvent.click(await view.findByRole("button", { name: /^รายการ$/ }));
+}
+
 /** A semi-final whose winner goes to a final still waiting on its other side. */
 const knockout = () => [
   listItem({ id: "m-sf", matchNo: 1, stageName: "รอบรองชนะเลิศ", version: 4 }),
@@ -101,6 +106,7 @@ describe("/staff/matches", () => {
       ],
       false,
     );
+    await showList(view);
     const first = await view.findByRole("region", { name: /1 ธันวาคม/ });
     expect(within(first).getByText("มจธ.")).toBeTruthy();
     expect(within(first).getByText("ยังไม่เริ่ม")).toBeTruthy();
@@ -118,10 +124,12 @@ describe("/staff/matches", () => {
 
   test("an empty list says so", async () => {
     const { view } = await setup([], true);
+    expect(await view.findByText("ยังไม่มีสายการแข่ง")).toBeTruthy();
+    await showList(view);
     expect(await view.findByText("ยังไม่มีแมตช์")).toBeTruthy();
   });
 
-  test("the bracket view draws knockout rounds and asks for whole divisions", async () => {
+  test("the page opens on the bracket, which draws knockout rounds for whole divisions", async () => {
     const { view, list } = await setup(
       [
         listItem({ id: "m-sf", matchNo: 1, stageName: "รอบรองชนะเลิศ" }),
@@ -145,7 +153,6 @@ describe("/staff/matches", () => {
       false,
     );
     await view.findAllByText("สจล.");
-    fireEvent.click(view.getByRole("button", { name: /สายการแข่ง/ }));
     const bracket = await view.findByRole("region", { name: /ฟุตบอล · ฟุตบอลชาย/ });
     const cards = within(bracket).getAllByRole("link");
     expect(cards.map((card) => card.getAttribute("href"))).toEqual([
@@ -160,7 +167,6 @@ describe("/staff/matches", () => {
   test("managers add the match before an open side; its winner is sent there", async () => {
     const { view, create } = await setup(knockout(), true);
     await view.findAllByText("สจล.");
-    fireEvent.click(view.getByRole("button", { name: /สายการแข่ง/ }));
     expect(await view.findByRole("button", { name: "ต่อรอบถัดไปจาก M2 · ชิงชนะเลิศ" })).toBeTruthy();
     // The semi-final feeds the final, so it does not go on by itself.
     expect(view.queryByRole("button", { name: "ต่อรอบถัดไปจาก M1 · รอบรองชนะเลิศ" })).toBeNull();
@@ -181,15 +187,13 @@ describe("/staff/matches", () => {
   test("staff who cannot manage matches see no add buttons", async () => {
     const { view } = await setup(knockout(), false);
     await view.findAllByText("สจล.");
-    fireEvent.click(view.getByRole("button", { name: /สายการแข่ง/ }));
     await view.findByRole("region", { name: /ฟุตบอล · ฟุตบอลชาย/ });
     expect(view.queryByRole("button", { name: /ต่อรอบถัดไป|เพิ่มแมตช์ก่อนหน้า|เพิ่มสายการแข่ง/ })).toBeNull();
   });
 
   test("เพิ่มสายการแข่ง builds a whole bracket for the chosen division", async () => {
     const { view, createBracket } = await setup([], true);
-    await view.findByText("ยังไม่มีแมตช์");
-    fireEvent.click(view.getByRole("button", { name: /สายการแข่ง/ }));
+    await view.findByText("ยังไม่มีสายการแข่ง");
     const [button] = await view.findAllByRole("button", { name: /เพิ่มสายการแข่ง/ });
     fireEvent.click(button as HTMLElement);
     const dialog = await view.findByRole("dialog", { name: "เพิ่มสายการแข่ง" });
