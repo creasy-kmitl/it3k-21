@@ -63,16 +63,19 @@ function dayLabel(key: string) {
 
 /**
  * Search plus filters for sport, division, day, venue and status. The search
- * waits for typing to pause before it changes the filters (and the URL).
+ * waits for typing to pause before it changes the filters (and the URL). The
+ * bracket view needs whole rounds, so it offers sport and division only.
  */
 export function MatchFiltersBar({
   options,
   value,
   onChange,
+  bracket = false,
 }: {
   options: FilterOptions | undefined;
   value: MatchFilters;
   onChange: (next: MatchFilters) => void;
+  bracket?: boolean;
 }) {
   const [text, setText] = useState(value.q ?? "");
   useEffect(() => setText(value.q ?? ""), [value.q]);
@@ -92,19 +95,21 @@ export function MatchFiltersBar({
 
   return (
     <div className="flex flex-col gap-2">
-      <InputGroup>
-        <InputGroupAddon>
-          <Search aria-hidden />
-        </InputGroupAddon>
-        <InputGroupInput
-          type="search"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          placeholder="ค้นหาสถาบัน กีฬา หรือสนาม"
-          aria-label="ค้นหาแมตช์"
-        />
-      </InputGroup>
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+      {!bracket && (
+        <InputGroup>
+          <InputGroupAddon>
+            <Search aria-hidden />
+          </InputGroupAddon>
+          <InputGroupInput
+            type="search"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder="ค้นหาสถาบัน กีฬา หรือสนาม"
+            aria-label="ค้นหาแมตช์"
+          />
+        </InputGroup>
+      )}
+      <div className={bracket ? "grid grid-cols-2 gap-2" : "grid grid-cols-2 gap-2 md:grid-cols-5"}>
         <FilterSelect
           label="กีฬา"
           allLabel="ทุกกีฬา"
@@ -119,30 +124,34 @@ export function MatchFiltersBar({
           value={value.divisionId}
           onChange={(divisionId) => set({ divisionId })}
         />
-        <FilterSelect
-          label="วัน"
-          allLabel="ทุกวัน"
-          options={(options?.days ?? []).map((day) => ({ value: day, label: dayLabel(day) }))}
-          value={value.day}
-          onChange={(day) => set({ day })}
-        />
-        <FilterSelect
-          label="สนาม"
-          allLabel="ทุกสนาม"
-          options={(options?.venues ?? []).map((v) => ({ value: v.id, label: v.name }))}
-          value={value.venueId}
-          onChange={(venueId) => set({ venueId })}
-        />
-        <FilterSelect
-          label="สถานะ"
-          allLabel="ทุกสถานะ"
-          options={MATCH_STATUSES.map((status) => ({
-            value: status,
-            label: MATCH_STATUS_LABELS[status],
-          }))}
-          value={value.status}
-          onChange={(status) => set({ status: status as MatchFilters["status"] })}
-        />
+        {!bracket && (
+          <>
+            <FilterSelect
+              label="วัน"
+              allLabel="ทุกวัน"
+              options={(options?.days ?? []).map((day) => ({ value: day, label: dayLabel(day) }))}
+              value={value.day}
+              onChange={(day) => set({ day })}
+            />
+            <FilterSelect
+              label="สนาม"
+              allLabel="ทุกสนาม"
+              options={(options?.venues ?? []).map((v) => ({ value: v.id, label: v.name }))}
+              value={value.venueId}
+              onChange={(venueId) => set({ venueId })}
+            />
+            <FilterSelect
+              label="สถานะ"
+              allLabel="ทุกสถานะ"
+              options={MATCH_STATUSES.map((status) => ({
+                value: status,
+                label: MATCH_STATUS_LABELS[status],
+              }))}
+              value={value.status}
+              onChange={(status) => set({ status: status as MatchFilters["status"] })}
+            />
+          </>
+        )}
       </div>
       {active && (
         <Button

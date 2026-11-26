@@ -22,7 +22,13 @@ import { dirname, resolve } from "node:path";
 import { and, eq, inArray, isNotNull, like, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 
-import type { MatchOutcome, MatchStatus, ScoreEventPayload } from "../src/competition-rules";
+import type {
+  MatchOutcome,
+  MatchStatus,
+  ParticipantOutcome,
+  ScoreEventPayload,
+  SideSource,
+} from "../src/competition-rules";
 import { findLocalD1 } from "../src/local-d1";
 import type { Institution, ProfileValues } from "../src/profile";
 import * as s from "../src/schema/index";
@@ -353,6 +359,8 @@ function match(opts: {
   matchNo?: number | null;
   friendly?: boolean;
   labels?: string[];
+  /** Knockout sides: the winner or loser of an earlier match. */
+  sources?: { matchId: string; result: SideSource }[];
   play?: (
     side: (i: number) => string,
     regOf: (i: number, n: number) => string,
@@ -374,16 +382,23 @@ function match(opts: {
     createdBy: "mock-sports-head",
   });
   const participantIds: string[] = [];
-  const count = opts.labels ? opts.labels.length : opts.teams.length;
+  const count = opts.sources?.length ?? opts.labels?.length ?? opts.teams.length;
   for (let i = 0; i < count; i++) {
     const pid = `${opts.id}-p${i + 1}`;
     participantIds.push(pid);
+    const source = opts.sources?.[i];
     sides.push({
       id: pid,
       matchId: opts.id,
-      teamId: opts.labels ? null : (opts.teams[i]?.id ?? null),
+      teamId: source
+        ? advanced(source.matchId, source.result)
+        : opts.labels
+          ? null
+          : (opts.teams[i]?.id ?? null),
       label: opts.labels?.[i] ?? null,
       slot: i + 1,
+      sourceMatchId: source?.matchId ?? null,
+      sourceResult: source?.result ?? null,
     });
   }
   if (!opts.play || opts.status === "scheduled" || opts.status === "checkin") {
@@ -459,6 +474,16 @@ function match(opts: {
       });
   }
   return participantIds;
+}
+
+/** The team a finished match already sent on, as resultStatements' auto-advance would. */
+function advanced(matchId: string, result: SideSource): string | null {
+  const outcomes: ParticipantOutcome[] =
+    result === "winner" ? ["win", "walkover_win"] : ["loss", "forfeit"];
+  const hits = sides.filter(
+    (x) => x.matchId === matchId && x.outcome && outcomes.includes(x.outcome),
+  );
+  return hits.length === 1 ? (hits[0]?.teamId ?? null) : null;
 }
 
 const score = (
@@ -656,6 +681,35 @@ match({
   stageName: "รอบแรก",
   matchNo: 2,
   startAt: at(1, "10:00"),
+  venueId: "mock-venue-gym",
+  court: "คอร์ท 2",
+  status: "scheduled",
+});
+// สายน็อกเอาต์: ผู้ชนะ M1 กับ M2 ชิง ผู้แพ้ชิงที่ 3 (M1 จบแล้ว ผู้ชนะจึงเลื่อนเข้าชิงไว้แล้ว)
+const bdKnockout = (result: SideSource) => [
+  { matchId: "mock-match-bd-1", result },
+  { matchId: "mock-match-bd-2", result },
+];
+match({
+  id: "mock-match-bd-final",
+  code: "badminton-singles-female",
+  teams: [],
+  sources: bdKnockout("winner"),
+  stageName: "ชิงชนะเลิศ",
+  matchNo: 4,
+  startAt: at(2, "14:00"),
+  venueId: "mock-venue-gym",
+  court: "คอร์ท 1",
+  status: "scheduled",
+});
+match({
+  id: "mock-match-bd-third",
+  code: "badminton-singles-female",
+  teams: [],
+  sources: bdKnockout("loser"),
+  stageName: "ชิงอันดับ 3",
+  matchNo: 3,
+  startAt: at(2, "13:00"),
   venueId: "mock-venue-gym",
   court: "คอร์ท 2",
   status: "scheduled",

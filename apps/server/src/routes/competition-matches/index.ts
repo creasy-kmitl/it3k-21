@@ -6,6 +6,7 @@ import type { Database } from "@it3k/db";
 import {
   MIN_TEAMS_FOR_MEDALS,
   type MatchInput,
+  SIDE_SOURCE_LABELS,
   matchImageInput,
   matchInput,
   matchStatusInput,
@@ -18,7 +19,7 @@ import {
   competitionMatchParticipant,
   competitionMatchReferee,
 } from "@it3k/db/schema/index";
-import { and, count, eq, max, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -65,6 +66,9 @@ const PARTICIPANT_NOT_FOUND = "ไม่พบฝั่งนี้ในแม�
 const REFEREE_NOT_FOUND = "ไม่พบกรรมการคนนี้";
 const IMAGE_NOT_FOUND = "ไม่พบรูปนี้";
 const COVER_TAKEN = "แมตช์นี้มีรูปปกแล้ว โหลดใหม่แล้วลองอีกครั้ง";
+const SOURCE_NOT_FOUND = "ไม่พบแมตช์ที่ส่งผู้ชนะหรือผู้แพ้มา";
+const SOURCE_SELF = "ฝั่งของแมตช์มาจากผลของแมตช์ตัวเองไม่ได้";
+const SOURCE_LOOP = "สายการแข่งวนกลับมาที่แมตช์นี้";
 
 type MatchRow = typeof competitionMatch.$inferSelect;
 
@@ -76,8 +80,74 @@ async function findMatch(db: Database, id: string): Promise<MatchRow | undefined
 const hasStarted = (match: Pick<MatchRow, "status" | "scoreSeq">) =>
   match.scoreSeq > 0 || match.status === "live" || match.status === "finished";
 
+type SourceRow = { id: string; matchNo: number | null; stageName: string };
+
+/** The source matches a match's sides name, by id: top-level matches of the division. */
+async function loadSources(db: Database, input: MatchInput) {
+  const ids = [
+    ...new Set(input.participants.flatMap((p) => (p.source ? [p.source.matchId] : []))),
+  ];
+  if (ids.length === 0) return new Map<string, SourceRow>();
+  const rows = await db
+    .select({
+      id: competitionMatch.id,
+      matchNo: competitionMatch.matchNo,
+      stageName: competitionMatch.stageName,
+    })
+    .from(competitionMatch)
+    .where(
+      and(
+        inArray(competitionMatch.id, ids),
+        eq(competitionMatch.divisionId, input.divisionId),
+        isNull(competitionMatch.parentMatchId),
+      ),
+    );
+  return new Map(rows.map((row) => [row.id, row]));
+}
+
+/** True when `from` already depends, through side sources, on match `target`. */
+async function feedsFrom(db: Database, from: readonly string[], target: string) {
+  const seen = new Set<string>();
+  let frontier = [...from];
+  while (frontier.length > 0) {
+    if (frontier.includes(target)) return true;
+    for (const id of frontier) seen.add(id);
+    const rows = await db
+      .select({ sourceMatchId: competitionMatchParticipant.sourceMatchId })
+      .from(competitionMatchParticipant)
+      .where(inArray(competitionMatchParticipant.matchId, frontier));
+    frontier = [
+      ...new Set(
+        rows.flatMap((row) =>
+          row.sourceMatchId && !seen.has(row.sourceMatchId) ? [row.sourceMatchId] : [],
+        ),
+      ),
+    ];
+  }
+  return false;
+}
+
+/** "ผู้ชนะ M3", or the stage when the match has no number. */
+function sourceLabel(source: SourceRow, result: keyof typeof SIDE_SOURCE_LABELS) {
+  const what = source.matchNo !== null ? `M${source.matchNo}` : source.stageName;
+  return `${SIDE_SOURCE_LABELS[result]} ${what}`;
+}
+
+/** The sides as stored: a sourced side without a label is named after its source. */
+function storedSides(input: MatchInput, sources: Map<string, SourceRow>) {
+  return input.participants.map((p) => {
+    const source = p.source ? sources.get(p.source.matchId) : undefined;
+    return {
+      teamId: p.teamId,
+      label: p.label || (source && p.source ? sourceLabel(source, p.source.result) : null),
+      sourceMatchId: p.source?.matchId ?? null,
+      sourceResult: p.source?.result ?? null,
+    };
+  });
+}
+
 /** Why a match cannot be saved as asked, or null. Sub-matches stay in their parent's division. */
-async function checkMatch(db: Database, input: MatchInput) {
+async function checkMatch(db: Database, input: MatchInput, selfId: string | null = null) {
   const teamIds = input.participants.flatMap((p) => (p.teamId ? [p.teamId] : []));
   const teamProblem = await checkTeams(db, input.divisionId, teamIds);
   if (teamProblem) return teamProblem;
@@ -94,6 +164,14 @@ async function checkMatch(db: Database, input: MatchInput) {
     const parent = await findMatch(db, input.parentMatchId);
     if (!parent || parent.divisionId !== input.divisionId) return "ไม่พบแมตช์หลัก";
     if (parent.parentMatchId) return "แมตช์ย่อยมีแมตช์ย่อยซ้อนไม่ได้";
+  }
+  const sourceIds = input.participants.flatMap((p) => (p.source ? [p.source.matchId] : []));
+  if (sourceIds.length > 0) {
+    if (input.parentMatchId) return "แมตช์ย่อยรับผู้ชนะจากแมตช์อื่นไม่ได้";
+    if (selfId && sourceIds.includes(selfId)) return SOURCE_SELF;
+    const sources = await loadSources(db, input);
+    if (sourceIds.some((id) => !sources.has(id))) return SOURCE_NOT_FOUND;
+    if (selfId && (await feedsFrom(db, sourceIds, selfId))) return SOURCE_LOOP;
   }
   return null;
 }
@@ -144,10 +222,27 @@ export const createCompetitionMatchRoutes = (deps: RouteDeps) =>
         .select({ matchNo: max(competitionMatch.matchNo) })
         .from(competitionMatch)
         .where(eq(competitionMatch.divisionId, divisionId));
+      // Matches a knockout side can take its winner or loser from.
+      const matches = await db
+        .select({
+          id: competitionMatch.id,
+          matchNo: competitionMatch.matchNo,
+          stageName: competitionMatch.stageName,
+        })
+        .from(competitionMatch)
+        .where(
+          and(eq(competitionMatch.divisionId, divisionId), isNull(competitionMatch.parentMatchId)),
+        )
+        .orderBy(
+          sql`${competitionMatch.matchNo} is null`,
+          asc(competitionMatch.matchNo),
+          asc(competitionMatch.startAt),
+        );
       return c.json(
         {
           division,
           teams,
+          matches,
           groups: await listGroups(db, divisionId),
           friendlyByDefault: teams.length < MIN_TEAMS_FOR_MEDALS,
           nextMatchNo: (last?.matchNo ?? 0) + 1,
@@ -178,6 +273,7 @@ export const createCompetitionMatchRoutes = (deps: RouteDeps) =>
       }
       const problem = await checkMatch(db, input);
       if (problem) return c.json({ message: problem }, 400);
+      const stored = storedSides(input, await loadSources(db, input));
       let subOrder: number | null = null;
       if (input.parentMatchId) {
         const [last] = await db
@@ -200,12 +296,7 @@ export const createCompetitionMatchRoutes = (deps: RouteDeps) =>
             createdBy: c.var.user.id,
           }),
           db.insert(competitionMatchParticipant).values(
-            participants.map((p, index) => ({
-              matchId: id,
-              teamId: p.teamId,
-              label: p.label || null,
-              slot: index + 1,
-            })),
+            stored.map((side, index) => ({ matchId: id, ...side, slot: index + 1 })),
           ),
           logCompetitionChange(db, c.var.user, "match", id, "create", input),
         ]);
@@ -237,8 +328,9 @@ export const createCompetitionMatchRoutes = (deps: RouteDeps) =>
         if (current.parentMatchId !== input.parentMatchId) {
           return c.json({ message: "ย้ายแมตช์ย่อยไปแมตช์หลักอื่นไม่ได้" }, 400);
         }
-        const problem = await checkMatch(db, input);
+        const problem = await checkMatch(db, input, id);
         if (problem) return c.json({ message: problem }, 400);
+        const stored = storedSides(input, await loadSources(db, input));
 
         // Sides keep their rows (and lineups and check-ins) while their team
         // stays; a side whose team changes starts over as a new row.
@@ -248,18 +340,28 @@ export const createCompetitionMatchRoutes = (deps: RouteDeps) =>
           .where(eq(competitionMatchParticipant.matchId, id));
         const bySlot = new Map(sides.map((side) => [side.slot, side]));
         const removed: string[] = [];
-        const relabelled: { id: string; label: string | null }[] = [];
-        const added: { teamId: string | null; label: string | null; slot: number }[] = [];
-        input.participants.forEach((p, index) => {
+        const relabelled: ({ id: string } & Omit<(typeof stored)[number], "teamId">)[] = [];
+        const added: ((typeof stored)[number] & { slot: number })[] = [];
+        stored.forEach((p, index) => {
           const slot = index + 1;
-          const label = p.label || null;
           const side = bySlot.get(slot);
           if (side && side.teamId === p.teamId) {
-            if (side.label !== label) relabelled.push({ id: side.id, label });
+            if (
+              side.label !== p.label ||
+              side.sourceMatchId !== p.sourceMatchId ||
+              side.sourceResult !== p.sourceResult
+            ) {
+              relabelled.push({
+                id: side.id,
+                label: p.label,
+                sourceMatchId: p.sourceMatchId,
+                sourceResult: p.sourceResult,
+              });
+            }
             return;
           }
           if (side) removed.push(side.id);
-          added.push({ teamId: p.teamId, label, slot });
+          added.push({ ...p, slot });
         });
         for (const side of sides) {
           if (side.slot > input.participants.length) removed.push(side.id);
@@ -293,7 +395,11 @@ export const createCompetitionMatchRoutes = (deps: RouteDeps) =>
             ...relabelled.map((side) =>
               db
                 .update(competitionMatchParticipant)
-                .set({ label: side.label })
+                .set({
+                  label: side.label,
+                  sourceMatchId: side.sourceMatchId,
+                  sourceResult: side.sourceResult,
+                })
                 .where(eq(competitionMatchParticipant.id, side.id)),
             ),
             ...added.map((side) =>

@@ -107,6 +107,8 @@ const sideColumns = {
   id: competitionMatchParticipant.id,
   slot: competitionMatchParticipant.slot,
   label: competitionMatchParticipant.label,
+  sourceMatchId: competitionMatchParticipant.sourceMatchId,
+  sourceResult: competitionMatchParticipant.sourceResult,
   score: competitionMatchParticipant.score,
   detail: competitionMatchParticipant.detail,
   resultValue: competitionMatchParticipant.resultValue,
@@ -150,6 +152,9 @@ function publicSide(row: SideRow) {
     slot: row.slot,
     name: team?.name ?? row.label ?? "",
     team,
+    // The knockout match this side waits on, for the bracket view.
+    sourceMatchId: row.sourceMatchId,
+    sourceResult: row.sourceResult,
     score: row.score,
     detail: row.detail as ParticipantDetail | null,
     resultValue: row.resultValue,

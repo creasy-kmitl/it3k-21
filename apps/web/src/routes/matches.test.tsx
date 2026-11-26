@@ -12,7 +12,11 @@ import { MatchesView } from "./matches";
 
 afterEach(cleanup);
 
-function setup(api: Partial<PublicCompetitionApi>, filters: MatchFilters = {}) {
+function setup(
+  api: Partial<PublicCompetitionApi>,
+  filters: MatchFilters = {},
+  view: "list" | "bracket" = "list",
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const apis = fakeApis({
     publicCompetition: loudFake<PublicCompetitionApi>("publicCompetition", api),
@@ -20,7 +24,7 @@ function setup(api: Partial<PublicCompetitionApi>, filters: MatchFilters = {}) {
   return renderAtRoot(() => (
     <QueryClientProvider client={client}>
       <ApiProvider value={apis}>
-        <MatchesView filters={filters} onChange={() => {}} />
+        <MatchesView filters={filters} onChange={() => {}} view={view} onViewChange={() => {}} />
       </ApiProvider>
     </QueryClientProvider>
   ));
@@ -56,5 +60,36 @@ describe("matches page", () => {
   test("says so when nothing matches", async () => {
     await setup({ filters, matches: async () => ({ items: [] }) });
     await waitFor(() => expect(screen.getByText("ไม่พบแมตช์")).toBeTruthy());
+  });
+
+  test("the bracket view joins a final to the semi-final whose winner it waits on", async () => {
+    const matches = mock(async () => ({
+      items: [
+        publicMatch({ id: "m-sf", matchNo: 1, stageName: "รอบรองชนะเลิศ" }),
+        publicMatch({
+          id: "m-final",
+          matchNo: 2,
+          stageName: "ชิงชนะเลิศ",
+          sides: publicMatch().sides.map((side, i) =>
+            i === 0
+              ? {
+                  ...side,
+                  team: null,
+                  name: "ผู้ชนะ M1",
+                  sourceMatchId: "m-sf",
+                  sourceResult: "winner" as const,
+                }
+              : side,
+          ),
+        }),
+      ],
+    }));
+    await setup({ filters, matches }, { sportId: "s-football", day: "2026-12-25" }, "bracket");
+    expect(await screen.findByText("ผู้ชนะ M1")).toBeTruthy();
+    // A bracket ignores the day: it needs every round.
+    expect(matches).toHaveBeenCalledWith({ sportId: "s-football" });
+    expect(screen.queryByRole("searchbox", { name: "ค้นหาแมตช์" })).toBeNull();
+    const links = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
+    expect(links).toEqual(expect.arrayContaining(["/matches/m-sf", "/matches/m-final"]));
   });
 });

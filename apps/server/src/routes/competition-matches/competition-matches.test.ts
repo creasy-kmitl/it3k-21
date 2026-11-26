@@ -457,6 +457,109 @@ describe("placements", () => {
   });
 });
 
+describe("knockout sources", () => {
+  type SourcedSide = Side & { sourceMatchId: string | null; sourceResult: string | null };
+
+  test("a side may wait on another match's winner; it is named after it", async () => {
+    const { divisionId, teamIds } = await seedTeams("football", ["kmitl", "kmutt"]);
+    const semi = await send(
+      "tech",
+      "POST",
+      "/",
+      matchBody(divisionId, [
+        { teamId: teamIds[0], label: null },
+        { teamId: teamIds[1], label: null },
+      ]),
+    );
+    const semiId = (semi.body.match as Match).id;
+    const setup = await send("tech", "GET", `/setup/${divisionId}`);
+    expect((setup.body.matches as { id: string }[]).map((m) => m.id)).toEqual([semiId]);
+
+    const final = await send(
+      "tech",
+      "POST",
+      "/",
+      matchBody(
+        divisionId,
+        [
+          { teamId: null, label: null, source: { matchId: semiId, result: "winner" } },
+          { teamId: null, label: "ผู้ชนะ M2" },
+        ],
+        { stageName: "ชิงชนะเลิศ", matchNo: 3 },
+      ),
+    );
+    expect(final.res.status).toBe(201);
+    const sides = (final.body.match as Match).participants as SourcedSide[];
+    expect(sides.map((side) => [side.name, side.sourceMatchId, side.sourceResult])).toEqual([
+      ["ผู้ชนะ M1", semiId, "winner"],
+      ["ผู้ชนะ M2", null, null],
+    ]);
+    const list = await send("tech", "GET", `/?divisionId=${divisionId}`);
+    const listed = (list.body.items as Match[]).find((m) => m.id !== semiId);
+    expect((defined(listed).participants[0] as SourcedSide).sourceMatchId).toBe(semiId);
+  });
+
+  test("a source from another division, the match itself or a loop is refused", async () => {
+    const { divisionId, teamIds } = await seedTeams("football", ["kmitl", "kmutt"]);
+    const other = await seedMatch(t, "basketball-3x3-female");
+    const twoTeams = [
+      { teamId: teamIds[0], label: null },
+      { teamId: teamIds[1], label: null },
+    ];
+    const foreign = await send(
+      "tech",
+      "POST",
+      "/",
+      matchBody(divisionId, [
+        { teamId: null, label: null, source: { matchId: other.match.id, result: "winner" } },
+        { teamId: teamIds[1], label: null },
+      ]),
+    );
+    expect(foreign.res.status).toBe(400);
+
+    const first = (await send("tech", "POST", "/", matchBody(divisionId, twoTeams))).body
+      .match as Match;
+    const second = (
+      await send(
+        "tech",
+        "POST",
+        "/",
+        matchBody(
+          divisionId,
+          [
+            { teamId: null, label: null, source: { matchId: first.id, result: "winner" } },
+            { teamId: teamIds[1], label: null },
+          ],
+          { matchNo: 2 },
+        ),
+      )
+    ).body.match as Match;
+
+    const self = await send("tech", "PUT", `/${second.id}`, {
+      ...matchBody(
+        divisionId,
+        [
+          { teamId: null, label: null, source: { matchId: second.id, result: "winner" } },
+          { teamId: teamIds[1], label: null },
+        ],
+        { matchNo: 2 },
+      ),
+      version: second.version,
+    });
+    expect(self.res.status).toBe(400);
+
+    const loop = await send("tech", "PUT", `/${first.id}`, {
+      ...matchBody(divisionId, [
+        { teamId: null, label: null, source: { matchId: second.id, result: "loser" } },
+        { teamId: teamIds[1], label: null },
+      ]),
+      version: first.version,
+    });
+    expect(loop.res.status).toBe(400);
+    expect(loop.body.message).toBe("สายการแข่งวนกลับมาที่แมตช์นี้");
+  });
+});
+
 describe("races", () => {
   test("a status change loses to an edit that landed in between", async () => {
     const { match } = await seedMatch(t);

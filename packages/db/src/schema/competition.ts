@@ -26,6 +26,7 @@ import type {
   ScoreEventPayload,
   ScoreEventType,
   ScoringConfig,
+  SideSource,
 } from "../competition-rules";
 import type { Institution } from "../profile";
 import { user } from "./auth";
@@ -220,6 +221,13 @@ export const competitionMatchParticipant = sqliteTable(
     // No ON DELETE: a team that has played cannot be deleted. Null until known.
     teamId: text("team_id").references(() => competitionTeam.id),
     label: text("label"),
+    // A knockout side filled by another match's winner or loser: the bracket
+    // draws a line from it, and the team moves in when that match ends. The
+    // label keeps "ผู้ชนะ M3" as history if the source match is deleted.
+    sourceMatchId: text("source_match_id").references((): AnySQLiteColumn => competitionMatch.id, {
+      onDelete: "set null",
+    }),
+    sourceResult: text("source_result").$type<SideSource>(),
     slot: integer("slot").notNull(),
     score: integer("score"),
     detail: text("detail", { mode: "json" }).$type<ParticipantDetail>(),
@@ -235,6 +243,7 @@ export const competitionMatchParticipant = sqliteTable(
       .on(table.matchId, table.teamId)
       .where(sql`${table.teamId} IS NOT NULL`),
     index("competition_participant_team_idx").on(table.teamId),
+    index("competition_participant_source_idx").on(table.sourceMatchId),
     check(
       "competition_participant_side_check",
       sql`${table.teamId} IS NOT NULL OR ${table.label} IS NOT NULL`,

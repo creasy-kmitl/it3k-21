@@ -192,13 +192,29 @@ export const groupInput = z.strictObject({
   sortOrder,
 });
 
+/** Which side of an earlier match fills a knockout slot. */
+export const SIDE_SOURCES = ["winner", "loser"] as const;
+export type SideSource = (typeof SIDE_SOURCES)[number];
+
+export const SIDE_SOURCE_LABELS: Record<SideSource, string> = {
+  winner: "ผู้ชนะ",
+  loser: "ผู้แพ้",
+};
+
+export const sideSourceInput = z.strictObject({
+  matchId: id,
+  result: z.enum(SIDE_SOURCES),
+});
+
 export const matchParticipantInput = z
   .strictObject({
     teamId: id.nullable(),
     // A placeholder until the team is known, e.g. "ผู้ชนะ M3".
     label: optionalText(60),
+    // The match whose winner or loser takes this side; the bracket view draws from it.
+    source: sideSourceInput.nullable().optional(),
   })
-  .refine((p) => p.teamId !== null || (p.label ?? "") !== "", {
+  .refine((p) => p.teamId !== null || (p.label ?? "") !== "" || p.source != null, {
     message: "เลือกทีมหรือใส่ชื่อชั่วคราว",
   });
 

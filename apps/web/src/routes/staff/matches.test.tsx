@@ -92,6 +92,42 @@ describe("/staff/matches", () => {
     expect(await view.findByText("ยังไม่มีแมตช์")).toBeTruthy();
   });
 
+  test("the bracket view draws knockout rounds and asks for whole divisions", async () => {
+    const { view, list } = await setup(
+      [
+        listItem({ id: "m-sf", matchNo: 1, stageName: "รอบรองชนะเลิศ" }),
+        listItem({
+          id: "m-final",
+          matchNo: 2,
+          stageName: "ชิงชนะเลิศ",
+          participants: [
+            side({
+              id: "p-f1",
+              teamId: null,
+              name: "ผู้ชนะ M1",
+              institution: null,
+              sourceMatchId: "m-sf",
+              sourceResult: "winner",
+            }),
+            side({ id: "p-f2", slot: 2, teamId: null, name: "ผู้ชนะ M3", institution: null }),
+          ],
+        }),
+      ],
+      false,
+    );
+    await view.findAllByText("สจล.");
+    fireEvent.click(view.getByRole("button", { name: /สายการแข่ง/ }));
+    const bracket = await view.findByRole("region", { name: /ฟุตบอล · ฟุตบอลชาย/ });
+    const cards = within(bracket).getAllByRole("link");
+    expect(cards.map((card) => card.getAttribute("href"))).toEqual([
+      "/staff/matches/m-sf",
+      "/staff/matches/m-final",
+    ]);
+    expect(within(bracket).getByText("ผู้ชนะ M1")).toBeTruthy();
+    expect(view.queryByRole("combobox", { name: "สถานที่" })).toBeNull();
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith({}));
+  });
+
   test("the create form opens for managers", async () => {
     const { view } = await setup([], true);
     fireEvent.click(await view.findByRole("button", { name: /สร้างแมตช์/ }));
