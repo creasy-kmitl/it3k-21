@@ -582,7 +582,7 @@ export function AthletesPage({ filters: control }: { filters?: FilterControl<Ath
                     <span className="text-sm text-destructive">เหตุผล: {item.reviewNote}</span>
                   )}
                 </div>
-                <div className="flex shrink-0 items-center gap-1.5">
+                <div className="flex basis-full items-center justify-end gap-1.5 sm:basis-auto">
                   {data?.canReview && item.status !== "approved" && (
                     <LoadingButton
                       variant="success"
