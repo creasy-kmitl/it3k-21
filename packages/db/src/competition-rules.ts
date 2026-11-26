@@ -192,13 +192,29 @@ export const groupInput = z.strictObject({
   sortOrder,
 });
 
+/** Which side of an earlier match fills a knockout slot. */
+export const SIDE_SOURCES = ["winner", "loser"] as const;
+export type SideSource = (typeof SIDE_SOURCES)[number];
+
+export const SIDE_SOURCE_LABELS: Record<SideSource, string> = {
+  winner: "ผู้ชนะ",
+  loser: "ผู้แพ้",
+};
+
+export const sideSourceInput = z.strictObject({
+  matchId: id,
+  result: z.enum(SIDE_SOURCES),
+});
+
 export const matchParticipantInput = z
   .strictObject({
     teamId: id.nullable(),
     // A placeholder until the team is known, e.g. "ผู้ชนะ M3".
     label: optionalText(60),
+    // The match whose winner or loser takes this side; the bracket view draws from it.
+    source: sideSourceInput.nullable().optional(),
   })
-  .refine((p) => p.teamId !== null || (p.label ?? "") !== "", {
+  .refine((p) => p.teamId !== null || (p.label ?? "") !== "" || p.source != null, {
     message: "เลือกทีมหรือใส่ชื่อชั่วคราว",
   });
 
@@ -218,6 +234,102 @@ export const matchInput = z.strictObject({
   participants: z.array(matchParticipantInput).min(1).max(16),
 });
 export type MatchInput = z.infer<typeof matchInput>;
+
+/** An open side of a later knockout match that a new match's winner goes to. */
+export const matchFeedInput = z.strictObject({
+  matchId: id,
+  slot: z.number().int().min(1).max(16),
+  version,
+});
+export const matchCreateInput = matchInput.extend({ feeds: matchFeedInput.optional() });
+export type MatchCreateInput = z.infer<typeof matchCreateInput>;
+
+// Knockout brackets --------------------------------------------------------
+
+export const BRACKET_SIZES = [4, 8, 16] as const;
+export type BracketSize = (typeof BRACKET_SIZES)[number];
+export const bracketInput = z.strictObject({
+  divisionId: id,
+  teams: z.union([z.literal(4), z.literal(8), z.literal(16)]),
+  thirdPlace: z.boolean(),
+});
+export type BracketInput = z.infer<typeof bracketInput>;
+
+export const THIRD_PLACE_STAGE = "ชิงอันดับ 3";
+
+/** A round's name by the teams still in it: 2 is the final. */
+export function knockoutStageName(teamsLeft: number) {
+  if (teamsLeft === 2) return "ชิงชนะเลิศ";
+  if (teamsLeft === 4) return "รอบรองชนะเลิศ";
+  if (teamsLeft === 8) return "รอบก่อนรองชนะเลิศ";
+  return `รอบ ${teamsLeft} ทีม`;
+}
+
+const KNOCKOUT_FALLBACK_STAGE = "รอบน็อกเอาต์";
+const teamsLeftIn = (stageName: string) => {
+  for (let left = 2; left <= 64; left *= 2) {
+    if (knockoutStageName(left) === stageName) return left;
+  }
+  return null;
+};
+
+/** The round after a knockout round, by name: "รอบรองชนะเลิศ" leads to "ชิงชนะเลิศ". */
+export function nextStageName(stageName: string) {
+  const left = teamsLeftIn(stageName);
+  return left !== null && left > 2 ? knockoutStageName(left / 2) : KNOCKOUT_FALLBACK_STAGE;
+}
+
+/** The round before a knockout round, by name: "ชิงชนะเลิศ" comes after "รอบรองชนะเลิศ". */
+export function previousStageName(stageName: string) {
+  const left = teamsLeftIn(stageName);
+  return left !== null && left < 64 ? knockoutStageName(left * 2) : KNOCKOUT_FALLBACK_STAGE;
+}
+
+export type PlannedSide = { label: string } | { source: { index: number; result: SideSource } };
+export type PlannedMatch = { round: number; stageName: string; sides: [PlannedSide, PlannedSide] };
+
+/**
+ * The matches of an empty knockout bracket in play order, so their numbers
+ * run round by round: first-round sides are numbered teams, every later side
+ * the winner of a match before it (by index), and the third-place match, if
+ * any, comes after the final with the semi-finals' losers.
+ */
+export function planBracket(teams: BracketSize, thirdPlace: boolean): PlannedMatch[] {
+  const plan: PlannedMatch[] = [];
+  let previous: number[] = [];
+  let semis: number[] = [];
+  for (let left = teams, round = 1; left >= 2; left /= 2, round++) {
+    const current: number[] = [];
+    for (let i = 0; i < left / 2; i++) {
+      current.push(plan.length);
+      plan.push({
+        round,
+        stageName: knockoutStageName(left),
+        sides:
+          round === 1
+            ? [{ label: `ทีมที่ ${i * 2 + 1}` }, { label: `ทีมที่ ${i * 2 + 2}` }]
+            : [
+                { source: { index: previous[i * 2] as number, result: "winner" } },
+                { source: { index: previous[i * 2 + 1] as number, result: "winner" } },
+              ],
+      });
+    }
+    if (left === 4) semis = current;
+    previous = current;
+  }
+  const [first, second] = semis;
+  if (thirdPlace && first !== undefined && second !== undefined) {
+    plan.push({
+      round: plan.at(-1)?.round ?? 1,
+      stageName: THIRD_PLACE_STAGE,
+      sides: [
+        { source: { index: first, result: "loser" } },
+        { source: { index: second, result: "loser" } },
+      ],
+    });
+  }
+  return plan;
+}
 
 /** Statuses staff set by hand; live and finished come from scoring. */
 export const MANUAL_MATCH_STATUSES = ["scheduled", "checkin", "postponed", "cancelled"] as const;
@@ -244,30 +356,6 @@ export const placementsInput = z.strictObject({
   divisionId: id,
   places: z.array(z.strictObject({ teamId: id, place: z.number().int().min(1).max(64) })).max(64),
 });
-
-/** Round-robin request: the same body previews and, with `commit`, saves. */
-export const roundRobinInput = z.strictObject({
-  divisionId: id,
-  stageName: shortText(60),
-  groups: z
-    .array(z.strictObject({ name: shortText(40), teamIds: z.array(id).min(2).max(16) }))
-    .min(1)
-    .max(16),
-  firstStartAt: z.number().int().min(0),
-  slotMinutes: z
-    .number()
-    .int()
-    .min(5)
-    .max(24 * 60),
-  // Courts play in parallel; each slot fills them in order.
-  courts: z
-    .array(z.strictObject({ venueId: id.nullable(), court: optionalText(40) }))
-    .min(1)
-    .max(16),
-  // Each pair meets this many times (2 for home and away).
-  legs: z.number().int().min(1).max(2),
-});
-export type RoundRobinInput = z.infer<typeof roundRobinInput>;
 
 // Scoring -----------------------------------------------------------------
 

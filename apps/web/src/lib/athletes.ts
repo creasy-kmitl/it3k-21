@@ -1,5 +1,10 @@
 import type { Institution } from "@it3k/db/profile";
-import type { RegistrationFields, RegistrationStatus, ReviewInput } from "@it3k/db/sport-rules";
+import type {
+  AthleteSort,
+  RegistrationFields,
+  RegistrationStatus,
+  ReviewInput,
+} from "@it3k/db/sport-rules";
 import { hc } from "hono/client";
 import type { ClientRequestOptions, InferResponseType } from "hono/client";
 
@@ -19,6 +24,7 @@ export type AthleteFilters = {
   divisionId?: string;
   status?: RegistrationStatus;
   institution?: Institution;
+  sort?: AthleteSort;
 };
 
 export type AthleteEdit = RegistrationFields & {

@@ -387,6 +387,92 @@ describe("auto", () => {
   });
 });
 
+describe("auto for every division", () => {
+  type Plan = {
+    applied: boolean;
+    failed: string[];
+    skippedDivisions: string[];
+    divisions: {
+      id: string;
+      name: string;
+      create: { institution: string; members: number; overMax: boolean }[];
+      skipped: { institution: string; reason: string }[];
+    }[];
+  };
+  const teamsOf = (code: string) =>
+    t
+      .divisionId(code)
+      .then((id) => t.db.select().from(competitionTeam).where(eq(competitionTeam.divisionId, id)));
+
+  test("a dry run reports the plan without writing, and leaves badminton out", async () => {
+    await register("a", "football");
+    await register("b", "football", "kmitl");
+    await register("c", "badminton-singles-male", "kmutt", { rank: 1 });
+    const { res, body } = await send("tech", "POST", "/auto-all", { dryRun: true });
+    expect(res.status).toBe(200);
+    const plan = body as Plan;
+    expect(plan.applied).toBe(false);
+    expect(
+      plan.divisions.map((division) => division.create.map((entry) => entry.institution)),
+    ).toEqual([["kmitl", "kmutt"]]);
+    expect(plan.skippedDivisions.some((name) => name.includes("แบดมินตัน"))).toBe(true);
+    expect(await t.db.select().from(competitionTeam)).toHaveLength(0);
+  });
+
+  test("makes one team per institution, keeping institutions already arranged", async () => {
+    const a = await register("a", "football");
+    const b = await register("b", "football");
+    await register("c", "football", "kmitl");
+    const kmitl = (await createTeam("football", "kmitl")).body.team as Team;
+    const placed = await register("d", "football", "kmitl");
+    await send("tech", "PUT", `/${kmitl.id}/members`, { registrationIds: [placed], version: 1 });
+    // An empty team is reused rather than adding a second one.
+    const empty = (await createTeam("football", "kmutt")).body.team as Team;
+
+    const { body } = await send("tech", "POST", "/auto-all", { dryRun: false });
+    const plan = body as Plan;
+    expect(plan.applied).toBe(true);
+    expect(plan.failed).toEqual([]);
+    expect(plan.divisions[0]?.skipped).toEqual([{ institution: "kmitl", reason: "arranged" }]);
+    const teams = await teamsOf("football");
+    expect(teams.map((team) => team.id).toSorted()).toEqual([kmitl.id, empty.id].toSorted());
+    const members = await t.db
+      .select()
+      .from(competitionTeamMember)
+      .where(eq(competitionTeamMember.teamId, empty.id));
+    expect(members.map((member) => member.registrationId).toSorted()).toEqual([a, b].toSorted());
+    // kmitl keeps exactly what it had.
+    const kept = await t.db
+      .select()
+      .from(competitionTeamMember)
+      .where(eq(competitionTeamMember.teamId, kmitl.id));
+    expect(kept.map((member) => member.registrationId)).toEqual([placed]);
+    expect((await audit()).at(-1)).toMatchObject({ action: "auto" });
+
+    // Running it again has nothing left to make.
+    const again = (await send("tech", "POST", "/auto-all", { dryRun: true })).body as Plan;
+    expect(again.divisions.flatMap((division) => division.create)).toEqual([]);
+  });
+
+  test("a division changed meanwhile is reported as failed and written to nowhere", async () => {
+    await register("a", "football");
+    const late = await register("b", "football", "kmutt", { status: "review" });
+    t.hooks.beforeBatch = () => {
+      t.hooks.beforeBatch = undefined;
+      t.sqlite.run(`update sport_registration set status = 'approved' where id = '${late}'`);
+    };
+    const { body } = await send("tech", "POST", "/auto-all", { dryRun: false });
+    expect((body as Plan).failed).toEqual([await t.divisionId("football")]);
+    expect(await t.db.select().from(competitionTeam)).toHaveLength(0);
+  });
+
+  test("only team managers may run it", async () => {
+    expect((await send("sports-staff", "POST", "/auto-all", { dryRun: true })).res.status).toBe(
+      403,
+    );
+  });
+});
+
 describe("officials", () => {
   const official = (name: string) => ({
     name,

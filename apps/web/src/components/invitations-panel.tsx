@@ -18,6 +18,7 @@ import { toast } from "sonner";
 
 import { DepartmentLabel } from "@/components/department-icon";
 import { ErrorState } from "@/components/error-state";
+import { InstitutionLabel } from "@/components/institution-logo";
 import { ChoiceField, FormDialog, TextField } from "@/components/form-dialog";
 import { LoadingButton } from "@/components/loading-button";
 import { ROLE_BADGES } from "@/components/role-badge";
@@ -34,15 +35,6 @@ const STATUS_LABELS: Record<Invitation["status"], string> = {
 };
 
 const NO_INSTITUTION = "none";
-
-function InstitutionLabel({ institution }: { institution: (typeof INSTITUTIONS)[number] }) {
-  return (
-    <span className="flex items-center gap-2">
-      <img src={institution.logo} alt="" className="size-4 shrink-0 object-contain" />
-      {institution.short}
-    </span>
-  );
-}
 
 const dateFormat = new Intl.DateTimeFormat("th-TH", {
   timeZone: "Asia/Bangkok",

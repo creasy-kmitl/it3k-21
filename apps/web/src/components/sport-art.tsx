@@ -114,7 +114,11 @@ export function SportArt({
   // A few soft rings and dots placed from the hash.
   const shapes = Array.from({ length: 4 }, (_, i) => {
     const bits = (hash >>> (i * 7)) & 0x7f;
-    return { cx: (bits * 37 + i * 83) % 320, cy: (bits * 19 + i * 47) % 180, r: 12 + (bits % 5) * 14 };
+    return {
+      cx: (bits * 37 + i * 83) % 320,
+      cy: (bits * 19 + i * 47) % 180,
+      r: 12 + (bits % 5) * 14,
+    };
   });
 
   return (
@@ -130,7 +134,13 @@ export function SportArt({
           <stop offset="0" style={{ stopColor: `var(${from})` }} />
           <stop offset="1" style={{ stopColor: `var(${to})` }} />
         </linearGradient>
-        <pattern id={`${id}-lines`} width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
+        <pattern
+          id={`${id}-lines`}
+          width="14"
+          height="14"
+          patternUnits="userSpaceOnUse"
+          patternTransform="rotate(35)"
+        >
           <path d="M0,0 V14" stroke="white" strokeOpacity="0.08" strokeWidth="5" />
         </pattern>
       </defs>
@@ -158,6 +168,23 @@ export function SportArt({
         {GLYPHS[icon]}
       </g>
     </svg>
+  );
+}
+
+/** The illustration cropped to a small rounded square, as a decorative mark beside a name. */
+export function SportMark({
+  icon,
+  seed,
+  className,
+}: {
+  icon: SportIcon;
+  seed: string;
+  className?: string;
+}) {
+  return (
+    <span aria-hidden className={cn("size-5 shrink-0 overflow-hidden rounded-md", className)}>
+      <SportArt icon={icon} seed={seed} label="" className="size-full" />
+    </span>
   );
 }
 

@@ -9,7 +9,7 @@ import {
   competitionTeamMember,
   sportRegistration,
 } from "@it3k/db/schema/index";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import { loadMatch } from "../../competition/access";
 import { seedMatch } from "../../competition/testing";
@@ -399,5 +399,125 @@ describe("start, finish and results", () => {
     expect(loaded.participants.map((p) => p.score)).toEqual([0, 1]);
     const read = board((await send("tech", "GET", `/${parent.id}`)).body);
     expect(read.state).toMatchObject({ period: 2, decided: false });
+  });
+});
+
+describe("knockout advance", () => {
+  /** A semi-final (KMITL v KMUTT) feeding the final's first side and the third-place match. */
+  async function bracket() {
+    const { match: semi, sides, divisionId } = await seedMatch(t);
+    const [final, third] = await t.db
+      .insert(competitionMatch)
+      .values([
+        { divisionId, stageName: "ชิงชนะเลิศ" },
+        { divisionId, stageName: "ชิงที่ 3" },
+      ])
+      .returning();
+    const fed = await t.db
+      .insert(competitionMatchParticipant)
+      .values([
+        {
+          matchId: defined(final).id,
+          slot: 1,
+          label: "ผู้ชนะ M1",
+          sourceMatchId: semi.id,
+          sourceResult: "winner" as const,
+        },
+        { matchId: defined(final).id, slot: 2, label: "ผู้ชนะ M2" },
+        {
+          matchId: defined(third).id,
+          slot: 1,
+          label: "ผู้แพ้ M1",
+          sourceMatchId: semi.id,
+          sourceResult: "loser" as const,
+        },
+      ])
+      .returning();
+    const [home, away] = sides as [(typeof sides)[number], (typeof sides)[number]];
+    return { semi, home, away, final: defined(final), third: defined(third), fed };
+  }
+
+  const teamOf = async (participantId: string) => {
+    const [row] = await t.db
+      .select({ teamId: competitionMatchParticipant.teamId })
+      .from(competitionMatchParticipant)
+      .where(eq(competitionMatchParticipant.id, participantId));
+    return row?.teamId ?? null;
+  };
+  const versionOf = async (matchId: string) => {
+    const [row] = await t.db
+      .select({ version: competitionMatch.version })
+      .from(competitionMatch)
+      .where(eq(competitionMatch.id, matchId));
+    return row?.version;
+  };
+
+  const walkover = (matchId: string, version: number, winner: string, loser: string) =>
+    send("tech", "POST", `/${matchId}/result`, {
+      outcome: "walkover",
+      ranks: [
+        { participantId: winner, rank: 1, outcome: "walkover_win" },
+        { participantId: loser, rank: 2, outcome: "forfeit" },
+      ],
+      version,
+    });
+
+  test("the winner and loser move into the sides waiting on the match", async () => {
+    const { semi, home, away, final, fed } = await bracket();
+    const [finalSide, , thirdSide] = fed as [(typeof fed)[number], unknown, (typeof fed)[number]];
+    const done = await walkover(semi.id, semi.version, home.id, away.id);
+    expect(done.res.status).toBe(200);
+    expect(await teamOf(finalSide.id)).toBe(home.teamId);
+    expect(await teamOf(thirdSide.id)).toBe(away.teamId);
+    // Open edit forms on the final must reload.
+    expect(await versionOf(final.id)).toBe(final.version + 1);
+  });
+
+  test("a corrected result moves the right teams, until the next match starts", async () => {
+    const { semi, home, away, final, fed } = await bracket();
+    const [finalSide, , thirdSide] = fed as [(typeof fed)[number], unknown, (typeof fed)[number]];
+    await walkover(semi.id, semi.version, home.id, away.id);
+    const corrected = await walkover(semi.id, defined(await versionOf(semi.id)), away.id, home.id);
+    expect(corrected.res.status).toBe(200);
+    expect(await teamOf(finalSide.id)).toBe(away.teamId);
+    expect(await teamOf(thirdSide.id)).toBe(home.teamId);
+
+    await t.db
+      .update(competitionMatch)
+      .set({ status: "live", scoreSeq: 1 })
+      .where(eq(competitionMatch.id, final.id));
+    await walkover(semi.id, defined(await versionOf(semi.id)), home.id, away.id);
+    // The final has started and keeps its team; the third-place match has not.
+    expect(await teamOf(finalSide.id)).toBe(away.teamId);
+    expect(await teamOf(thirdSide.id)).toBe(away.teamId);
+  });
+
+  test("no single winner moves nobody, and a team never plays itself", async () => {
+    const { semi, home, away, final, fed } = await bracket();
+    const [finalSide] = fed as [(typeof fed)[number]];
+    const drawn = await send("tech", "POST", `/${semi.id}/result`, {
+      outcome: "played",
+      ranks: [
+        { participantId: home.id, rank: 1, outcome: "draw" },
+        { participantId: away.id, rank: 1, outcome: "draw" },
+      ],
+      version: semi.version,
+    });
+    expect(drawn.res.status).toBe(200);
+    expect(await teamOf(finalSide.id)).toBeNull();
+
+    // The final's other side already holds KMITL: the winner cannot be put in twice.
+    await t.db
+      .update(competitionMatchParticipant)
+      .set({ teamId: home.teamId })
+      .where(
+        and(
+          eq(competitionMatchParticipant.matchId, final.id),
+          eq(competitionMatchParticipant.slot, 2),
+        ),
+      );
+    const won = await walkover(semi.id, defined(await versionOf(semi.id)), home.id, away.id);
+    expect(won.res.status).toBe(200);
+    expect(await teamOf(finalSide.id)).toBeNull();
   });
 });

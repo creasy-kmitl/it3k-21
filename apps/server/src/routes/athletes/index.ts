@@ -4,7 +4,10 @@ import type { Database } from "@it3k/db";
 import { INSTITUTION_IDS } from "@it3k/db/profile";
 import { user } from "@it3k/db/schema/auth";
 import {
+  ATHLETE_SORTS,
+  type AthleteSort,
   REGISTRATION_STATUSES,
+  type RegistrationStatus,
   applicableFields,
   athlete,
   missingFields,
@@ -14,7 +17,7 @@ import {
   sportRegistration,
   studentIdInput,
 } from "@it3k/db/schema/sport";
-import { type SQL, and, asc, desc, eq, sql } from "drizzle-orm";
+import { type SQL, and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -56,6 +59,7 @@ const filters = z.strictObject({
   divisionId: z.string().min(1).max(64).optional(),
   status: z.enum(REGISTRATION_STATUSES).optional(),
   institution: z.enum(INSTITUTION_IDS).optional(),
+  sort: z.enum(ATHLETE_SORTS).default("division"),
 });
 const listQuery = filters.extend({
   page: z.coerce.number().int().min(1).max(1000).default(1),
@@ -98,15 +102,55 @@ function toItem({ registration, division, sport, athlete: person, profile }: Reg
   };
 }
 
+/** The ORDER BY for each sort; every one ends on the id so pages never overlap. */
+function orderFor(sort: AthleteSort): SQL[] {
+  const byDivision = [asc(sportDivision.sortOrder), asc(sportRegistration.institution)];
+  switch (sort) {
+    case "newest":
+      return [desc(sportRegistration.createdAt), asc(sportRegistration.id)];
+    case "oldest":
+      return [asc(sportRegistration.createdAt), asc(sportRegistration.id)];
+    case "name":
+      return [asc(user.name), asc(sportRegistration.id)];
+    case "institution":
+      return [
+        asc(sportRegistration.institution),
+        asc(sportDivision.sortOrder),
+        asc(user.name),
+        asc(sportRegistration.id),
+      ];
+    case "shirt":
+      // Registrations without a number go last.
+      return [
+        sql`${sportRegistration.shirtNumber} is null`,
+        asc(sportRegistration.shirtNumber),
+        ...byDivision,
+        asc(sportRegistration.id),
+      ];
+    default:
+      return [...byDivision, desc(sportRegistration.createdAt), asc(sportRegistration.id)];
+  }
+}
+
 function ordered(db: Database, actor: CurrentUser, query: z.infer<typeof filters>) {
   return selectRegistrations(db)
     .where(where(actor, query))
-    .orderBy(
-      asc(sportDivision.sortOrder),
-      asc(sportRegistration.institution),
-      desc(sportRegistration.createdAt),
-      asc(sportRegistration.id),
-    );
+    .orderBy(...orderFor(query.sort));
+}
+
+/** How many registrations the filters match in each status, ignoring the status filter. */
+async function statusCounts(db: Database, actor: CurrentUser, query: z.infer<typeof filters>) {
+  const rows = await db
+    .select({ status: sportRegistration.status, n: count() })
+    .from(sportRegistration)
+    .innerJoin(sportDivision, eq(sportDivision.id, sportRegistration.divisionId))
+    .innerJoin(user, eq(user.id, sportRegistration.userId))
+    .leftJoin(athlete, eq(athlete.userId, sportRegistration.userId))
+    .where(where(actor, { ...query, status: undefined }))
+    .groupBy(sportRegistration.status);
+  const counts: Record<RegistrationStatus, number> = { review: 0, approved: 0, rejected: 0 };
+  for (const row of rows) counts[row.status] = row.n;
+  return counts;
 }
 
 /** SQL: the registration is still at this version and inside the actor's scope. */
@@ -134,14 +178,23 @@ export const createAthleteRoutes = (deps: RouteDeps & MailDeps) =>
     .get("/", allow("athletes.read"), validate("query", listQuery), async (c) => {
       const { page, ...query } = c.req.valid("query");
       const actor = c.var.user;
-      const rows = await ordered(c.var.db, actor, query)
-        .limit(PAGE_SIZE + 1)
-        .offset((page - 1) * PAGE_SIZE);
+      const [rows, counts] = await Promise.all([
+        ordered(c.var.db, actor, query)
+          .limit(PAGE_SIZE + 1)
+          .offset((page - 1) * PAGE_SIZE),
+        statusCounts(c.var.db, actor, query),
+      ]);
+      const total = query.status
+        ? counts[query.status]
+        : counts.review + counts.approved + counts.rejected;
       return c.json(
         {
           items: rows.slice(0, PAGE_SIZE).map(toItem),
           page,
           hasMore: rows.length > PAGE_SIZE,
+          counts,
+          total,
+          pageCount: Math.max(1, Math.ceil(total / PAGE_SIZE)),
           scope: sportAccess(actor).scope,
           canReview: canSport(actor, "athletes.review"),
           canEdit: canSport(actor, "athletes.edit"),

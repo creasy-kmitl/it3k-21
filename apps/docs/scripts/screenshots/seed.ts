@@ -82,6 +82,9 @@ const division = (code: string) => {
 const demoUsers = db.select({ id: s.user.id }).from(s.user).where(like(s.user.id, "demo-%")).all();
 const demoIds = demoUsers.map((u) => u.id);
 db.transaction((tx) => {
+  // Matches first: their sides cascade, and sides hold the teams.
+  tx.delete(s.competitionMatch).where(like(s.competitionMatch.id, "demo-%")).run();
+  tx.delete(s.competitionTeam).where(like(s.competitionTeam.id, "demo-%")).run();
   tx.delete(s.emailCampaign).where(like(s.emailCampaign.id, "demo-%")).run();
   tx.delete(s.event).where(like(s.event.id, "demo-%")).run(); // cascades types, tickets, check-ins
   tx.delete(s.venue).where(like(s.venue.id, "demo-%")).run();
@@ -438,6 +441,64 @@ db.transaction((tx) => {
       senderName: techHead.name,
       createdAt: at(-2, "18:30"),
     })
+    .run();
+
+  // A knockout bracket: two semi-finals (the first played), the final the
+  // first winner already moved into, and the third-place match.
+  const badminton = division("badminton-singles-female").id;
+  const team = (institution: "kmitl" | "kmutt" | "kmutnb-bangkok", seq: number) => {
+    const id = `demo-team-badminton-${institution}-${seq}`;
+    tx.insert(s.competitionTeam)
+      .values({ id, divisionId: badminton, institution, seq })
+      .run();
+    return id;
+  };
+  const kmitl1 = team("kmitl", 1);
+  const kmitl2 = team("kmitl", 2);
+  const kmutt1 = team("kmutt", 1);
+  const kmutnb1 = team("kmutnb-bangkok", 1);
+  const match = (
+    id: string,
+    matchNo: number,
+    stageName: string,
+    startAt: Date,
+    extra: Partial<typeof s.competitionMatch.$inferInsert> = {},
+  ) =>
+    tx
+      .insert(s.competitionMatch)
+      .values({
+        id,
+        divisionId: badminton,
+        stageName,
+        matchNo,
+        roundNo: matchNo > 2 ? 2 : 1,
+        startAt,
+        venueId: "demo-venue-gym",
+        court: `คอร์ท ${((matchNo - 1) % 2) + 1}`,
+        createdBy: techHead.id,
+        ...extra,
+      })
+      .run();
+  match("demo-match-sf1", 1, "รอบรองชนะเลิศ", at(-1, "10:00"), {
+    status: "finished",
+    outcome: "played",
+    startedAt: at(-1, "10:05"),
+    finishedAt: at(-1, "10:50"),
+  });
+  match("demo-match-sf2", 2, "รอบรองชนะเลิศ", at(1, "10:00"));
+  match("demo-match-final", 3, "ชิงชนะเลิศ", at(2, "14:00"));
+  match("demo-match-third", 4, "ชิงอันดับ 3", at(2, "13:00"));
+  tx.insert(s.competitionMatchParticipant)
+    .values([
+      { matchId: "demo-match-sf1", slot: 1, teamId: kmitl1, score: 2, outcome: "win", rank: 1 },
+      { matchId: "demo-match-sf1", slot: 2, teamId: kmutnb1, score: 0, outcome: "loss", rank: 2 },
+      { matchId: "demo-match-sf2", slot: 1, teamId: kmutt1 },
+      { matchId: "demo-match-sf2", slot: 2, teamId: kmitl2 },
+      { matchId: "demo-match-final", slot: 1, teamId: kmitl1, label: "ผู้ชนะ M1", sourceMatchId: "demo-match-sf1", sourceResult: "winner" },
+      { matchId: "demo-match-final", slot: 2, label: "ผู้ชนะ M2", sourceMatchId: "demo-match-sf2", sourceResult: "winner" },
+      { matchId: "demo-match-third", slot: 1, teamId: kmutnb1, label: "ผู้แพ้ M1", sourceMatchId: "demo-match-sf1", sourceResult: "loser" },
+      { matchId: "demo-match-third", slot: 2, label: "ผู้แพ้ M2", sourceMatchId: "demo-match-sf2", sourceResult: "loser" },
+    ])
     .run();
 });
 

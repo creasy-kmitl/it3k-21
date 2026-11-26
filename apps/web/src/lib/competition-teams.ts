@@ -20,6 +20,7 @@ export type TeamOfficial = Team["officials"][number];
 export type DivisionTeamsPage = InferResponseType<Client["division"][":divisionId"]["$get"], 200>;
 export type TeamDivision = DivisionTeamsPage["division"];
 export type TeamAthlete = DivisionTeamsPage["athletes"][number];
+export type AutoTeamsPlan = InferResponseType<Client["auto-all"]["$post"], 200>;
 export type LineupPage = InferResponseType<
   Client["lineups"][":matchId"][":participantId"]["$get"],
   200
@@ -56,6 +57,12 @@ export function createCompetitionTeamsApi(
     },
     async auto(json: TeamAutoInput) {
       const res = await client.auto.$post({ json });
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
+    /** Every division but badminton's; `dryRun` only reports what it would make. */
+    async autoAll(json: { dryRun: boolean }) {
+      const res = await client["auto-all"].$post({ json });
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },

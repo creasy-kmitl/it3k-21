@@ -1,7 +1,13 @@
 // The dialog that creates a match by hand or edits one: its division, stage,
-// time and place, and its sides, each a team or a placeholder label such as
-// "ผู้ชนะ M3" until the team is known.
-import { type MatchInput, matchInput } from "@it3k/db/competition-rules";
+// time and place, and its sides, each a team, another match's winner or loser
+// (a knockout slot the bracket draws), or a placeholder label until known.
+import {
+  type MatchCreateInput,
+  type MatchInput,
+  SIDE_SOURCE_LABELS,
+  type SideSource,
+  matchInput,
+} from "@it3k/db/competition-rules";
 import { Button } from "@it3k/ui/components/button";
 import { Checkbox } from "@it3k/ui/components/checkbox";
 import { Field, FieldError } from "@it3k/ui/components/field";
@@ -9,7 +15,11 @@ import { Input } from "@it3k/ui/components/input";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
+  CornerDownRight,
+  Crown,
+  GitMerge,
   Hash,
+  PenLine,
   Layers,
   MapPin,
   Plus,
@@ -42,7 +52,24 @@ import { MatchSelect } from "./match-select";
 export type MatchFormDivision = { id: string; name: string; sportName: string };
 export type MatchFormVenue = { id: string; name: string };
 
-type SideDraft = { teamId: string | null; label: string };
+type SideSourceDraft = { matchId: string; result: SideSource };
+export type SideDraft = { teamId: string | null; label: string; source: SideSourceDraft | null };
+
+/** A new match started from a bracket: its division, round and sides filled in. */
+export type MatchPreset = {
+  divisionId: string;
+  stageName: string;
+  sides: SideDraft[];
+  /** The open side of a later match the new match's winner goes to. */
+  feeds?: { matchId: string; slot: number; version: number; description: string };
+};
+
+export const EMPTY_SIDE: SideDraft = { teamId: null, label: "", source: null };
+const sourceKey = (source: SideSourceDraft) => `${source.result}:${source.matchId}`;
+function parseSourceKey(key: string): SideSourceDraft {
+  const [result, matchId] = key.split(":") as [SideSource, string];
+  return { result, matchId };
+}
 
 const DEFAULT_STAGE = "รอบแบ่งกลุ่ม";
 const numberOrNull = (text: string) => (text.trim() === "" ? null : Number(text));
@@ -52,6 +79,7 @@ export function MatchForm({
   venues,
   initial,
   divisionId: fixedDivisionId,
+  preset,
   onClose,
   onSaved,
 }: {
@@ -61,15 +89,19 @@ export function MatchForm({
   initial: MatchDetail | null;
   /** Starts a new match in this division. */
   divisionId?: string | null;
+  /** Starts a new match with these fields, from a bracket's add buttons. */
+  preset?: MatchPreset | null;
   onClose: () => void;
   onSaved: (match: MatchDetail) => void;
 }) {
   const { competitionMatches: api } = useApis();
   const queryClient = useQueryClient();
   const [divisionId, setDivisionId] = useState<string | null>(
-    initial?.divisionId ?? fixedDivisionId ?? null,
+    initial?.divisionId ?? preset?.divisionId ?? fixedDivisionId ?? null,
   );
-  const [stageName, setStageName] = useState(initial?.stageName ?? DEFAULT_STAGE);
+  const [stageName, setStageName] = useState(
+    initial?.stageName ?? preset?.stageName ?? DEFAULT_STAGE,
+  );
   const [groupId, setGroupId] = useState<string | null>(initial?.groupId ?? null);
   const [roundNo, setRoundNo] = useState(initial?.roundNo?.toString() ?? "");
   const [matchNo, setMatchNo] = useState<string | null>(initial?.matchNo?.toString() ?? null);
@@ -81,10 +113,15 @@ export function MatchForm({
   const [friendly, setFriendly] = useState<boolean | null>(initial?.friendly ?? null);
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [sides, setSides] = useState<SideDraft[]>(
-    initial?.participants.map((p) => ({ teamId: p.teamId, label: p.label ?? "" })) ?? [
-      { teamId: null, label: "" },
-      { teamId: null, label: "" },
-    ],
+    initial?.participants.map((p) => ({
+      teamId: p.teamId,
+      label: p.label ?? "",
+      source:
+        p.sourceMatchId && p.sourceResult
+          ? { matchId: p.sourceMatchId, result: p.sourceResult }
+          : null,
+    })) ??
+      preset?.sides ?? [EMPTY_SIDE, EMPTY_SIDE],
   );
   const [issues, setIssues] = useState<Record<string, string>>({});
 
@@ -95,15 +132,24 @@ export function MatchForm({
   });
   const teams = setup.data?.teams ?? [];
   const groups = setup.data?.groups ?? [];
+  // A knockout side may wait on any other match of the division.
+  const sourceMatches = (setup.data?.matches ?? []).filter((m) => m.id !== initial?.id);
+  const matchName = (m: { matchNo: number | null; stageName: string }) =>
+    m.matchNo !== null ? `M${m.matchNo}` : m.stageName;
   // New matches take the next number and the division's friendly default until staff change them.
   const shownMatchNo = matchNo ?? (initial ? "" : (setup.data?.nextMatchNo.toString() ?? ""));
   const shownFriendly = friendly ?? setup.data?.friendlyByDefault ?? false;
 
   const save = useMutation({
-    mutationFn: async (input: MatchInput) =>
-      initial
-        ? (await api.update(initial.id, { ...input, version: initial.version })).match
-        : (await api.create(input)).match,
+    mutationFn: async (input: MatchInput) => {
+      if (initial)
+        return (await api.update(initial.id, { ...input, version: initial.version })).match;
+      const feeds = preset?.feeds;
+      const body: MatchCreateInput = feeds
+        ? { ...input, feeds: { matchId: feeds.matchId, slot: feeds.slot, version: feeds.version } }
+        : input;
+      return (await api.create(body)).match;
+    },
     onSuccess: (match) => {
       toast.success(initial ? "บันทึกแล้ว" : "สร้างแมตช์แล้ว");
       void queryClient.invalidateQueries({ queryKey: ["competition-matches"] });
@@ -140,7 +186,9 @@ export function MatchForm({
       notes: notes.trim() === "" ? null : notes,
       participants: sides.map((side) => ({
         teamId: side.teamId,
-        label: side.teamId ? null : side.label,
+        // A sourced side is named after its source by the server.
+        label: side.teamId || side.source ? null : side.label,
+        source: side.source,
       })),
     });
     if (!parsed.success) {
@@ -152,9 +200,32 @@ export function MatchForm({
   };
 
   const teamItems = [
-    { value: null, label: "ยังไม่รู้ทีม (ใส่ชื่อชั่วคราว)" },
+    { value: null, label: "ยังไม่รู้ทีม" },
     ...teams.map((team) => ({ value: team.id, label: team.name })),
   ];
+  const sourceItems = [
+    {
+      value: null,
+      label: "ใส่ชื่อชั่วคราวเอง",
+      icon: <PenLine aria-hidden className="text-muted-foreground" />,
+    },
+    ...sourceMatches.flatMap((m) =>
+      (["winner", "loser"] as const).map((result) => ({
+        value: sourceKey({ matchId: m.id, result }),
+        label: `${SIDE_SOURCE_LABELS[result]} ${matchName(m)} · ${m.stageName}`,
+        icon:
+          result === "winner" ? (
+            <Crown aria-hidden className="text-amber-500" />
+          ) : (
+            <CornerDownRight aria-hidden className="text-muted-foreground" />
+          ),
+      })),
+    ),
+  ];
+  const sourceText = (source: SideSourceDraft) => {
+    const m = setup.data?.matches.find((item) => item.id === source.matchId);
+    return `${SIDE_SOURCE_LABELS[source.result]} ${m ? matchName(m) : "แมตช์ที่เลือก"}`;
+  };
 
   return (
     <FormDialog
@@ -171,7 +242,7 @@ export function MatchForm({
         <MatchSelect
           id="match-division"
           label="ประเภท"
-          disabled={initial !== null}
+          disabled={initial !== null || !!preset}
           items={[
             { value: null, label: "เลือกประเภท" },
             ...divisions.map((d) => ({ value: d.id, label: `${d.sportName} · ${d.name}` })),
@@ -180,7 +251,7 @@ export function MatchForm({
           onChange={(next) => {
             setDivisionId(next);
             setGroupId(null);
-            setSides((current) => current.map(() => ({ teamId: null, label: "" })));
+            setSides((current) => current.map(() => EMPTY_SIDE));
           }}
         />
         <FieldError>{issues.divisionId}</FieldError>
@@ -190,6 +261,12 @@ export function MatchForm({
         <legend className="mb-2 flex items-center gap-2 text-sm font-medium">
           <Users className="size-4 text-muted-foreground" aria-hidden /> ผู้แข่ง
         </legend>
+        {preset?.feeds && (
+          <p className="flex items-center gap-2 rounded-xl bg-muted px-3 py-2 text-sm">
+            <GitMerge className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            ผู้ชนะแมตช์นี้จะเข้า{preset.feeds.description}
+          </p>
+        )}
         {sides.map((side, index) => (
           <div key={index} className="flex flex-col gap-2 rounded-2xl border p-3">
             <div className="flex items-center gap-2">
@@ -214,12 +291,29 @@ export function MatchForm({
               )}
             </div>
             {side.teamId === null && (
+              <MatchSelect
+                label={`ฝั่ง ${index + 1} มาจาก`}
+                items={sourceItems}
+                value={side.source ? sourceKey(side.source) : null}
+                disabled={divisionId === null}
+                onChange={(key) =>
+                  setSide(index, { source: key ? parseSourceKey(key) : null, label: "" })
+                }
+              />
+            )}
+            {side.teamId === null && !side.source && (
               <Input
                 aria-label={`ชื่อชั่วคราวฝั่ง ${index + 1}`}
-                placeholder="เช่น ผู้ชนะ M3"
+                placeholder="เช่น อันดับ 1 สาย A"
                 value={side.label}
                 onChange={(event) => setSide(index, { label: event.target.value })}
               />
+            )}
+            {side.teamId !== null && side.source && (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <CornerDownRight className="size-3.5" aria-hidden />
+                เลื่อนมาจาก{sourceText(side.source)}
+              </p>
             )}
           </div>
         ))}
@@ -230,7 +324,7 @@ export function MatchForm({
             variant="outline"
             size="sm"
             className="w-fit"
-            onClick={() => setSides((current) => [...current, { teamId: null, label: "" }])}
+            onClick={() => setSides((current) => [...current, EMPTY_SIDE])}
           >
             <Plus /> เพิ่มฝั่ง
           </Button>

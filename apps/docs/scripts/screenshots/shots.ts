@@ -120,8 +120,30 @@ export const SHOTS: Shot[] = [
   { file: "reg-head/athletes", as: "regHead", path: "/staff/athletes" },
   { file: "reg-head/departments", as: "regHead", path: "/staff/departments" },
   { file: "reg-head/athlete-reject", as: "regHead", path: "/staff/athletes", act: click(/^ไม่อนุมัติ กฤษดา/) },
-  { file: "reg-head/athlete-edit", as: "regHead", path: "/staff/athletes", act: click(/^แก้ไข กฤษดา วงศ์ทอง แบดมินตัน/) },
+  { file: "reg-head/athlete-edit", as: "regHead", path: "/staff/athletes", act: async (page) => {
+    await click(/^ตัวเลือกเพิ่มเติม กฤษดา วงศ์ทอง แบดมินตัน/)(page);
+    await click("แก้ไขข้อมูล", "menuitem")(page);
+  } },
+  { file: "reg-head/athletes-bulk", as: "regHead", path: "/staff/athletes", act: async (page) => {
+    const boxes = page.getByRole("checkbox", { name: /^เลือก (?!ทั้งหน้า)/ });
+    for (const n of [0, 1, 2]) await boxes.nth(n).click();
+    await page.waitForTimeout(600);
+  } },
+  { file: "reg-head/athletes-export", as: "regHead", path: "/staff/athletes", act: click(/^ส่งออก CSV/) },
   { file: "reg-head/email", as: "regHead", path: "/staff/email", fullPage: true },
+
+  // Competition (Tech/Live leaders run the whole sport system)
+  { file: "tech-head/matches-bracket", as: "techHead", path: "/staff/matches" },
+  { file: "tech-head/bracket-builder", as: "techHead", path: "/staff/matches", act: click(/^เพิ่มสายการแข่ง$/) },
+  { file: "public/matches-bracket", path: "/matches?view=bracket" },
+  // Sport ids are random per database, so open the first sport's rules from its card.
+  { file: "tech-head/sport-rules", as: "techHead", path: "/staff/sports", act: async (page) => {
+    // Base UI renders the link with role="button".
+    await click(/^กติกา$/)(page);
+    await page.waitForURL(/\/rules$/);
+    await page.waitForTimeout(800);
+  } },
+  { file: "tech-head/teams-auto", as: "techHead", path: "/staff/teams", act: click(/จัดทีมอัตโนมัติทุกประเภท/) },
 
   // Admin
   { file: "admin/sidebar", as: "admin", path: "/staff/dashboard", sidebar: true },
