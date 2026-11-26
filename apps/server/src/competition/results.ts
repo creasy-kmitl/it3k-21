@@ -41,11 +41,14 @@ export function resultStatements(db: Database, change: ResultChange) {
   const match = db
     .update(competitionMatch)
     .set({
+      // The timeline goes with it so the public match page can show who scored
+      // without replaying the events; it is a few short lines per score.
       liveState: {
         period: state.period,
         phase: state.phase,
         decided: state.decided,
         clock: state.clock,
+        timeline: state.timeline,
       },
       ...(change.status ? { status: change.status } : {}),
       ...(change.outcome !== undefined ? { outcome: change.outcome } : {}),
