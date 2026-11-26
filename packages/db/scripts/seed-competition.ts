@@ -29,6 +29,7 @@ import type {
   ScoreEventPayload,
   SideSource,
 } from "../src/competition-rules";
+import { SIDE_SOURCE_LABELS } from "../src/competition-rules";
 import { findLocalD1 } from "../src/local-d1";
 import type { Institution, ProfileValues } from "../src/profile";
 import * as s from "../src/schema/index";
@@ -395,7 +396,8 @@ function match(opts: {
         : opts.labels
           ? null
           : (opts.teams[i]?.id ?? null),
-      label: opts.labels?.[i] ?? null,
+      // Named after its source, as the API names a sourced side.
+      label: source ? sourceLabel(source.matchId, source.result) : (opts.labels?.[i] ?? null),
       slot: i + 1,
       sourceMatchId: source?.matchId ?? null,
       sourceResult: source?.result ?? null,
@@ -484,6 +486,12 @@ function advanced(matchId: string, result: SideSource): string | null {
     (x) => x.matchId === matchId && x.outcome && outcomes.includes(x.outcome),
   );
   return hits.length === 1 ? (hits[0]?.teamId ?? null) : null;
+}
+
+function sourceLabel(matchId: string, result: SideSource): string {
+  const source = matches.find((m) => m.id === matchId);
+  const what = source?.matchNo != null ? `M${source.matchNo}` : (source?.stageName ?? "");
+  return `${SIDE_SOURCE_LABELS[result]} ${what}`;
 }
 
 const score = (
