@@ -1,4 +1,11 @@
-import { MATCH_STATUSES, MATCH_STATUS_LABELS, type MatchStatus } from "@it3k/db/competition-rules";
+import {
+  MATCH_STATUSES,
+  MATCH_STATUS_LABELS,
+  type MatchStatus,
+  THIRD_PLACE_STAGE,
+  nextStageName,
+  previousStageName,
+} from "@it3k/db/competition-rules";
 import { Button } from "@it3k/ui/components/button";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { useQuery } from "@tanstack/react-query";
@@ -6,9 +13,16 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CircleDot, Layers, List, MapPin, Network, Plus, Swords, Trophy } from "lucide-react";
 import { useState } from "react";
 
-import { BracketView, buildBrackets, fromStaffMatch } from "@/components/competition/bracket";
+import {
+  type BracketAddRequest,
+  BracketView,
+  bracketMatchTitle,
+  buildBrackets,
+  fromStaffMatch,
+} from "@/components/competition/bracket";
+import { BracketBuilder } from "@/components/competition/bracket-builder";
 import { MatchCard } from "@/components/competition/match-card";
-import { MatchForm } from "@/components/competition/match-form";
+import { EMPTY_SIDE, MatchForm, type MatchPreset } from "@/components/competition/match-form";
 import { MatchSelect } from "@/components/competition/match-select";
 import { MATCH_STATUS_DOT } from "@/components/competition/match-status-badge";
 import { StatusDot } from "@/components/icon-select";
@@ -51,6 +65,43 @@ export function groupByDay(matches: MatchListItem[]) {
 
 type View = "list" | "bracket";
 
+/** The new match a bracket's add button asks for. */
+export function bracketPreset(request: BracketAddRequest): MatchPreset {
+  const { match } = request;
+  if (request.kind === "next") {
+    return {
+      divisionId: match.divisionId,
+      stageName: nextStageName(match.stageName),
+      sides: [
+        { teamId: null, label: "", source: { matchId: match.id, result: "winner" } },
+        EMPTY_SIDE,
+      ],
+    };
+  }
+  if (request.kind === "third") {
+    return {
+      divisionId: match.divisionId,
+      stageName: THIRD_PLACE_STAGE,
+      sides: request.feeders.map((feeder) => ({
+        teamId: null,
+        label: "",
+        source: { matchId: feeder.id, result: "loser" as const },
+      })),
+    };
+  }
+  return {
+    divisionId: match.divisionId,
+    stageName: previousStageName(match.stageName),
+    sides: [EMPTY_SIDE, EMPTY_SIDE],
+    feeds: {
+      matchId: match.id,
+      slot: request.slot,
+      version: match.version,
+      description: `ฝั่ง ${request.slot} ของ ${bracketMatchTitle(match)}`,
+    },
+  };
+}
+
 /**
  * Every match, filtered by sport, division, venue and status, grouped by day;
  * or each division's knockout bracket, which needs every match of its rounds
@@ -61,6 +112,8 @@ export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => voi
   const [filters, setFilters] = useState<MatchFilters>({});
   const [view, setView] = useState<View>("list");
   const [creating, setCreating] = useState(false);
+  const [preset, setPreset] = useState<MatchPreset | null>(null);
+  const [building, setBuilding] = useState(false);
   const shown: MatchFilters =
     view === "bracket"
       ? {
@@ -98,11 +151,16 @@ export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => voi
     <div className="flex flex-1 flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeader icon={Swords} title="แมตช์" description="ตารางแข่งทุกประเภท" />
-        {canManage && (
-          <Button onClick={() => setCreating(true)}>
-            <Plus /> สร้างแมตช์
-          </Button>
-        )}
+        {canManage &&
+          (view === "bracket" ? (
+            <Button onClick={() => setBuilding(true)}>
+              <Network /> เพิ่มสายการแข่ง
+            </Button>
+          ) : (
+            <Button onClick={() => setCreating(true)}>
+              <Plus /> สร้างแมตช์
+            </Button>
+          ))}
       </div>
 
       <SegmentedControl<View>
@@ -184,7 +242,11 @@ export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => voi
       ) : matches.isError ? (
         <ErrorState error={matches.error} onRetry={matches.refetch} title="โหลดแมตช์ไม่สำเร็จ" />
       ) : view === "bracket" ? (
-        <Brackets items={matches.data.items} />
+        <Brackets
+          items={matches.data.items}
+          onAdd={canManage ? (request) => setPreset(bracketPreset(request)) : undefined}
+          onBuild={canManage ? () => setBuilding(true) : undefined}
+        />
       ) : matches.data.items.length === 0 ? (
         <EmptyState
           icon={Swords}
@@ -226,20 +288,58 @@ export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => voi
           }}
         />
       )}
+      {preset && (
+        <MatchForm
+          divisions={divisionItems}
+          venues={venueItems}
+          initial={null}
+          preset={preset}
+          onClose={() => setPreset(null)}
+          onSaved={() => setPreset(null)}
+        />
+      )}
+      {building && (
+        <BracketBuilder
+          divisions={divisionItems}
+          divisionId={filters.divisionId ?? null}
+          onClose={() => setBuilding(false)}
+          onBuilt={() => setBuilding(false)}
+        />
+      )}
     </div>
   );
 }
 
-function Brackets({ items }: { items: MatchListItem[] }) {
+function Brackets({
+  items,
+  onAdd,
+  onBuild,
+}: {
+  items: MatchListItem[];
+  /** Managers only: the add buttons on cards and the empty state. */
+  onAdd?: (request: BracketAddRequest) => void;
+  onBuild?: () => void;
+}) {
   const brackets = buildBrackets(items.map(fromStaffMatch));
   if (brackets.length === 0) {
     return (
       <EmptyState
         icon={Network}
         title="ยังไม่มีสายการแข่ง"
-        description="สร้างแมตช์รอบน็อกเอาต์ แล้วเลือกให้ฝั่งมาจาก “ผู้ชนะ” ของแมตช์ก่อนหน้า สายจะขึ้นที่นี่"
+        description={
+          onBuild
+            ? "กดเพิ่มสายการแข่งเพื่อสร้างแมตช์น็อกเอาต์ทั้งสาย หรือสร้างแมตช์เองแล้วเลือกให้ฝั่งมาจาก “ผู้ชนะ” ของแมตช์ก่อนหน้า"
+            : "สร้างแมตช์รอบน็อกเอาต์ แล้วเลือกให้ฝั่งมาจาก “ผู้ชนะ” ของแมตช์ก่อนหน้า สายจะขึ้นที่นี่"
+        }
+        action={
+          onBuild && (
+            <Button onClick={onBuild}>
+              <Network /> เพิ่มสายการแข่ง
+            </Button>
+          )
+        }
       />
     );
   }
-  return <BracketView brackets={brackets} matchRoute="/staff/matches/$matchId" />;
+  return <BracketView brackets={brackets} matchRoute="/staff/matches/$matchId" onAdd={onAdd} />;
 }

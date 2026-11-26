@@ -1,4 +1,6 @@
 import type {
+  BracketInput,
+  MatchCreateInput,
   MatchInput,
   groupInput,
   matchImageInput,
@@ -58,8 +60,13 @@ export function createCompetitionMatchesApi(
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
-    async create(json: MatchInput) {
+    async create(json: MatchCreateInput) {
       const res = await client.index.$post({ json });
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
+    async createBracket(json: BracketInput) {
+      const res = await client.bracket.$post({ json });
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },

@@ -2,6 +2,7 @@
 // time and place, and its sides, each a team, another match's winner or loser
 // (a knockout slot the bracket draws), or a placeholder label until known.
 import {
+  type MatchCreateInput,
   type MatchInput,
   SIDE_SOURCE_LABELS,
   type SideSource,
@@ -16,6 +17,7 @@ import {
   CalendarClock,
   CornerDownRight,
   Crown,
+  GitMerge,
   Hash,
   PenLine,
   Layers,
@@ -51,9 +53,18 @@ export type MatchFormDivision = { id: string; name: string; sportName: string };
 export type MatchFormVenue = { id: string; name: string };
 
 type SideSourceDraft = { matchId: string; result: SideSource };
-type SideDraft = { teamId: string | null; label: string; source: SideSourceDraft | null };
+export type SideDraft = { teamId: string | null; label: string; source: SideSourceDraft | null };
 
-const EMPTY_SIDE: SideDraft = { teamId: null, label: "", source: null };
+/** A new match started from a bracket: its division, round and sides filled in. */
+export type MatchPreset = {
+  divisionId: string;
+  stageName: string;
+  sides: SideDraft[];
+  /** The open side of a later match the new match's winner goes to. */
+  feeds?: { matchId: string; slot: number; version: number; description: string };
+};
+
+export const EMPTY_SIDE: SideDraft = { teamId: null, label: "", source: null };
 const sourceKey = (source: SideSourceDraft) => `${source.result}:${source.matchId}`;
 function parseSourceKey(key: string): SideSourceDraft {
   const [result, matchId] = key.split(":") as [SideSource, string];
@@ -68,6 +79,7 @@ export function MatchForm({
   venues,
   initial,
   divisionId: fixedDivisionId,
+  preset,
   onClose,
   onSaved,
 }: {
@@ -77,15 +89,19 @@ export function MatchForm({
   initial: MatchDetail | null;
   /** Starts a new match in this division. */
   divisionId?: string | null;
+  /** Starts a new match with these fields, from a bracket's add buttons. */
+  preset?: MatchPreset | null;
   onClose: () => void;
   onSaved: (match: MatchDetail) => void;
 }) {
   const { competitionMatches: api } = useApis();
   const queryClient = useQueryClient();
   const [divisionId, setDivisionId] = useState<string | null>(
-    initial?.divisionId ?? fixedDivisionId ?? null,
+    initial?.divisionId ?? preset?.divisionId ?? fixedDivisionId ?? null,
   );
-  const [stageName, setStageName] = useState(initial?.stageName ?? DEFAULT_STAGE);
+  const [stageName, setStageName] = useState(
+    initial?.stageName ?? preset?.stageName ?? DEFAULT_STAGE,
+  );
   const [groupId, setGroupId] = useState<string | null>(initial?.groupId ?? null);
   const [roundNo, setRoundNo] = useState(initial?.roundNo?.toString() ?? "");
   const [matchNo, setMatchNo] = useState<string | null>(initial?.matchNo?.toString() ?? null);
@@ -104,7 +120,8 @@ export function MatchForm({
         p.sourceMatchId && p.sourceResult
           ? { matchId: p.sourceMatchId, result: p.sourceResult }
           : null,
-    })) ?? [EMPTY_SIDE, EMPTY_SIDE],
+    })) ??
+      preset?.sides ?? [EMPTY_SIDE, EMPTY_SIDE],
   );
   const [issues, setIssues] = useState<Record<string, string>>({});
 
@@ -124,10 +141,15 @@ export function MatchForm({
   const shownFriendly = friendly ?? setup.data?.friendlyByDefault ?? false;
 
   const save = useMutation({
-    mutationFn: async (input: MatchInput) =>
-      initial
-        ? (await api.update(initial.id, { ...input, version: initial.version })).match
-        : (await api.create(input)).match,
+    mutationFn: async (input: MatchInput) => {
+      if (initial)
+        return (await api.update(initial.id, { ...input, version: initial.version })).match;
+      const feeds = preset?.feeds;
+      const body: MatchCreateInput = feeds
+        ? { ...input, feeds: { matchId: feeds.matchId, slot: feeds.slot, version: feeds.version } }
+        : input;
+      return (await api.create(body)).match;
+    },
     onSuccess: (match) => {
       toast.success(initial ? "บันทึกแล้ว" : "สร้างแมตช์แล้ว");
       void queryClient.invalidateQueries({ queryKey: ["competition-matches"] });
@@ -220,7 +242,7 @@ export function MatchForm({
         <MatchSelect
           id="match-division"
           label="ประเภท"
-          disabled={initial !== null}
+          disabled={initial !== null || !!preset}
           items={[
             { value: null, label: "เลือกประเภท" },
             ...divisions.map((d) => ({ value: d.id, label: `${d.sportName} · ${d.name}` })),
@@ -239,6 +261,12 @@ export function MatchForm({
         <legend className="mb-2 flex items-center gap-2 text-sm font-medium">
           <Users className="size-4 text-muted-foreground" aria-hidden /> ผู้แข่ง
         </legend>
+        {preset?.feeds && (
+          <p className="flex items-center gap-2 rounded-xl bg-muted px-3 py-2 text-sm">
+            <GitMerge className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            ผู้ชนะแมตช์นี้จะเข้า{preset.feeds.description}
+          </p>
+        )}
         {sides.map((side, index) => (
           <div key={index} className="flex flex-col gap-2 rounded-2xl border p-3">
             <div className="flex items-center gap-2">

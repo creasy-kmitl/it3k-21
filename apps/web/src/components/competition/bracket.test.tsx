@@ -33,6 +33,7 @@ function match(id: string, sides: BracketSide[], overrides: Partial<BracketMatch
     matchNo: null,
     startAt: null,
     status: "scheduled",
+    version: 1,
     sides,
     ...overrides,
   } satisfies BracketMatch;

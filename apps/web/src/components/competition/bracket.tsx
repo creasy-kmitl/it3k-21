@@ -11,6 +11,7 @@ import type { Institution } from "@it3k/db/profile";
 import type { SportIcon } from "@it3k/db/sport-rules";
 import { cn } from "@it3k/ui/lib/utils";
 import { Link } from "@tanstack/react-router";
+import { Medal, Plus } from "lucide-react";
 
 import { InstitutionLogo } from "@/components/institution-logo";
 import { SportMark } from "@/components/sport-art";
@@ -43,6 +44,7 @@ export type BracketMatch = {
   matchNo: number | null;
   startAt: number | null;
   status: MatchStatus;
+  version: number;
   sides: BracketSide[];
 };
 
@@ -57,7 +59,20 @@ export type DivisionBracket = {
   sportIcon: SportIcon;
   /** The final first, then other trees such as the third-place match. */
   roots: BracketNode[];
+  /** Matches whose loser already plays on, as in a third-place match. */
+  loserSourced: Set<string>;
 };
+
+/** What a bracket's add buttons ask for; the page turns it into a new match. */
+export type BracketAddRequest =
+  | { kind: "next"; match: BracketMatch }
+  | { kind: "before"; match: BracketMatch; slot: number }
+  | { kind: "third"; match: BracketMatch; feeders: [BracketMatch, BracketMatch] };
+
+type AddProps = { onAdd?: (request: BracketAddRequest) => void };
+
+const notStarted = (match: BracketMatch) =>
+  match.status !== "live" && match.status !== "finished" && match.status !== "cancelled";
 
 const size = (node: BracketNode): number =>
   1 + node.feeders.reduce((sum, feeder) => sum + size(feeder), 0);
@@ -77,12 +92,14 @@ export function buildBrackets(matches: readonly BracketMatch[]): DivisionBracket
     const byId = new Map(list.map((match) => [match.id, match]));
     const linked = new Set<string>();
     const fedAsWinner = new Set<string>();
+    const loserSourced = new Set<string>();
     for (const match of list) {
       for (const side of match.sides) {
         if (!side.sourceMatchId || !byId.has(side.sourceMatchId)) continue;
         linked.add(match.id);
         linked.add(side.sourceMatchId);
         if (side.sourceResult === "winner") fedAsWinner.add(side.sourceMatchId);
+        if (side.sourceResult === "loser") loserSourced.add(side.sourceMatchId);
       }
     }
     if (linked.size === 0) continue;
@@ -125,6 +142,7 @@ export function buildBrackets(matches: readonly BracketMatch[]): DivisionBracket
       sportName: first.sportName,
       sportIcon: first.sportIcon,
       roots,
+      loserSourced,
     });
   }
   return brackets.toSorted(
@@ -140,10 +158,11 @@ export type MatchRoute = "/staff/matches/$matchId" | "/matches/$matchId";
 export function BracketView({
   brackets,
   matchRoute,
+  onAdd,
 }: {
   brackets: DivisionBracket[];
   matchRoute: MatchRoute;
-}) {
+} & AddProps) {
   return (
     <div className="flex flex-col gap-8">
       {brackets.map((bracket) => (
@@ -162,7 +181,13 @@ export function BracketView({
           <div className="overflow-x-auto rounded-2xl border bg-muted/30 p-4">
             <div className="flex w-max flex-col gap-6">
               {bracket.roots.map((root) => (
-                <Tree key={root.match.id} node={root} matchRoute={matchRoute} />
+                <Tree
+                  key={root.match.id}
+                  node={root}
+                  matchRoute={matchRoute}
+                  root={{ loserSourced: bracket.loserSourced }}
+                  onAdd={onAdd}
+                />
               ))}
             </div>
           </div>
@@ -177,8 +202,32 @@ export function BracketView({
  * to the right, the lines join with a vertical bar, and one stub runs on to
  * the match, so every round lines up with the middle of the two before it.
  */
-function Tree({ node, matchRoute }: { node: BracketNode; matchRoute: MatchRoute }) {
+function Tree({
+  node,
+  matchRoute,
+  root,
+  onAdd,
+}: {
+  node: BracketNode;
+  matchRoute: MatchRoute;
+  /** Set on a tree's last match, which may go on to a next round. */
+  root?: { loserSourced: Set<string> };
+} & AddProps) {
   const count = node.feeders.length;
+  const [first, second] = node.feeders;
+  const canAddNext =
+    !!root &&
+    node.match.status !== "cancelled" &&
+    !node.match.sides.some((s) => s.sourceResult === "loser");
+  const thirdPlaceFeeders: [BracketMatch, BracketMatch] | null =
+    root &&
+    count === 2 &&
+    first &&
+    second &&
+    !root.loserSourced.has(first.match.id) &&
+    !root.loserSourced.has(second.match.id)
+      ? [first.match, second.match]
+      : null;
   return (
     <div className="flex items-center">
       {count > 0 && (
@@ -199,16 +248,29 @@ function Tree({ node, matchRoute }: { node: BracketNode; matchRoute: MatchRoute 
                         : "before:inset-y-0"),
                 )}
               >
-                <Tree node={feeder} matchRoute={matchRoute} />
+                <Tree node={feeder} matchRoute={matchRoute} onAdd={onAdd} />
               </div>
             ))}
           </div>
           <div className="h-px w-6 shrink-0 bg-border" aria-hidden />
         </>
       )}
-      <BracketCard match={node.match} matchRoute={matchRoute} />
+      <BracketCard
+        match={node.match}
+        matchRoute={matchRoute}
+        onAdd={onAdd}
+        canAddNext={canAddNext}
+        thirdPlaceFeeders={thirdPlaceFeeders}
+      />
     </div>
   );
+}
+
+/** "M3 · รอบรองชนะเลิศ", or the stage alone for a match without a number. */
+export function bracketMatchTitle(match: Pick<BracketMatch, "matchNo" | "stageName">) {
+  return [match.matchNo !== null ? `M${match.matchNo}` : null, match.stageName]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function when(match: BracketMatch) {
@@ -219,22 +281,43 @@ function when(match: BracketMatch) {
   return `${formatBangkok(match.startAt, "day")} ${formatBangkok(match.startAt, "time")}`;
 }
 
-function BracketCard({ match, matchRoute }: { match: BracketMatch; matchRoute: MatchRoute }) {
+/**
+ * A match card. The whole card opens the match (a stretched link), and the
+ * add buttons sit above the link: a "+" on an open side adds the match
+ * whose winner fills it, the "+" on the right edge adds the next round, and
+ * a final can add its third-place match.
+ */
+function BracketCard({
+  match,
+  matchRoute,
+  onAdd,
+  canAddNext,
+  thirdPlaceFeeders,
+}: {
+  match: BracketMatch;
+  matchRoute: MatchRoute;
+  canAddNext: boolean;
+  thirdPlaceFeeders: [BracketMatch, BracketMatch] | null;
+} & AddProps) {
   const live = match.status === "live";
-  const title = [match.matchNo !== null ? `M${match.matchNo}` : null, match.stageName]
-    .filter(Boolean)
-    .join(" · ");
+  const title = bracketMatchTitle(match);
+  const open = notStarted(match);
   return (
-    <Link
-      to={matchRoute}
-      params={{ matchId: match.id }}
+    <div
       className={cn(
-        "flex w-60 shrink-0 flex-col gap-1 rounded-xl border bg-card p-2.5 text-sm shadow-xs transition-colors hover:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+        "relative flex w-60 shrink-0 flex-col gap-1 rounded-xl border bg-card p-2.5 text-sm shadow-xs transition-colors has-[a:hover]:border-ring has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring/50",
         live && "border-destructive/60",
       )}
     >
       <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span className="truncate">{title}</span>
+        <Link
+          to={matchRoute}
+          params={{ matchId: match.id }}
+          aria-label={`${title}: ${match.sides.map((side) => side.name).join(" พบ ")}`}
+          className="truncate after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none"
+        >
+          {title}
+        </Link>
         <span className={cn("flex shrink-0 items-center gap-1", live && "text-destructive")}>
           {live && (
             <span
@@ -256,6 +339,16 @@ function BracketCard({ match, matchRoute }: { match: BracketMatch; matchRoute: M
         >
           {side.institution ? (
             <InstitutionLogo institution={side.institution} />
+          ) : onAdd && open && side.placeholder && !side.sourceMatchId ? (
+            <button
+              type="button"
+              aria-label={`เพิ่มแมตช์ก่อนหน้าให้ฝั่ง ${side.slot} ของ ${title}`}
+              title="เพิ่มแมตช์ก่อนหน้า"
+              onClick={() => onAdd({ kind: "before", match, slot: side.slot })}
+              className="relative z-10 grid size-4 shrink-0 place-items-center rounded-full border border-dashed border-primary/60 text-primary transition-colors hover:border-primary hover:bg-primary/10 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <Plus className="size-3" aria-hidden />
+            </button>
           ) : (
             <span className="size-4 shrink-0 rounded-full border border-dashed" aria-hidden />
           )}
@@ -265,7 +358,27 @@ function BracketCard({ match, matchRoute }: { match: BracketMatch; matchRoute: M
           {side.score !== null && <span className="tabular-nums">{side.score}</span>}
         </span>
       ))}
-    </Link>
+      {onAdd && thirdPlaceFeeders && (
+        <button
+          type="button"
+          onClick={() => onAdd({ kind: "third", match, feeders: thirdPlaceFeeders })}
+          className="relative z-10 mt-1 flex w-fit items-center gap-1 rounded-md text-xs text-primary hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        >
+          <Medal className="size-3.5" aria-hidden /> เพิ่มนัดชิงอันดับ 3
+        </button>
+      )}
+      {onAdd && canAddNext && (
+        <button
+          type="button"
+          aria-label={`ต่อรอบถัดไปจาก ${title}`}
+          title="ต่อรอบถัดไป"
+          onClick={() => onAdd({ kind: "next", match })}
+          className="absolute top-1/2 -right-3 z-10 grid size-6 -translate-y-1/2 place-items-center rounded-full border bg-background text-muted-foreground shadow-xs transition-colors hover:border-primary hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        >
+          <Plus className="size-3.5" aria-hidden />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -285,6 +398,7 @@ export function fromStaffMatch(match: MatchListItem): BracketMatch {
     matchNo: match.matchNo,
     startAt: match.startAt,
     status: match.status,
+    version: match.version,
     sides: match.participants.map((side) => ({
       key: side.id,
       slot: side.slot,
@@ -313,6 +427,8 @@ export function fromPublicMatch(match: PublicMatch): BracketMatch {
     matchNo: match.matchNo,
     startAt: match.startAt,
     status: match.status,
+    // Public pages never add matches, so no version is needed.
+    version: 0,
     sides: match.sides.map((side) => ({
       key: side.id,
       slot: side.slot,

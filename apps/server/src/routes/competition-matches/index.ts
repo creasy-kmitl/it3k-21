@@ -7,8 +7,11 @@ import {
   MIN_TEAMS_FOR_MEDALS,
   type MatchInput,
   SIDE_SOURCE_LABELS,
+  bracketInput,
+  matchCreateInput,
   matchImageInput,
   matchInput,
+  planBracket,
   matchStatusInput,
   refereeInput,
 } from "@it3k/db/competition-rules";
@@ -43,6 +46,7 @@ import {
   MESSAGES,
   checkTeams,
   checkVenues,
+  chunks,
   divisionParam,
   divisionTeams,
   guards,
@@ -69,6 +73,7 @@ const COVER_TAKEN = "แมตช์นี้มีรูปปกแล้ว �
 const SOURCE_NOT_FOUND = "ไม่พบแมตช์ที่ส่งผู้ชนะหรือผู้แพ้มา";
 const SOURCE_SELF = "ฝั่งของแมตช์มาจากผลของแมตช์ตัวเองไม่ได้";
 const SOURCE_LOOP = "สายการแข่งวนกลับมาที่แมตช์นี้";
+const FEED_NOT_FOUND = "ไม่พบแมตช์ที่จะส่งผู้ชนะไป";
 
 type MatchRow = typeof competitionMatch.$inferSelect;
 
@@ -84,9 +89,7 @@ type SourceRow = { id: string; matchNo: number | null; stageName: string };
 
 /** The source matches a match's sides name, by id: top-level matches of the division. */
 async function loadSources(db: Database, input: MatchInput) {
-  const ids = [
-    ...new Set(input.participants.flatMap((p) => (p.source ? [p.source.matchId] : []))),
-  ];
+  const ids = [...new Set(input.participants.flatMap((p) => (p.source ? [p.source.matchId] : [])))];
   if (ids.length === 0) return new Map<string, SourceRow>();
   const rows = await db
     .select({
@@ -265,15 +268,52 @@ export const createCompetitionMatchRoutes = (deps: RouteDeps) =>
       );
     })
 
-    .post("/", allowSport("matches.manage"), validate("json", matchInput), async (c) => {
+    // `feeds` also sends the new match's winner to an open side of a later
+    // match, in the same write: "add the match before this one" in a bracket.
+    .post("/", allowSport("matches.manage"), validate("json", matchCreateInput), async (c) => {
       const db = c.var.db;
-      const input = c.req.valid("json");
+      const { feeds, ...input } = c.req.valid("json");
       if (!(await loadDivision(db, input.divisionId))) {
         return c.json({ message: MESSAGES.divisionNotFound }, 404);
       }
       const problem = await checkMatch(db, input);
       if (problem) return c.json({ message: problem }, 400);
       const stored = storedSides(input, await loadSources(db, input));
+      let fed: { sideId: string; label: string } | null = null;
+      if (feeds) {
+        const target = await findMatch(db, feeds.matchId);
+        if (
+          !target ||
+          input.parentMatchId ||
+          target.divisionId !== input.divisionId ||
+          target.parentMatchId
+        ) {
+          return c.json({ message: FEED_NOT_FOUND }, 400);
+        }
+        if (hasStarted(target)) return c.json({ message: STARTED }, 400);
+        const [side] = await db
+          .select()
+          .from(competitionMatchParticipant)
+          .where(
+            and(
+              eq(competitionMatchParticipant.matchId, target.id),
+              eq(competitionMatchParticipant.slot, feeds.slot),
+            ),
+          );
+        if (!side) return c.json({ message: PARTICIPANT_NOT_FOUND }, 400);
+        if (side.teamId) return c.json({ message: NOT_PLACEHOLDER }, 400);
+        const sourceIds = stored.flatMap((s) => (s.sourceMatchId ? [s.sourceMatchId] : []));
+        if (sourceIds.length > 0 && (await feedsFrom(db, sourceIds, target.id))) {
+          return c.json({ message: SOURCE_LOOP }, 400);
+        }
+        fed = {
+          sideId: side.id,
+          label: sourceLabel(
+            { id: "", matchNo: input.matchNo, stageName: input.stageName },
+            "winner",
+          ),
+        };
+      }
       let subOrder: number | null = null;
       if (input.parentMatchId) {
         const [last] = await db
@@ -287,7 +327,11 @@ export const createCompetitionMatchRoutes = (deps: RouteDeps) =>
       const teamIds = participants.flatMap((p) => (p.teamId ? [p.teamId] : []));
       try {
         await db.batch([
-          ...guards(db, c.var.user, { divisionId: input.divisionId, teamIds }),
+          ...guards(db, c.var.user, {
+            extra: feeds ? matchAsRead(feeds.matchId, feeds.version) : undefined,
+            divisionId: input.divisionId,
+            teamIds,
+          }),
           db.insert(competitionMatch).values({
             id,
             ...fields,
@@ -295,10 +339,26 @@ export const createCompetitionMatchRoutes = (deps: RouteDeps) =>
             startAt: startAt === null ? null : new Date(startAt),
             createdBy: c.var.user.id,
           }),
-          db.insert(competitionMatchParticipant).values(
-            stored.map((side, index) => ({ matchId: id, ...side, slot: index + 1 })),
-          ),
+          db
+            .insert(competitionMatchParticipant)
+            .values(stored.map((side, index) => ({ matchId: id, ...side, slot: index + 1 }))),
           logCompetitionChange(db, c.var.user, "match", id, "create", input),
+          ...(feeds && fed
+            ? [
+                db
+                  .update(competitionMatchParticipant)
+                  .set({ sourceMatchId: id, sourceResult: "winner" as const, label: fed.label })
+                  .where(eq(competitionMatchParticipant.id, fed.sideId)),
+                db
+                  .update(competitionMatch)
+                  .set({ version: sql`${competitionMatch.version} + 1` })
+                  .where(eq(competitionMatch.id, feeds.matchId)),
+                logCompetitionChange(db, c.var.user, "match", feeds.matchId, "update", {
+                  feedsFrom: id,
+                  slot: feeds.slot,
+                }),
+              ]
+            : []),
         ]);
       } catch (error) {
         const kind = constraintError(error);
@@ -309,6 +369,71 @@ export const createCompetitionMatchRoutes = (deps: RouteDeps) =>
         return c.json({ message: staleOr(error) }, 409);
       }
       return c.json({ match: await detailOrThrow(db, id) }, 201);
+    })
+
+    // An empty knockout bracket for a division: numbered first-round slots,
+    // every later side the winner of the match before it, and optionally a
+    // third-place match. Staff fill in teams, times and venues afterwards.
+    .post("/bracket", allowSport("matches.manage"), validate("json", bracketInput), async (c) => {
+      const db = c.var.db;
+      const { divisionId, teams: size, thirdPlace } = c.req.valid("json");
+      if (!(await loadDivision(db, divisionId))) {
+        return c.json({ message: MESSAGES.divisionNotFound }, 404);
+      }
+      const teams = await divisionTeams(db, divisionId);
+      const [last] = await db
+        .select({ matchNo: max(competitionMatch.matchNo) })
+        .from(competitionMatch)
+        .where(eq(competitionMatch.divisionId, divisionId));
+      const firstNo = (last?.matchNo ?? 0) + 1;
+      const plan = planBracket(size, thirdPlace).map((planned, index) => ({
+        ...planned,
+        id: crypto.randomUUID(),
+        matchNo: firstNo + index,
+      }));
+      const matchRows = plan.map((m) => ({
+        id: m.id,
+        divisionId,
+        stageName: m.stageName,
+        roundNo: m.round,
+        matchNo: m.matchNo,
+        friendly: teams.length < MIN_TEAMS_FOR_MEDALS,
+        createdBy: c.var.user.id,
+      }));
+      const sideRows = plan.flatMap((m) =>
+        m.sides.map((side, index) => {
+          if ("label" in side) {
+            return { matchId: m.id, slot: index + 1, label: side.label };
+          }
+          const source = plan[side.source.index] as (typeof plan)[number];
+          return {
+            matchId: m.id,
+            slot: index + 1,
+            label: `${SIDE_SOURCE_LABELS[side.source.result]} M${source.matchNo}`,
+            sourceMatchId: source.id,
+            sourceResult: side.source.result,
+          };
+        }),
+      );
+      try {
+        await db.batch([
+          ...guards(db, c.var.user, { divisionId }),
+          ...chunks(matchRows, 20).map((rows) => db.insert(competitionMatch).values(rows)),
+          ...chunks(sideRows, 10).map((rows) =>
+            db.insert(competitionMatchParticipant).values(rows),
+          ),
+          ...plan.map((m) =>
+            logCompetitionChange(db, c.var.user, "match", m.id, "create", {
+              bracket: { teams: size, thirdPlace },
+              stageName: m.stageName,
+              matchNo: m.matchNo,
+            }),
+          ),
+        ]);
+      } catch (error) {
+        return c.json({ message: staleOr(error) }, 409);
+      }
+      return c.json({ matchIds: plan.map((m) => m.id) }, 201);
     })
 
     .put(

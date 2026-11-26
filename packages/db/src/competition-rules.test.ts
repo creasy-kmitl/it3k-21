@@ -3,6 +3,9 @@ import { describe, expect, test } from "bun:test";
 import {
   divisionCompetitionInput,
   matchInput,
+  nextStageName,
+  planBracket,
+  previousStageName,
   scoreEventInputSchema,
   scoringConfigSchema,
   standingsConfigSchema,
@@ -145,4 +148,43 @@ describe("inputs", () => {
       scoreEventInputSchema.safeParse({ ...event, payload: { type: "teleport" } }).success,
     ).toBe(false);
   });
+});
+
+describe("planBracket", () => {
+  const names = (plan: ReturnType<typeof planBracket>) => plan.map((m) => m.stageName);
+
+  test("four teams: two semi-finals, the final, then the third-place match", () => {
+    const plan = planBracket(4, true);
+    expect(names(plan)).toEqual(["รอบรองชนะเลิศ", "รอบรองชนะเลิศ", "ชิงชนะเลิศ", "ชิงอันดับ 3"]);
+    expect(plan[0]?.sides).toEqual([{ label: "ทีมที่ 1" }, { label: "ทีมที่ 2" }]);
+    expect(plan[2]?.sides).toEqual([
+      { source: { index: 0, result: "winner" } },
+      { source: { index: 1, result: "winner" } },
+    ]);
+    expect(plan[3]?.sides).toEqual([
+      { source: { index: 0, result: "loser" } },
+      { source: { index: 1, result: "loser" } },
+    ]);
+  });
+
+  test("sixteen teams make fifteen matches round by round, each fed by the round before", () => {
+    const plan = planBracket(16, false);
+    expect(plan).toHaveLength(15);
+    expect(plan.map((m) => m.round)).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 4]);
+    expect(plan[8]?.stageName).toBe("รอบก่อนรองชนะเลิศ");
+    expect(plan[14]?.sides).toEqual([
+      { source: { index: 12, result: "winner" } },
+      { source: { index: 13, result: "winner" } },
+    ]);
+    expect(plan[0]?.stageName).toBe("รอบ 16 ทีม");
+  });
+});
+
+test("knockout rounds lead to the next and come after the previous by name", () => {
+  expect(nextStageName("รอบรองชนะเลิศ")).toBe("ชิงชนะเลิศ");
+  expect(nextStageName("รอบ 16 ทีม")).toBe("รอบก่อนรองชนะเลิศ");
+  expect(nextStageName("ชิงชนะเลิศ")).toBe("รอบน็อกเอาต์");
+  expect(nextStageName("รอบแรก")).toBe("รอบน็อกเอาต์");
+  expect(previousStageName("ชิงชนะเลิศ")).toBe("รอบรองชนะเลิศ");
+  expect(previousStageName("รอบก่อนรองชนะเลิศ")).toBe("รอบ 16 ทีม");
 });
