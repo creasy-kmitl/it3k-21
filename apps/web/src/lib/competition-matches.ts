@@ -1,6 +1,5 @@
 import type {
   MatchInput,
-  RoundRobinInput,
   groupInput,
   matchImageInput,
   matchStatusInput,
@@ -26,8 +25,6 @@ export type MatchDetailResponse = InferResponseType<Client[":id"]["$get"], 200>;
 export type MatchDetail = MatchDetailResponse["match"];
 export type MatchSetup = InferResponseType<Client["setup"][":divisionId"]["$get"], 200>;
 export type MatchGroup = MatchSetup["groups"][number];
-export type SchedulePlan = InferResponseType<Client["schedule"]["preview"]["$post"], 200>["plan"];
-export type PlannedMatchRow = SchedulePlan["matches"][number];
 
 export type MatchFilters = {
   sportId?: string;
@@ -157,16 +154,6 @@ export function createCompetitionMatchesApi(
     },
     async savePlacements(json: z.infer<typeof placementsInput>) {
       const res = await client.placements.$put({ json });
-      if (!res.ok) throw await toApiError(res);
-      return res.json();
-    },
-    async previewSchedule(json: RoundRobinInput) {
-      const res = await client.schedule.preview.$post({ json });
-      if (!res.ok) throw await toApiError(res);
-      return res.json();
-    },
-    async commitSchedule(json: RoundRobinInput) {
-      const res = await client.schedule.commit.$post({ json });
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },

@@ -245,30 +245,6 @@ export const placementsInput = z.strictObject({
   places: z.array(z.strictObject({ teamId: id, place: z.number().int().min(1).max(64) })).max(64),
 });
 
-/** Round-robin request: the same body previews and, with `commit`, saves. */
-export const roundRobinInput = z.strictObject({
-  divisionId: id,
-  stageName: shortText(60),
-  groups: z
-    .array(z.strictObject({ name: shortText(40), teamIds: z.array(id).min(2).max(16) }))
-    .min(1)
-    .max(16),
-  firstStartAt: z.number().int().min(0),
-  slotMinutes: z
-    .number()
-    .int()
-    .min(5)
-    .max(24 * 60),
-  // Courts play in parallel; each slot fills them in order.
-  courts: z
-    .array(z.strictObject({ venueId: id.nullable(), court: optionalText(40) }))
-    .min(1)
-    .max(16),
-  // Each pair meets this many times (2 for home and away).
-  legs: z.number().int().min(1).max(2),
-});
-export type RoundRobinInput = z.infer<typeof roundRobinInput>;
-
 // Scoring -----------------------------------------------------------------
 
 export const scoreEventsInput = z.strictObject({

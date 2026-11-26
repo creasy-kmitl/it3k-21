@@ -6,7 +6,6 @@ import {
   competitionMatch,
   competitionMatchParticipant,
   competitionTeam,
-  venue,
 } from "@it3k/db/schema/index";
 import { eq } from "drizzle-orm";
 
@@ -54,11 +53,6 @@ async function seedTeams(code: string, institutions: string[]) {
     )
     .returning();
   return { divisionId, teamIds: rows.map((row) => row.id) };
-}
-
-async function seedVenue() {
-  const [row] = await t.db.insert(venue).values({ name: "สนามกลาง" }).returning();
-  return defined(row).id;
 }
 
 const matchBody = (divisionId: string, participants: unknown[], extra: object = {}) => ({
@@ -460,104 +454,6 @@ describe("placements", () => {
     expect(
       (await send("tech", "PUT", "/placements", { divisionId, places: twice })).res.status,
     ).toBe(400);
-  });
-});
-
-describe("round-robin schedule", () => {
-  async function scheduleBody(legs = 1) {
-    const { divisionId, teamIds } = await seedTeams("football", [
-      "kmitl",
-      "kmutt",
-      "kmutnb-bangkok",
-      "kmutnb-prachinburi",
-    ]);
-    const venueId = await seedVenue();
-    return {
-      teamIds,
-      body: {
-        divisionId,
-        stageName: "รอบแบ่งกลุ่ม",
-        groups: [{ name: "A", teamIds }],
-        firstStartAt: Date.UTC(2026, 11, 1, 2),
-        slotMinutes: 60,
-        courts: [
-          { venueId, court: "1" },
-          { venueId, court: "2" },
-        ],
-        legs,
-      },
-    };
-  }
-
-  test("preview plans the matches and writes nothing", async () => {
-    const { body } = await scheduleBody();
-    const { res, body: out } = await send("tech", "POST", "/schedule/preview", body);
-    expect(res.status).toBe(200);
-    const plan = out.plan as {
-      matches: { homeName: string; venueName: string; slot: number }[];
-      slots: number;
-      friendly: boolean;
-    };
-    expect(plan.matches).toHaveLength(6);
-    expect(plan.slots).toBe(3);
-    expect(plan.friendly).toBe(false);
-    expect(plan.matches[0]?.venueName).toBe("สนามกลาง");
-    expect(await t.db.select().from(competitionMatch)).toHaveLength(0);
-    expect(await t.db.select().from(competitionGroup)).toHaveLength(0);
-    expect((await send("sports-staff", "POST", "/schedule/preview", body)).res.status).toBe(403);
-  });
-
-  test("commit writes the groups and matches in one go, and refuses the same groups twice", async () => {
-    const { body } = await scheduleBody(2);
-    const { res, body: out } = await send("tech", "POST", "/schedule/commit", body);
-    expect(res.status).toBe(201);
-    expect((out.matchIds as string[]).length).toBe(12);
-    const matches = await t.db.select().from(competitionMatch);
-    expect(matches).toHaveLength(12);
-    expect(matches.every((m) => m.groupId === (out.groupIds as string[])[0])).toBe(true);
-    expect(await t.db.select().from(competitionMatchParticipant)).toHaveLength(24);
-    expect((await audit()).map((row) => row.action)).toEqual(["schedule"]);
-    const listed = (await send("tech", "GET", "/")).body.items as Match[];
-    expect(listed).toHaveLength(12);
-
-    const again = await send("tech", "POST", "/schedule/commit", body);
-    expect(again.res.status).toBe(400);
-  });
-
-  test("match numbers carry on from the division's last match", async () => {
-    const { body } = await scheduleBody();
-    await t.db
-      .insert(competitionMatch)
-      .values({ divisionId: body.divisionId, stageName: "x", matchNo: 40 });
-    const { body: out } = await send("tech", "POST", "/schedule/preview", body);
-    expect((out.plan as { matches: { matchNo: number }[] }).matches[0]?.matchNo).toBe(41);
-  });
-
-  test("refuses teams from another division and duplicate group names", async () => {
-    const { body, teamIds } = await scheduleBody();
-    const other = await seedTeams("basketball-3x3-female", ["kmitl"]);
-    const foreign = { ...body, groups: [{ name: "A", teamIds: [teamIds[0], other.teamIds[0]] }] };
-    expect((await send("tech", "POST", "/schedule/preview", foreign)).res.status).toBe(400);
-    const twice = {
-      ...body,
-      groups: [
-        { name: "A", teamIds: teamIds.slice(0, 2) },
-        { name: "A", teamIds: teamIds.slice(2) },
-      ],
-    };
-    expect((await send("tech", "POST", "/schedule/preview", twice)).res.status).toBe(400);
-  });
-
-  test("a team removed between the preview checks and the write leaves nothing behind", async () => {
-    const { body, teamIds } = await scheduleBody();
-    t.hooks.beforeBatch = () => {
-      t.sqlite.run("delete from competition_team where id = ?", [defined(teamIds[3])]);
-    };
-    const { res } = await send("tech", "POST", "/schedule/commit", body);
-    expect(res.status).toBe(409);
-    expect(await t.db.select().from(competitionMatch)).toHaveLength(0);
-    expect(await t.db.select().from(competitionGroup)).toHaveLength(0);
-    expect(await audit()).toHaveLength(0);
   });
 });
 

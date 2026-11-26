@@ -2,8 +2,8 @@ import { MATCH_STATUSES, MATCH_STATUS_LABELS, type MatchStatus } from "@it3k/db/
 import { Button } from "@it3k/ui/components/button";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { useQuery } from "@tanstack/react-query";
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CalendarRange, CircleDot, Layers, MapPin, Plus, Swords, Trophy } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { CircleDot, Layers, MapPin, Plus, Swords, Trophy } from "lucide-react";
 import { useState } from "react";
 
 import { MatchCard } from "@/components/competition/match-card";
@@ -83,18 +83,9 @@ export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => voi
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeader icon={Swords} title="แมตช์" description="ตารางแข่งทุกประเภท" />
         {canManage && (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              render={<Link to="/staff/matches/generate" />}
-              nativeButton={false}
-            >
-              <CalendarRange /> จัดตารางพบกันหมด
-            </Button>
-            <Button onClick={() => setCreating(true)}>
-              <Plus /> สร้างแมตช์
-            </Button>
-          </div>
+          <Button onClick={() => setCreating(true)}>
+            <Plus /> สร้างแมตช์
+          </Button>
         )}
       </div>
 
@@ -164,7 +155,7 @@ export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => voi
           description={
             Object.values(filters).some(Boolean)
               ? "ไม่มีแมตช์ที่ตรงกับตัวกรอง"
-              : "สร้างแมตช์เอง หรือให้ระบบจัดตารางพบกันหมด"
+              : "กดสร้างแมตช์เพื่อเพิ่มแมตช์แรก"
           }
         />
       ) : (

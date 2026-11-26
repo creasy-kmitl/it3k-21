@@ -1,4 +1,4 @@
-// Matches, groups, schedules (by hand, or round robin with a preview),
+// Matches, groups, schedules (match by match),
 // referees, images and final placements. Everyone who reads competitions sees
 // matches; match managers change them. Results and scores are the scoring
 // routes' (competition/results.ts); nothing here writes a score.
@@ -38,7 +38,6 @@ import { canSport } from "../../policies/sports";
 import { createGroupRoutes, listGroups } from "./groups";
 import { createPlacementRoutes } from "./placements";
 import { listMatches, listQuery, matchDetail } from "./read";
-import { createScheduleRoutes } from "./schedule";
 import {
   MESSAGES,
   checkTeams,
@@ -121,7 +120,6 @@ export const createCompetitionMatchRoutes = (deps: RouteDeps) =>
 
     .route("/groups", createGroupRoutes())
     .route("/placements", createPlacementRoutes())
-    .route("/schedule", createScheduleRoutes())
 
     .get("/", validate("query", listQuery), async (c) => {
       const items = await listMatches(c.var.db, c.req.valid("query"));
@@ -135,7 +133,7 @@ export const createCompetitionMatchRoutes = (deps: RouteDeps) =>
       );
     })
 
-    // What the create form and the schedule builder need for one division.
+    // What the create form needs for one division.
     .get("/setup/:divisionId", validate("param", divisionParam), async (c) => {
       const db = c.var.db;
       const { divisionId } = c.req.valid("param");

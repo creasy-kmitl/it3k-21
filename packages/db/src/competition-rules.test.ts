@@ -3,7 +3,6 @@ import { describe, expect, test } from "bun:test";
 import {
   divisionCompetitionInput,
   matchInput,
-  roundRobinInput,
   scoreEventInputSchema,
   scoringConfigSchema,
   standingsConfigSchema,
@@ -144,22 +143,6 @@ describe("inputs", () => {
     expect(scoreEventInputSchema.safeParse({ ...event, id: "not-a-uuid" }).success).toBe(false);
     expect(
       scoreEventInputSchema.safeParse({ ...event, payload: { type: "teleport" } }).success,
-    ).toBe(false);
-  });
-
-  test("round robin needs at least two teams a group", () => {
-    const request = {
-      divisionId: "d",
-      stageName: "รอบแบ่งกลุ่ม",
-      groups: [{ name: "A", teamIds: ["a", "b", "c"] }],
-      firstStartAt: 0,
-      slotMinutes: 30,
-      courts: [{ venueId: null, court: "คอร์ท 1" }],
-      legs: 1,
-    };
-    expect(roundRobinInput.safeParse(request).success).toBe(true);
-    expect(
-      roundRobinInput.safeParse({ ...request, groups: [{ name: "A", teamIds: ["a"] }] }).success,
     ).toBe(false);
   });
 });
