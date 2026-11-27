@@ -162,6 +162,24 @@ export const SHOTS: Shot[] = [
   { file: "sports-staff/sidebar", as: "sportsStaff", path: "/staff/dashboard", sidebar: true },
   { file: "sports-head/sidebar", as: "sportsHead", path: "/staff/dashboard", sidebar: true },
   { file: "sports-staff/scoring", as: "sportsStaff", path: "/score/demo-match-sf2", mobile: true, desktop: false },
+  { file: "sports-staff/matches-list", as: "sportsStaff", path: "/staff/matches", act: async (page) => {
+    await page.getByText("รายการ", { exact: true }).first().click();
+    await page.waitForTimeout(800);
+  } },
+  { file: "sports-staff/match-detail", as: "sportsStaff", path: "/staff/matches/demo-match-sf2" },
+  { file: "sports-head/competition-settings", as: "sportsHead", path: "/staff/teams", act: async (page) => {
+    await click(/^ตั้งค่าการแข่งขัน แบดมินตัน/)(page);
+    await page.waitForURL(/\/staff\/competition\//);
+    await page.waitForTimeout(800);
+  } },
+  { file: "sports-head/teams-auto", as: "sportsHead", path: "/staff/teams", act: click(/จัดทีมอัตโนมัติทุกประเภท/) },
+  { file: "sports-head/bracket-builder", as: "sportsHead", path: "/staff/matches", act: click(/^เพิ่มสายการแข่ง$/) },
+  { file: "sports-head/match-detail", as: "sportsHead", path: "/staff/matches/demo-match-sf2" },
+  { file: "sports-head/match-checkin-venue", as: "sportsHead", path: "/staff/match-checkin", act: click("โรงยิมเนเซียม") },
+  { file: "sports-head/match-checkin", as: "sportsHead", path: "/staff/match-checkin", act: async (page) => {
+    await page.getByText(/รอบรองชนะเลิศ · M2/).first().click();
+    await page.waitForTimeout(800);
+  } },
 
   // Admin
   { file: "admin/sidebar", as: "admin", path: "/staff/dashboard", sidebar: true },
