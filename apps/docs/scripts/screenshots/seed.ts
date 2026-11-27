@@ -262,7 +262,7 @@ db.transaction((tx) => {
   register(p07, "basketball-5x5-male", "rejected", { shirtNumber: 23 });
   register(p08, "petanque-female", "review");
   register(p10, "athletics-100m-female", "approved");
-  register(p10, "badminton-singles-female", "approved", { badmintonRank: 1 });
+  register(p10, "badminton-singles-female", "approved", { badmintonRank: 2 });
   register(p03, "athletics-100m-male", "review");
   for (const [userId, studentId] of Object.entries(studentIds)) {
     tx.insert(s.athlete).values({ userId, studentId }).run();
