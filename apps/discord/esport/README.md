@@ -28,6 +28,29 @@ docker build -f apps/discord/esport/Dockerfile -t it3k-esport-bot .
 docker run -d --env-file apps/discord/esport/.env -v esport-bot:/data it3k-esport-bot
 ```
 
+## Deploy
+
+บอทมีตัวเดียว รันบน VM ที่ไม่มี public IP (`suwizx@100.96.0.14` ผ่าน Cloudflare mesh) จึงใช้แบบให้ VM ดึงเอง:
+
+1. merge เข้า `main` → workflow `.github/workflows/discord-bot.yml` รันเทสต์บอท แล้ว build image ขึ้น `ghcr.io/creasy-kmitl/it3k-esport-bot` (tag `latest` และ `sha-<commit>`) ส่วน PR แค่ build ตรวจ ไม่ push
+2. บน VM, `it3k-esport-bot-update.timer` (systemd user timer) รัน `~/it3k-esport-bot/update.sh` ทุก 1 นาที: `docker compose pull` แล้ว `up -d` ซึ่งรีสตาร์ทบอทเฉพาะตอน image เปลี่ยน
+
+CI ไม่ต้องเข้าถึง VM และไม่ถือ secret ของบอท: `.env` อยู่บน VM ที่เดียว ข้อมูล SQLite (mode, ID จาก `/init`) อยู่ใน volume `it3k-esport-bot_data`
+
+ไฟล์ฝั่ง VM อยู่ใน `deploy/` ติดตั้งครั้งแรก:
+
+```bash
+scp apps/discord/esport/deploy/{compose.yaml,update.sh} suwizx@100.96.0.14:it3k-esport-bot/
+scp apps/discord/esport/deploy/it3k-esport-bot-update.{service,timer} suwizx@100.96.0.14:.config/systemd/user/
+ssh suwizx@100.96.0.14 'systemctl --user daemon-reload && systemctl --user enable --now it3k-esport-bot-update.timer'
+```
+
+แล้ววาง `.env` ที่ `~/it3k-esport-bot/.env` (ไม่มีไฟล์นี้ timer จะไม่ทำอะไร) ดู log: `journalctl --user -u it3k-esport-bot-update -f` และ `docker compose -f ~/it3k-esport-bot/compose.yaml logs -f`
+
+ย้อนเวอร์ชัน: แก้ `image:` ใน `compose.yaml` บน VM เป็น `:sha-<commit>` แล้ว `docker compose up -d` (กลับเป็น `:latest` เมื่อแก้เสร็จ)
+
+**รันบอทได้ทีละที่เท่านั้น:** token เดียวกันรันสองที่ ทั้งสองจะรับ interaction ซ้ำกัน ก่อนรันบน local ให้หยุดบน VM ก่อน (`docker compose -f ~/it3k-esport-bot/compose.yaml stop`)
+
 ## คำสั่ง
 
 - `/ping` เช็กบอทและ API ของ mode ปัจจุบัน

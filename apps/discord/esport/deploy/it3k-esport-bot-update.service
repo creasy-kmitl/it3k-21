@@ -1,0 +1,8 @@
+[Unit]
+Description=Update the it3k esport Discord bot from GHCR
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/it3k-esport-bot/update.sh
