@@ -1,0 +1,14 @@
+{
+  "extends": "@it3k/config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // discordx registers commands with legacy (experimental) decorators,
+    // including parameter decorators such as @SlashOption.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": false,
+    // src/lib/api.ts imports BotRoutes from apps/server by relative path,
+    // which pulls server source into this program; mirror server's flag.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/**/*.ts"]
+}

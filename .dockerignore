@@ -1,0 +1,15 @@
+# Build context for apps/discord/*/Dockerfile, which builds from the repo root.
+**/node_modules
+**/.env
+**/.env.*
+!**/.env.schema
+**/data
+.git
+.alchemy
+.wrangler
+**/.wrangler
+**/dist
+**/.tanstack
+**/.output
+exports
+apps/docs/public

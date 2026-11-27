@@ -1,0 +1,25 @@
+{
+  "name": "@it3k/discord-esport",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "check-types": "tsc --noEmit",
+    "env:generate": "varlock codegen"
+  },
+  "dependencies": {
+    "@discordx/importer": "^1.3.3",
+    "discord.js": "^14.28.1",
+    "discordx": "^11.13.3",
+    "hono": "^4.13.18",
+    "varlock": "catalog:"
+  },
+  "devDependencies": {
+    "@it3k/config": "workspace:*",
+    "@types/bun": "^1.4.4",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -26,6 +26,7 @@ import { createCompetitionScoreRoutes } from "./routes/competition-scores";
 import { createCompetitionCheckinRoutes } from "./routes/competition-checkins";
 import { createPublicCompetitionRoutes } from "./routes/public-competition";
 import { createTicketRoutes } from "./routes/tickets";
+import { createBotRoutes } from "./routes/bot";
 import { createVenueRoutes } from "./routes/venues";
 import type { DiscordDeps } from "./routes/registrations/shared";
 import { discordEnabled } from "@it3k/auth";
@@ -53,7 +54,7 @@ initLogger({
 
 const identifyUser = createAuthMiddleware((await createAuth()) as BetterAuthInstance, {
   // Short links are public and carry no session; skip the lookup on every visit.
-  exclude: ["/api/auth/**", "/l/**", "/api/files/public/**", "/api/public/**"],
+  exclude: ["/api/auth/**", "/l/**", "/api/files/public/**", "/api/public/**", "/api/bot/**"],
   maskEmail: true,
 });
 
@@ -149,6 +150,12 @@ app.route("/api/competition/checkins", createCompetitionCheckinRoutes(deps));
 app.route("/api/public/events", createPublicEventRoutes(deps));
 // Public: matches, the live board, standings and medals.
 app.route("/api/public/competition", createPublicCompetitionRoutes(deps));
+
+// The Discord bots, signed in with the stage's BOT_API_TOKEN instead of a session.
+app.route(
+  "/api/bot",
+  createBotRoutes({ getDb, botToken: env.BOT_API_TOKEN, stage: env.DEPLOY_ENV ?? "dev" }),
+);
 
 // Public: the web worker forwards its `/l/<slug>` paths here.
 app.route("/l", createShortLinkRedirect(deps));

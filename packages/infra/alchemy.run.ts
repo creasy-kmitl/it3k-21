@@ -224,6 +224,9 @@ export const server = Cloudflare.Worker("server", {
     DISCORD_CLIENT_SECRET: Config.Redacted("DISCORD_CLIENT_SECRET").pipe(
       Config.withDefault(Redacted.make("")),
     ),
+    // Optional on every stage: empty turns /api/bot off. The Discord bots
+    // send it as a Bearer token; CI gives prod and staging their own.
+    BOT_API_TOKEN: Config.Redacted("BOT_API_TOKEN").pipe(Config.withDefault(Redacted.make(""))),
     // Equal to BETTER_AUTH_URL unless this is a preview, and the plugin
     // skips proxying entirely when the two match.
     AUTH_PROXY_URL: isPreviewStage ? AUTH_RELAY_URL : Cloudflare.Worker.URL,

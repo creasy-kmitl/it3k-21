@@ -4,6 +4,7 @@
   "workspaces": {
     "packages": [
       "apps/*",
+      "apps/discord/*",
       "packages/*"
     ],
     "catalog": {
@@ -43,8 +44,8 @@
     "email:dev": "bun run --cwd packages/email email:dev",
     "deploy": "vp run --filter @it3k/infra deploy",
     "destroy": "vp run --filter @it3k/infra destroy",
-    "env:generate": "varlock codegen --path ./apps/web/ && varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/",
-    "postinstall": "varlock codegen --path ./apps/web/ && varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/"
+    "env:generate": "varlock codegen --path ./apps/web/ && varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/ && varlock codegen --path ./apps/discord/esport/",
+    "postinstall": "varlock codegen --path ./apps/web/ && varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/ && varlock codegen --path ./apps/discord/esport/"
   },
   "dependencies": {
     "it3k": ".",

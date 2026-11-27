@@ -8,6 +8,7 @@
   "files": {
     "includes": [
       "apps/*/src/**",
+      "apps/discord/*/src/**",
       "packages/*/src/**",
       "packages/infra/*.ts",
       "packages/infra/stacks/**",
@@ -31,6 +32,11 @@
   "css": {
     "parser": {
       "tailwindDirectives": true
+    }
+  },
+  "javascript": {
+    "parser": {
+      "unsafeParameterDecoratorsEnabled": true
     }
   }
 }
