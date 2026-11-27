@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  SPORT_CHECKIN_CODE_PATTERN,
   divisionCompetitionInput,
+  newSportCheckinCode,
+  parseSportScan,
   matchInput,
   nextStageName,
   planBracket,
@@ -187,4 +190,17 @@ test("knockout rounds lead to the next and come after the previous by name", () 
   expect(nextStageName("รอบแรก")).toBe("รอบน็อกเอาต์");
   expect(previousStageName("ชิงชนะเลิศ")).toBe("รอบรองชนะเลิศ");
   expect(previousStageName("รอบก่อนรองชนะเลิศ")).toBe("รอบ 16 ทีม");
+});
+
+describe("sport check-in codes", () => {
+  test("new codes are six digits", () => {
+    for (let i = 0; i < 200; i++) expect(newSportCheckinCode()).toMatch(SPORT_CHECKIN_CODE_PATTERN);
+  });
+
+  test("a scan is a ticket, a check-in code or an account id", () => {
+    expect(parseSportScan("it3k-t:abc")).toEqual({ ticketCode: "abc" });
+    expect(parseSportScan(" 004213 ")).toEqual({ checkinCode: "004213" });
+    expect(parseSportScan("65070001")).toEqual({ userId: "65070001" });
+    expect(parseSportScan("u7Kq2")).toEqual({ userId: "u7Kq2" });
+  });
 });

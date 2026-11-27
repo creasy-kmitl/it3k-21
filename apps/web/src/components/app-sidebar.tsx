@@ -19,7 +19,6 @@ import {
   MapPinnedIcon,
   MedalIcon,
   QrCodeIcon,
-  ScanLineIcon,
   SwordsIcon,
   TrophyIcon,
   UserCogIcon,
@@ -90,15 +89,6 @@ export function staffNavGroups(me: NavAccess | undefined): NavMainGroup[] {
               { title: "ทีมแข่ง", to: "/staff/teams", icon: <Users2Icon /> },
               { title: "แมตช์", to: "/staff/matches", icon: <SwordsIcon /> },
             ] as const)
-          : []),
-        ...(can("matches.checkin")
-          ? [
-              {
-                title: "รายงานตัวแข่งขัน",
-                to: "/staff/match-checkin",
-                icon: <ScanLineIcon />,
-              } as const,
-            ]
           : []),
       ],
     },

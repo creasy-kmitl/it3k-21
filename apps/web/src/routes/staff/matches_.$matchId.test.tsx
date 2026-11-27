@@ -3,7 +3,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 
 import { detail, setup, side } from "@/components/competition/match-test-fixtures";
+import { matchCheckins } from "@/components/competition/checkin/fixtures";
 import { ApiProvider } from "@/lib/api-context";
+import type { CompetitionCheckinsApi } from "@/lib/competition-checkins";
 import type { CompetitionMatchesApi, MatchDetail } from "@/lib/competition-matches";
 import { choose, fakeApis, loudFake } from "@/test/query";
 import { renderAtRoot } from "@/test/router";
@@ -14,17 +16,23 @@ afterEach(cleanup);
 
 async function render(
   match: MatchDetail,
-  options: { canManage?: boolean; overrides?: Partial<CompetitionMatchesApi> } = {},
+  options: {
+    canManage?: boolean;
+    canCheckin?: boolean;
+    overrides?: Partial<CompetitionMatchesApi>;
+    checkins?: Partial<CompetitionCheckinsApi>;
+  } = {},
 ) {
-  const { canManage = true, overrides = {} } = options;
+  const { canManage = true, canCheckin = false, overrides = {}, checkins = {} } = options;
   const api = loudFake<CompetitionMatchesApi>("competitionMatches", {
-    get: async () => ({ match, canManage, canScore: true, canCheckin: false }) as never,
+    get: async () => ({ match, canManage, canScore: true, canCheckin }) as never,
     ...overrides,
   });
+  const competitionCheckins = loudFake<CompetitionCheckinsApi>("competitionCheckins", checkins);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = await renderAtRoot(() => (
     <QueryClientProvider client={client}>
-      <ApiProvider value={fakeApis({ competitionMatches: api })}>
+      <ApiProvider value={fakeApis({ competitionMatches: api, competitionCheckins })}>
         <MatchPage matchId={match.id} onDeleted={() => {}} />
       </ApiProvider>
     </QueryClientProvider>
@@ -106,5 +114,44 @@ describe("/staff/matches/$matchId", () => {
       expect(addReferee).toHaveBeenCalledWith("m-1", { name: "สมใจ", role: "ผู้ตัดสิน", sortOrder: 0 }),
     );
     expect(await view.findByText("สมใจ")).toBeTruthy();
+  });
+
+  test("staff who check athletes in see the rosters, tick them in and open the kiosk", async () => {
+    const checkIn = mock(async () => ({}));
+    const view = await render(detail(), {
+      canCheckin: true,
+      checkins: {
+        match: async () => matchCheckins(),
+        checkIn: checkIn as unknown as CompetitionCheckinsApi["checkIn"],
+      },
+    });
+    const section = await view.findByRole("region", { name: "รายงานตัว" });
+    expect(await within(section).findByText("เปิดรายงานตัว ถึง 10:30 · ขั้นต่ำ 2 คนต่อฝั่ง")).toBeTruthy();
+    expect(within(section).getByRole("button", { name: /เปิด kiosk/ }).getAttribute("href")).toBe(
+      "/kiosk/matches/m-1",
+    );
+    fireEvent.click(within(section).getByRole("checkbox", { name: /สมหญิง/ }));
+    await waitFor(() => expect(checkIn).toHaveBeenCalledWith("m-1", "s-1", "p2"));
+  });
+
+  test("a division checked in by staff has no kiosk button", async () => {
+    const view = await render(detail(), {
+      canCheckin: true,
+      checkins: {
+        match: async () => ({
+          ...matchCheckins(),
+          match: { ...matchCheckins().match, checkinMode: "manual" },
+        }),
+      },
+    });
+    const section = await view.findByRole("region", { name: "รายงานตัว" });
+    expect(await within(section).findByText(/รายงานตัวผ่าน Discord/)).toBeTruthy();
+    expect(within(section).queryByRole("button", { name: /เปิด kiosk/ })).toBeNull();
+  });
+
+  test("staff without check-in rights see no check-in section", async () => {
+    const view = await render(detail());
+    await view.findByRole("heading", { name: /M1/ });
+    expect(view.queryByRole("region", { name: "รายงานตัว" })).toBeNull();
   });
 });

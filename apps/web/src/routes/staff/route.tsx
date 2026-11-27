@@ -36,7 +36,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/staff/athletes": "นักกีฬา",
   "/staff/teams": "ทีมแข่ง",
   "/staff/matches": "แมตช์",
-  "/staff/match-checkin": "รายงานตัวแข่งขัน",
   "/staff/events": "กิจกรรม",
   "/staff/venues": "สถานที่",
   "/staff/email": "ส่งอีเมล",

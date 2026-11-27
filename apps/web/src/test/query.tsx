@@ -145,6 +145,7 @@ export function fakeTicketsApi(overrides: Partial<TicketsApi> = {}): TicketsApi 
 export function fakeRegistrationsApi(overrides: Partial<RegistrationsApi> = {}): RegistrationsApi {
   return {
     me: unexpected("registrations.me"),
+    checkinCode: unexpected("registrations.checkinCode"),
     register: unexpected("registrations.register"),
     update: unexpected("registrations.update"),
     withdraw: unexpected("registrations.withdraw"),

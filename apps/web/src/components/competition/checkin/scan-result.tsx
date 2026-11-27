@@ -14,15 +14,16 @@ import { matchTitle } from "./match-checkin-card";
 
 const SAME_CODE_MS = 5000;
 
-/** The query key of a venue's kiosk data. */
-export const venueKey = (venueId: string) => ["competition-checkins", "venue", venueId] as const;
+/** The query key of one match's check-in state, shared by its page and its kiosk. */
+export const matchCheckinKey = (matchId: string) =>
+  ["competition-checkins", "match", matchId] as const;
 
 /**
- * Scanning at a venue's kiosk: codes from the camera or the box become
+ * Scanning at a match's kiosk: codes from the camera or the box become
  * check-ins, the same badge twice in a row is ignored, and the latest result
  * stays until it clears itself.
  */
-export function useMatchScan(venueId: string) {
+export function useMatchScan(matchId: string) {
   const { competitionCheckins: api } = useApis();
   const queryClient = useQueryClient();
   const [outcome, setOutcome] = useState<ScanOutcome | null>(null);
@@ -30,7 +31,7 @@ export function useMatchScan(venueId: string) {
   const [gate] = useState(() => createScanGate(SAME_CODE_MS));
 
   const scan = useMutation({
-    mutationFn: (code: string) => api.scan(venueId, code),
+    mutationFn: (code: string) => api.scan(matchId, code),
     onSuccess: (result) => {
       setFailure(null);
       setOutcome(result);
@@ -39,7 +40,7 @@ export function useMatchScan(venueId: string) {
       setOutcome(null);
       setFailure(error.message);
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: venueKey(venueId) }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: matchCheckinKey(matchId) }),
   });
 
   // The camera loop calls the latest version without restarting the camera.

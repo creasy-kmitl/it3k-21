@@ -4,9 +4,9 @@ import {
   competitionLineup,
   competitionMatch,
   competitionMatchCheckin,
-  competitionMatchParticipant,
   competitionTeamMember,
   sportDivision,
+  athlete,
   sportRegistration,
   venue,
 } from "@it3k/db/schema/index";
@@ -94,7 +94,8 @@ async function send(userId: string, method: string, path: string, json?: unknown
   return { res, body: await readJson(res) };
 }
 
-const scan = (code: string, who = "tech") => send(who, "POST", `/venues/${venueId}/scan`, { code });
+const scan = (code: string, who = "tech", matchId = match.id) =>
+  send(who, "POST", `/matches/${matchId}/scan`, { code });
 
 const checkins = () => t.db.select().from(competitionMatchCheckin);
 
@@ -125,8 +126,8 @@ describe("rules", () => {
   });
 });
 
-describe("scanning at the venue", () => {
-  test("checks a team member in for their match and counts the side", async () => {
+describe("scanning at a match's kiosk", () => {
+  test("checks a team member in for the match and counts the side", async () => {
     const { res, body } = await scan("p1");
     expect(res.status).toBe(201);
     expect(body).toMatchObject({
@@ -138,6 +139,16 @@ describe("scanning at the venue", () => {
     const rows = await checkins();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ method: "scan", checkedInBy: "tech", userId: "p1" });
+  });
+
+  test("takes the six-digit sport check-in code", async () => {
+    await t.db.insert(athlete).values({ userId: "p3", studentId: "1", checkinCode: "004213" });
+    const { res, body } = await scan(" 004213 ");
+    expect(res.status).toBe(201);
+    expect(body).toMatchObject({ person: { userId: "p3" }, side: { participantId: match.away } });
+    const unknown = await scan("999999");
+    expect(unknown.res.status).toBe(404);
+    expect(unknown.body.code).toBe("unknown");
   });
 
   test("a second scan is idempotent", async () => {
@@ -175,6 +186,14 @@ describe("scanning at the venue", () => {
     expect((await scan("p2")).res.status).toBe(201);
   });
 
+  test("a match without a time takes ticks only", async () => {
+    await t.db
+      .update(competitionMatch)
+      .set({ startAt: null })
+      .where(eq(competitionMatch.id, match.id));
+    expect((await scan("p1")).body.code).toBe("closed");
+  });
+
   test("a side with a lineup takes only its players; one without takes its team", async () => {
     const [registration] = await t.db
       .select({ id: sportRegistration.id })
@@ -197,7 +216,7 @@ describe("scanning at the venue", () => {
     expect(away.body).toMatchObject({ side: { participantId: match.away, label: "มจธ." } });
   });
 
-  test("refuses event ticket QR codes and unknown barcodes", async () => {
+  test("refuses ticket QR codes, unknown codes and athletes of other matches", async () => {
     const ticket = await scan("it3k-t:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
     expect(ticket.res.status).toBe(400);
     expect(ticket.body.code).toBe("ticket");
@@ -208,56 +227,42 @@ describe("scanning at the venue", () => {
     expect(unknown.body.code).toBe("unknown");
 
     const outsider = await scan("outsider");
-    expect(outsider.res.status).toBe(404);
-    expect(outsider.body.code).toBe("no-match");
+    expect(outsider.res.status).toBe(409);
+    expect(outsider.body).toMatchObject({ code: "not-in-match", person: { userId: "outsider" } });
     expect(await checkins()).toHaveLength(0);
+
+    expect((await scan("p1", "tech", "nope")).res.status).toBe(404);
   });
 
-  test("ignores matches at other venues, started ones and manual divisions", async () => {
-    const [other] = await t.db.insert(venue).values({ name: "โรงยิม" }).returning();
+  test("refuses started matches and divisions checked in by staff", async () => {
     await t.db
       .update(competitionMatch)
-      .set({ venueId: defined(other).id })
+      .set({ status: "live" })
       .where(eq(competitionMatch.id, match.id));
-    expect((await scan("p1")).body.code).toBe("no-match");
-
-    await t.db
-      .update(competitionMatch)
-      .set({ venueId, status: "live" })
-      .where(eq(competitionMatch.id, match.id));
-    expect((await scan("p1")).body.code).toBe("no-match");
+    expect((await scan("p1")).body.code).toBe("match-closed");
 
     await t.db
       .update(competitionMatch)
       .set({ status: "checkin" })
       .where(eq(competitionMatch.id, match.id));
+    expect((await scan("p1")).res.status).toBe(201);
+
     await t.db
       .update(sportDivision)
       .set({ checkinMode: "manual" })
       .where(eq(sportDivision.id, match.divisionId));
-    expect((await scan("p1")).body.code).toBe("no-match");
+    expect((await scan("p2")).body.code).toBe("manual");
   });
 
-  test("checks in to the next open match when two are at the venue", async () => {
-    const [second] = await t.db
-      .insert(competitionMatch)
-      .values({
-        divisionId: match.divisionId,
-        stageName: "รอบแบ่งกลุ่ม",
-        venueId,
-        startAt: new Date(START + 15 * MIN),
-      })
-      .returning();
-    const secondId = defined(second).id;
-    await t.db.insert(competitionMatchParticipant).values([
-      { matchId: secondId, teamId: defined(await teamOf(match.home)), slot: 1 },
-      { matchId: secondId, teamId: defined(await teamOf(match.away)), slot: 2 },
-    ]);
-    clock = START - 20 * MIN;
-    expect((await scan("p1")).body).toMatchObject({ match: { id: match.id } });
-    // Once the first has closed, the second is next.
-    clock = START - 5 * MIN;
-    expect((await scan("p1")).body).toMatchObject({ code: "checked-in", match: { id: secondId } });
+  test("a match that starts between the read and the write takes no check-in", async () => {
+    t.hooks.beforeBatch = () => {
+      t.sqlite.run(`update competition_match set status = 'live' where id = '${match.id}'`);
+      t.hooks.beforeBatch = undefined;
+    };
+    const { res, body } = await scan("p1");
+    expect(res.status).toBe(409);
+    expect(body.code).toBe("match-closed");
+    expect(await checkins()).toHaveLength(0);
   });
 
   test("needs the match check-in permission", async () => {
@@ -268,32 +273,6 @@ describe("scanning at the venue", () => {
 });
 
 describe("reading check-in state", () => {
-  test("a venue shows its open matches with counts per side", async () => {
-    await scan("p1");
-    const { res, body } = await send("tech", "GET", `/venues/${venueId}`);
-    expect(res.status).toBe(200);
-    const matches = body.matches as {
-      id: string;
-      minPlayers: number;
-      window: { state: string };
-      sides: { label: string; checkedIn: number; expected: number }[];
-    }[];
-    expect(matches).toHaveLength(1);
-    expect(matches[0]).toMatchObject({ id: match.id, minPlayers: 2, window: { state: "open" } });
-    expect(matches[0]?.sides.map((s) => [s.label, s.checkedIn, s.expected])).toEqual([
-      ["สจล.", 1, 2],
-      ["มจธ.", 0, 1],
-    ]);
-    expect(body.next).toBeNull();
-
-    clock = START - 60 * MIN;
-    const before = await send("tech", "GET", `/venues/${venueId}`);
-    expect(before.body.matches).toEqual([]);
-    expect(before.body.next).toMatchObject({ id: match.id, window: { state: "early" } });
-
-    expect((await send("tech", "GET", "/venues/nope")).res.status).toBe(404);
-  });
-
   test("a match lists each side's roster with ticks", async () => {
     await scan("p1");
     const { res, body } = await send("tech", "GET", `/matches/${match.id}`);
@@ -309,14 +288,6 @@ describe("reading check-in state", () => {
     expect(body).toMatchObject({ canCheckIn: true, canForfeit: false });
   });
 
-  test("the staff list covers matches around now, with venues", async () => {
-    const { body } = await send("tech", "GET", "/");
-    expect((body.items as { id: string }[]).map((m) => m.id)).toEqual([match.id]);
-    expect(body.venues).toEqual([{ id: venueId, name: "สนามฟุตบอล" }]);
-    expect(body.canForfeit).toBe(true);
-    const elsewhere = await send("tech", "GET", "/?venueId=other");
-    expect(elsewhere.body.items).toEqual([]);
-  });
 });
 
 describe("manual check-in", () => {

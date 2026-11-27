@@ -15,7 +15,8 @@ import {
   applicableFields,
 } from "@it3k/db/schema/sport";
 import { MAX_PHOTO_SIZE, PHOTO_TYPES } from "@it3k/db/profile";
-import { type SQL, and, asc, eq, sql } from "drizzle-orm";
+import { newSportCheckinCode } from "@it3k/db/competition-rules";
+import { type SQL, and, asc, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -128,11 +129,58 @@ function ownReviewAt(id: string, userId: string, version: number): SQL {
   return sql`exists (select 1 from ${sportRegistration} where ${sportRegistration.id} = ${id} and ${sportRegistration.userId} = ${userId} and ${sportRegistration.version} = ${version} and ${sportRegistration.status} = 'review')`;
 }
 
-export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps & MailDeps) =>
+/** Tries before giving up on a free check-in code; a million codes make a clash rare. */
+const CHECKIN_CODE_TRIES = 5;
+
+/**
+ * The athlete's sport check-in code, handed out on first ask; null for an
+ * account that has never registered for a sport. Two tabs asking at once both
+ * end up with whichever code was saved first.
+ */
+async function ensureCheckinCode(db: Database, userId: string, newCode: () => string) {
+  const read = async () =>
+    (
+      await db
+        .select({ code: athlete.checkinCode })
+        .from(athlete)
+        .where(eq(athlete.userId, userId))
+    ).at(0);
+  const row = await read();
+  if (!row) return null;
+  if (row.code) return row.code;
+  for (let attempt = 0; attempt < CHECKIN_CODE_TRIES; attempt++) {
+    try {
+      await db
+        .update(athlete)
+        .set({ checkinCode: newCode() })
+        .where(and(eq(athlete.userId, userId), isNull(athlete.checkinCode)));
+    } catch (error) {
+      if (constraintError(error) === "unique") continue;
+      throw error;
+    }
+    const saved = await read();
+    if (saved?.code || !saved) return saved?.code ?? null;
+  }
+  throw new Error("No free check-in code");
+}
+
+export const createRegistrationRoutes = (
+  deps: RouteDeps & DiscordDeps & MailDeps & { newCheckinCode?: () => string },
+) =>
   new Hono<CurrentUserEnv>()
     .use(requireJsonPosts)
     .use(requireUser(deps))
     .use(limitJsonBody)
+
+    // The six digits /me shows as a barcode for a match's kiosk.
+    .get("/me/checkin-code", async (c) => {
+      const code = await ensureCheckinCode(
+        c.var.db,
+        c.var.user.id,
+        deps.newCheckinCode ?? newSportCheckinCode,
+      );
+      return c.json({ code }, 200);
+    })
 
     .get("/me", async (c) => {
       const db = c.var.db;

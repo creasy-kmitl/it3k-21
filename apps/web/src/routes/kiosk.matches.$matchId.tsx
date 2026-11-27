@@ -1,32 +1,30 @@
 import { Button } from "@it3k/ui/components/button";
 import { Skeleton } from "@it3k/ui/components/skeleton";
+import { cn } from "@it3k/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, redirect } from "@tanstack/react-router";
-import { CalendarClock, LogOut, MapPin, ScanBarcode } from "lucide-react";
+import { CircleCheck, LogOut, ScanBarcode } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { CheckinCamera, ScanForm, focusOnDesk } from "@/components/checkin/scan-checkin";
-import {
-  MatchCheckinCard,
-  matchTitle,
-  windowLabel,
-} from "@/components/competition/checkin/match-checkin-card";
+import { MatchCheckinCard } from "@/components/competition/checkin/match-checkin-card";
 import {
   ScanResult,
+  matchCheckinKey,
   scanKey,
   useMatchScan,
-  venueKey,
 } from "@/components/competition/checkin/scan-result";
 import { ErrorState } from "@/components/error-state";
 import { SessionBoundary } from "@/components/session-boundary";
 import { useApis } from "@/lib/api-context";
 import { getSessionOrThrow } from "@/lib/auth-client";
+import type { RosterSide } from "@/lib/competition-checkins";
 import { type Decoder, createDecoder } from "@/lib/kiosk";
 import { ApiError } from "@/lib/leadership";
 import { clearCacheOnUserChange } from "@/lib/query-cache";
 import { staffRedirect } from "./staff/route";
 
-export const Route = createFileRoute("/kiosk/matches/$venueId")({
+export const Route = createFileRoute("/kiosk/matches/$matchId")({
   ssr: false,
   beforeLoad: async ({ context, location }) => {
     const session = await getSessionOrThrow();
@@ -43,37 +41,37 @@ export const Route = createFileRoute("/kiosk/matches/$venueId")({
 
 function RouteComponent() {
   const { session } = Route.useRouteContext();
-  const { venueId } = Route.useParams();
+  const { matchId } = Route.useParams();
   return (
     <SessionBoundary key={session.data?.user.id} userId={session.data?.user.id ?? ""}>
-      <MatchKioskPage venueId={venueId} />
+      <MatchKioskPage matchId={matchId} />
     </SessionBoundary>
   );
 }
 
-/** How often the kiosk refreshes its counts and which matches are open. */
+/** How often the kiosk refreshes its counts and its window. */
 const REFRESH_MS = 15_000;
 
 /**
- * Full-screen check-in at one venue: athletes hold the barcode on /me to the
- * camera (or a USB scanner reads it into the box) and are checked in to their
- * next match here. The matches open now stay on screen with each side's count
- * against the minimum, and each result fills the screen for a moment.
+ * Full-screen check-in for one match: athletes hold the six-digit sport
+ * check-in code on /me to the camera (or a USB scanner reads it into the box).
+ * The match stays on screen with each side's count against the minimum and
+ * who has reported in, and each result fills the screen for a moment.
  */
 export function MatchKioskPage({
-  venueId,
+  matchId,
   decoderFactory = createDecoder,
 }: {
-  venueId: string;
+  matchId: string;
   decoderFactory?: () => Promise<Decoder>;
 }) {
   const { competitionCheckins: api } = useApis();
   const state = useQuery({
-    queryKey: venueKey(venueId),
-    queryFn: () => api.venue(venueId),
+    queryKey: matchCheckinKey(matchId),
+    queryFn: () => api.match(matchId),
     refetchInterval: REFRESH_MS,
   });
-  const scan = useMatchScan(venueId);
+  const scan = useMatchScan(matchId);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => focusOnDesk(input), []);
 
@@ -90,33 +88,20 @@ export function MatchKioskPage({
     );
   }
 
-  const matches = state.data?.matches ?? [];
-  const next = state.data?.next ?? null;
+  const match = state.data?.match ?? null;
 
   return (
     <main className="flex min-h-dvh w-full min-w-0 flex-col gap-4 bg-background p-4 md:p-6 wide:h-dvh wide:gap-6 wide:overflow-hidden wide:p-8 wide-xl:p-10">
       <header className="flex items-start gap-3 wide:gap-4">
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <ScanBarcode className="size-6 shrink-0 text-primary wide-xl:size-9" aria-hidden />
-            <h1 className="truncate text-xl font-semibold md:text-2xl wide-xl:text-4xl">
-              รายงานตัวแข่งขัน
-            </h1>
-          </div>
-          <div className="flex min-h-5 items-center gap-2 text-sm text-muted-foreground wide-xl:min-h-7 wide-xl:text-lg">
-            {state.data ? (
-              <>
-                <MapPin className="size-4 shrink-0 wide-xl:size-5" aria-hidden />
-                <p className="min-w-0 truncate">{state.data.venue.name}</p>
-              </>
-            ) : (
-              state.isPending && <Skeleton className="h-4 w-40 max-w-full" />
-            )}
-          </div>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <ScanBarcode className="size-6 shrink-0 text-primary wide-xl:size-9" aria-hidden />
+          <h1 className="truncate text-xl font-semibold md:text-2xl wide-xl:text-4xl">
+            รายงานตัวแข่งขัน
+          </h1>
         </div>
         <Button
           variant="outline"
-          render={<Link to="/staff/match-checkin" search={{ venue: venueId }} />}
+          render={<Link to="/staff/matches/$matchId" params={{ matchId }} />}
           nativeButton={false}
           className="wide:h-10 wide:px-4"
         >
@@ -136,46 +121,42 @@ export function MatchKioskPage({
             pending={scan.pending}
             input={input}
             keepFocused
+            label="รหัสเช็คอินกีฬา"
             className="mx-auto w-full max-w-xl md:max-w-3xl wide:mx-0 wide:max-w-none"
             inputClassName="wide:h-12 wide:px-4 wide:text-base wide-xl:h-14 wide-xl:text-lg"
             buttonClassName="wide:h-12 wide:px-5 wide:text-base wide-xl:h-14 wide-xl:text-lg"
           />
           <p className="mx-auto flex w-full max-w-xl items-start gap-3 rounded-2xl border border-dashed p-4 text-sm text-muted-foreground md:max-w-3xl wide:mx-0 wide:max-w-none wide-xl:text-lg">
             <ScanBarcode className="mt-0.5 size-5 shrink-0" aria-hidden />
-            ให้นักกีฬาเปิดบาร์โค้ดในหน้าโปรไฟล์ (ไม่ใช่ QR ตั๋วกิจกรรม) แล้วหันเข้ากล้อง
+            ให้นักกีฬาเปิดรหัสเช็คอินกีฬา 6 หลักในหน้าโปรไฟล์ แล้วหันบาร์โค้ดเข้ากล้อง
           </p>
         </div>
 
         <aside
           className="mx-auto flex w-full max-w-xl flex-col gap-3 md:max-w-3xl wide:mx-0 wide:max-w-none wide:min-h-0 wide:overflow-y-auto wide-xl:gap-4"
-          aria-label="แมตช์ที่รายงานตัวได้ตอนนี้"
+          aria-label="แมตช์นี้"
           aria-live="polite"
         >
           {state.isPending ? (
             <>
               <Skeleton className="h-36 rounded-3xl" />
-              <Skeleton className="h-36 rounded-3xl" />
+              <Skeleton className="h-48 rounded-3xl" />
             </>
-          ) : state.isError && !state.data ? (
+          ) : !match ? (
             <ErrorState
               error={state.error}
               onRetry={() => state.refetch()}
-              title="โหลดแมตช์ของสนามนี้ไม่สำเร็จ"
+              title="โหลดแมตช์ไม่สำเร็จ"
               size="sm"
               className="w-full flex-none"
             />
-          ) : matches.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 rounded-3xl border border-dashed p-8 text-center text-muted-foreground wide-xl:text-xl">
-              <CalendarClock className="size-10" aria-hidden />
-              <p className="font-medium text-foreground">ยังไม่มีแมตช์ที่เปิดรายงานตัว</p>
-              {next && (
-                <p>
-                  ถัดไป: {matchTitle(next)} · {windowLabel(next.window)}
-                </p>
-              )}
-            </div>
           ) : (
-            matches.map((match) => <MatchCheckinCard key={match.id} match={match} size="lg" />)
+            <>
+              <MatchCheckinCard match={match} size="lg" />
+              {match.sides.map((side) => (
+                <KioskRoster key={side.participantId} side={side} />
+              ))}
+            </>
           )}
         </aside>
       </div>
@@ -192,5 +173,44 @@ export function MatchKioskPage({
         />
       )}
     </main>
+  );
+}
+
+/** A side's players as the athletes see them at the kiosk: who has reported in. */
+function KioskRoster({ side }: { side: RosterSide }) {
+  return (
+    <section
+      className="flex flex-col gap-2 rounded-3xl border p-4 wide-xl:p-6"
+      aria-label={`รายชื่อ ${side.label}`}
+    >
+      <h2 className="font-semibold wide-xl:text-2xl">{side.label}</h2>
+      {side.roster.length === 0 ? (
+        <p className="text-sm text-muted-foreground">ยังไม่มีรายชื่อ</p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {side.roster.map((entry) => (
+            <li
+              key={entry.userId}
+              className={cn(
+                "flex items-center gap-2 wide-xl:text-xl",
+                !entry.checkin && "text-muted-foreground",
+              )}
+            >
+              <CircleCheck
+                className={cn(
+                  "size-4 shrink-0 wide-xl:size-6",
+                  entry.checkin ? "text-emerald-600" : "opacity-25",
+                )}
+                aria-label={entry.checkin ? "รายงานตัวแล้ว" : "ยังไม่รายงานตัว"}
+              />
+              <span className="w-8 shrink-0 tabular-nums">
+                {entry.shirtNumber !== null ? `#${entry.shirtNumber}` : ""}
+              </span>
+              <span className="min-w-0 truncate">{entry.displayName}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

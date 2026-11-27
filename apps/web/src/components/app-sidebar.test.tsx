@@ -43,7 +43,6 @@ describe("staff menu", () => {
       "/staff/athletes",
       "/staff/teams",
       "/staff/matches",
-      "/staff/match-checkin",
     ]);
   });
 
@@ -57,16 +56,19 @@ describe("staff menu", () => {
     expect(menu("กิจกรรม", [])).toEqual([]);
   });
 
-  test("score keepers of the sports department get teams and matches, not check-in", () => {
+  test("score keepers of the sports department get teams and matches", () => {
     const menu = sportsMenu(["competition.read", "matches.score"]);
     expect(menu).toContain("/staff/teams");
     expect(menu).toContain("/staff/matches");
-    expect(menu).not.toContain("/staff/match-checkin");
     expect(menu).not.toContain("/staff/athletes");
   });
 
-  test("those who check athletes in to matches get the check-in page", () => {
-    expect(sportsMenu(["competition.read", "matches.checkin"])).toContain("/staff/match-checkin");
+  test("match check-in has no menu of its own: it lives on each match's page", () => {
+    expect(sportsMenu(["competition.read", "matches.checkin"])).toEqual([
+      "/staff/sports",
+      "/staff/teams",
+      "/staff/matches",
+    ]);
   });
 
   test("other institutions' registration staff see athletes but no competition pages", () => {

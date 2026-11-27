@@ -21,6 +21,7 @@ import {
   ImagePlus,
   MapPin,
   Pencil,
+  ScanLine,
   Star,
   Swords,
   Trash2,
@@ -30,6 +31,7 @@ import {
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
+import { MatchCheckinPanel } from "@/components/competition/checkin/match-checkin-panel";
 import { LineupEditor } from "@/components/competition/lineup-editor";
 import { matchHeading, matchPlace } from "@/components/competition/match-card";
 import { MatchForm } from "@/components/competition/match-form";
@@ -254,6 +256,13 @@ export function MatchPage({ matchId, onDeleted }: { matchId: string; onDeleted: 
           ))}
         </ul>
       </Section>
+
+      {/* Athletes report in to the whole match, never to one of its sub-matches. */}
+      {detail.data.canCheckin && match.subOrder === null && (
+        <Section title="รายงานตัว" icon={ScanLine}>
+          <MatchCheckinPanel matchId={match.id} />
+        </Section>
+      )}
 
       {match.subMatches.length > 0 && (
         <Section title="แมตช์ย่อย" icon={Swords}>

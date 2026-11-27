@@ -129,17 +129,24 @@ export const sportDivision = sqliteTable(
 );
 
 /** Created on an account's first registration, which must give the student id. */
-export const athlete = sqliteTable("athlete", {
-  userId: text("user_id")
-    .primaryKey()
-    .references(() => user.id, { onDelete: "cascade" }),
-  studentId: text("student_id").notNull(),
-  // The student card last attached (an uploaded_file id), offered again on the
-  // next registration. No foreign key: the files route refuses to delete a
-  // card still named here or on a registration.
-  studentCardFileId: text("student_card_file_id"),
-  ...timestamps(),
-});
+export const athlete = sqliteTable(
+  "athlete",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+    studentId: text("student_id").notNull(),
+    // The student card last attached (an uploaded_file id), offered again on the
+    // next registration. No foreign key: the files route refuses to delete a
+    // card still named here or on a registration.
+    studentCardFileId: text("student_card_file_id"),
+    // Six digits the athlete shows at a match's kiosk (SPORT_CHECKIN_CODE_PATTERN).
+    // Handed out the first time /me asks for it, so older rows start null.
+    checkinCode: text("checkin_code"),
+    ...timestamps(),
+  },
+  (table) => [uniqueIndex("athlete_checkin_code_uidx").on(table.checkinCode)],
+);
 
 const notRejected = sql`status <> 'rejected'`;
 

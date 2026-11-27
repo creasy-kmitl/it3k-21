@@ -322,3 +322,37 @@ describe("editing and withdrawing", () => {
     expect(row).toMatchObject({ studentId: "65070555", studentCardFileId: "card-a1-new" });
   });
 });
+
+describe("GET /me/checkin-code", () => {
+  test("is null for an account that never registered for a sport", async () => {
+    const { res, body } = await send("a1", "GET", "/me/checkin-code");
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ code: null });
+  });
+
+  test("hands out six digits once and keeps them", async () => {
+    await t.db.insert(athlete).values({ userId: "a1", studentId: "65070001" });
+    const first = await send("a1", "GET", "/me/checkin-code");
+    expect(first.body.code).toMatch(/^\d{6}$/);
+    const again = await send("a1", "GET", "/me/checkin-code");
+    expect(again.body.code).toBe(first.body.code);
+    const [row] = await t.db.select().from(athlete).where(eq(athlete.userId, "a1"));
+    expect(row?.checkinCode).toBe(first.body.code as string);
+  });
+
+  test("draws again when a code is taken", async () => {
+    const codes = ["123456", "123456", "000042"];
+    app = createRegistrationRoutes({
+      ...t.deps,
+      discordEnabled: false,
+      discordProfile: async () => null,
+      newCheckinCode: () => codes.shift() ?? "999999",
+    });
+    await t.db.insert(athlete).values([
+      { userId: "a1", studentId: "65070001" },
+      { userId: "a2", studentId: "65070002" },
+    ]);
+    expect((await send("a1", "GET", "/me/checkin-code")).body.code).toBe("123456");
+    expect((await send("a2", "GET", "/me/checkin-code")).body.code).toBe("000042");
+  });
+});

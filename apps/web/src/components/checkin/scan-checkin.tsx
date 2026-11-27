@@ -323,6 +323,7 @@ export function ScanForm({
   pending,
   input,
   keepFocused = false,
+  label = "รหัสตั๋วหรือรหัสผู้ใช้",
   className,
   inputClassName,
   buttonClassName,
@@ -332,6 +333,8 @@ export function ScanForm({
   input: RefObject<HTMLInputElement | null>;
   /** Take focus back whenever it leaves, for a kiosk desk with a scanner. */
   keepFocused?: boolean;
+  /** What the box asks for, read out by screen readers. */
+  label?: string;
   className?: string;
   inputClassName?: string;
   buttonClassName?: string;
@@ -349,7 +352,7 @@ export function ScanForm({
       <Input
         ref={input}
         autoComplete="off"
-        aria-label="รหัสตั๋วหรือรหัสผู้ใช้"
+        aria-label={label}
         placeholder="สแกนด้วยเครื่องสแกน หรือพิมพ์รหัสแล้วกด Enter"
         value={typed}
         onChange={(e) => setTyped(e.target.value)}
