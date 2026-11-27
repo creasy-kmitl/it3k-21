@@ -49,11 +49,17 @@ export function createRegistrationsApi(baseUrl: string, fetchImpl?: ClientReques
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
-    /** Leaves for Discord and comes back to `returnTo` (an absolute web URL). */
+    /**
+     * Leaves for Discord and comes back to `returnTo` (an absolute web URL):
+     * with `?discord=linked` once linked, so the page can offer the esports
+     * server (components/discord-invite-dialog.tsx), or with `?error=`.
+     */
     async linkDiscord(returnTo: string) {
+      const linked = new URL(returnTo);
+      linked.searchParams.set("discord", "linked");
       const { error } = await authClient.linkSocial({
         provider: "discord",
-        callbackURL: returnTo,
+        callbackURL: linked.toString(),
         errorCallbackURL: returnTo,
       });
       if (error) throw new Error(error.message ?? "เชื่อม Discord ไม่สำเร็จ");

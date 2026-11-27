@@ -47,6 +47,7 @@ describe("GET /api/profile/discord", () => {
       expect((await discordOf(who)).body).toEqual({
         enabled: true,
         audience: { staff: true, athlete: false },
+        inviteUrl: null,
         linked: null,
       });
     }
@@ -83,6 +84,18 @@ describe("GET /api/profile/discord", () => {
       username: "name-of-acc-tech",
       displayName: "Display",
       avatarUrl: "https://cdn.discordapp.com/avatars/1/a.png",
+    });
+  });
+
+  test("passes on the esports server's invite when one is set", async () => {
+    const app = createProfileRoutes({
+      ...t.deps,
+      discordEnabled: true,
+      discordProfile: async () => null,
+      discordInviteUrl: "https://discord.gg/it3k",
+    });
+    expect((await discordOf("tech", app)).body).toMatchObject({
+      inviteUrl: "https://discord.gg/it3k",
     });
   });
 

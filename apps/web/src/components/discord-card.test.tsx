@@ -23,8 +23,8 @@ const LINKED = {
   avatarUrl: null,
 };
 
-function setup(initial: MyDiscord) {
-  let state = initial;
+function setup(initial: Omit<MyDiscord, "inviteUrl"> & { inviteUrl?: string | null }) {
+  let state: MyDiscord = { inviteUrl: null, ...initial };
   const calls = { link: [] as string[], unlink: [] as string[] };
   const registrations = fakeRegistrationsApi({
     linkDiscord: async (returnTo) => {
@@ -75,6 +75,26 @@ describe("Discord card", () => {
     fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
     await waitFor(() => expect(calls.unlink).toEqual(["acc-1"]));
     expect(await v.findByText("ยังไม่ได้เชื่อม")).toBeTruthy();
+  });
+
+  test("a linked account gets a button into the server when an invite is set", async () => {
+    const { view } = setup({
+      enabled: true,
+      audience: ATHLETE,
+      inviteUrl: "https://discord.gg/it3k",
+      linked: LINKED,
+    });
+    const v = await view;
+    const link = await v.findByRole("link", { name: "เข้าเซิร์ฟเวอร์ Discord" });
+    expect(link.getAttribute("href")).toBe("https://discord.gg/it3k");
+    expect(link.getAttribute("target")).toBe("_blank");
+  });
+
+  test("no server button without an invite", async () => {
+    const { view } = setup({ enabled: true, audience: STAFF, linked: LINKED });
+    const v = await view;
+    expect(await v.findByText("Faker")).toBeTruthy();
+    expect(v.queryByRole("link", { name: "เข้าเซิร์ฟเวอร์ Discord" })).toBeNull();
   });
 
   test("hidden from accounts the esports Discord is not for, even when linked", async () => {

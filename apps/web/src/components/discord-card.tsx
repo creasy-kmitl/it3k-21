@@ -9,7 +9,7 @@ import {
 } from "@it3k/ui/components/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@it3k/ui/components/avatar";
 import { Badge } from "@it3k/ui/components/badge";
-import { Button } from "@it3k/ui/components/button";
+import { Button, buttonVariants } from "@it3k/ui/components/button";
 import { Card, CardContent } from "@it3k/ui/components/card";
 import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -99,7 +99,7 @@ export function DiscordCard() {
   });
 
   if (!discord.data) return null;
-  const { enabled, linked, audience } = discord.data;
+  const { enabled, linked, audience, inviteUrl } = discord.data;
   if (!audience.staff && !audience.athlete) return null;
   if (!enabled && !linked) return null;
 
@@ -161,10 +161,25 @@ export function DiscordCard() {
               </Button>
             </div>
             <p className="text-sm text-muted-foreground">
-              ขั้นต่อไป: ในดิสคอร์ด ไปที่ช่อง{" "}
+              ขั้นต่อไป: {inviteUrl ? "เข้าเซิร์ฟเวอร์ แล้ว" : "ในดิสคอร์ด "}ไปที่ช่อง{" "}
               <span className="font-medium text-foreground">✅・verify</span> แล้วกด{" "}
               <span className="font-medium text-foreground">รับยศ</span> ถ้าข้อมูลบนเว็บเปลี่ยนก็กดซ้ำได้
             </p>
+            {inviteUrl ? (
+              <a
+                href={inviteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  buttonVariants(),
+                  "self-start hover:bg-[#4752C4] hover:text-white",
+                  BLURPLE,
+                )}
+              >
+                <DiscordMark data-icon="inline-start" className="size-4" />
+                เข้าเซิร์ฟเวอร์ Discord
+              </a>
+            ) : null}
           </>
         ) : (
           <>

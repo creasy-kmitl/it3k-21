@@ -34,10 +34,11 @@ import {
   UtensilsCrossed,
   WheatOff,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { DiscordCard } from "@/components/discord-card";
+import { DiscordInviteDialog, discordLinkedSearch } from "@/components/discord-invite-dialog";
 import { PageHeader } from "@/components/page-header";
 import { ParticipantShell } from "@/components/participant-shell";
 import { RoleBadge } from "@/components/role-badge";
@@ -51,6 +52,8 @@ import { ErrorState } from "@/components/error-state";
 const searchSchema = z.object({
   // Better Auth sends people back here with ?error= when linking Discord fails.
   error: z.string().max(200).optional().catch(undefined),
+  // ...and with ?discord=linked once linked, to offer the esports server.
+  discord: discordLinkedSearch,
 });
 
 export const Route = createFileRoute("/me")({
@@ -67,8 +70,9 @@ export const Route = createFileRoute("/me")({
 
 function MePage() {
   const { session } = Route.useRouteContext();
-  const { error } = Route.useSearch();
+  const { error, discord } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const closeInvite = useCallback(() => void navigate({ search: {}, replace: true }), [navigate]);
   useEffect(() => {
     if (!error) return;
     toast.error(
@@ -132,6 +136,7 @@ function MePage() {
     : [];
   return (
     <ParticipantShell userId={session.user.id} role={account.role}>
+      <DiscordInviteDialog open={discord === "linked"} onClose={closeInvite} />
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <PageHeader icon={UserRound} title="โปรไฟล์ของฉัน" description="ข้อมูลการลงทะเบียน IT3Kings" />

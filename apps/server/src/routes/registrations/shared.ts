@@ -27,6 +27,8 @@ export type DiscordDeps = {
   /** False when no Discord app is configured; esports registration is closed then. */
   discordEnabled: boolean;
   discordProfile: DiscordProfile;
+  /** The esports Discord server's invite; null hides the join dialog and button. */
+  discordInviteUrl?: string | null;
 };
 
 export async function linkedDiscord(db: Database, userId: string) {

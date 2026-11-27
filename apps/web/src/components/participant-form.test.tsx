@@ -47,6 +47,7 @@ async function setup(
       discord: async () => ({
         enabled: false,
         audience: { staff: false, athlete: false },
+        inviteUrl: null,
         linked: null,
       }),
       me: async () => data,

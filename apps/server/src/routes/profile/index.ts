@@ -94,6 +94,8 @@ export const createProfileRoutes = (deps: RouteDeps & MailDeps & Partial<Discord
         {
           enabled: deps.discordEnabled ?? false,
           audience,
+          /** The esports Discord server, offered after linking and on the /me card. */
+          inviteUrl: deps.discordInviteUrl ?? null,
           linked: discord
             ? {
                 accountId: discord.id,

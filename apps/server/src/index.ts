@@ -129,6 +129,7 @@ app.route("/api/sports", createSportRoutes(deps));
 app.route("/api/sport-rules", createSportRuleRoutes(deps));
 const discordDeps: DiscordDeps = {
   discordEnabled: discordEnabled(env),
+  discordInviteUrl: env.DISCORD_INVITE_URL || null,
   // Asks Discord with the athlete's stored token; best effort.
   discordProfile: async (headers, accountId) => {
     const info = await (await createAuth()).api.accountInfo({ headers, query: { accountId } });
