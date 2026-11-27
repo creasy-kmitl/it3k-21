@@ -37,6 +37,7 @@ import { createViewAsRoutes } from "./routes/view-as";
 import { cleanupImpersonationSessions, handleAuthRequest } from "./routes/auth-audit";
 import { cleanupFiles, createFileRoutes, createPublicFileRoutes } from "./routes/files";
 import { createFileStore } from "./routes/files/storage";
+import { cleanupExpiredSessions, purgeExpiredPersonalData } from "./retention";
 import { createEmailRoutes } from "./routes/emails";
 import { createInvitationRoutes } from "./routes/invitations";
 import { createQueueMailer, type MailDeps } from "./email/mailer";
@@ -159,7 +160,10 @@ app.get("/", (c) => {
 export default {
   fetch: app.fetch,
   async scheduled() {
+    // Purge first: it hands the files it frees to cleanupFiles.
+    await purgeExpiredPersonalData(getDb());
     await cleanupFiles(getDb(), createFileStore(env.UPLOADS));
+    await cleanupExpiredSessions(getDb());
     await cleanupImpersonationSessions(getDb());
   },
   async queue(batch: MessageBatch<EmailJob>) {
