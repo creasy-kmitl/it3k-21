@@ -12,7 +12,6 @@ import {
 } from "@it3k/db/profile";
 import { and, eq, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { z } from "zod";
 import {
   type CurrentUserEnv,
   type RouteDeps,
@@ -24,12 +23,7 @@ import {
 import { validate } from "../../middleware/validation";
 import { limitJsonBody } from "../../middleware/json-body-limit";
 import { type MailDeps, queueEmails } from "../../email/mailer";
-import { grantsGuildsJoin } from "../../discord/guild";
-import {
-  inEsportsDiscord,
-  isEsportsDiscordStaff,
-  isEsportsEntrant,
-} from "../../policies/esports-discord";
+import { isEsportsDiscordStaff, isEsportsEntrant } from "../../policies/esports-discord";
 import { type DiscordDeps, linkedDiscord } from "../registrations/shared";
 
 export function activeAccount() {
@@ -100,8 +94,8 @@ export const createProfileRoutes = (deps: RouteDeps & MailDeps & Partial<Discord
         {
           enabled: deps.discordEnabled ?? false,
           audience,
-          /** Whether the card may offer to join the guild (this stage has the bot's token). */
-          canJoinGuild: !!deps.discordGuildJoin,
+          /** The esports Discord server, offered after linking and on the /me card. */
+          inviteUrl: deps.discordInviteUrl ?? null,
           linked: discord
             ? {
                 accountId: discord.id,
@@ -109,47 +103,11 @@ export const createProfileRoutes = (deps: RouteDeps & MailDeps & Partial<Discord
                 username: profile?.username ?? null,
                 displayName: profile?.displayName ?? null,
                 avatarUrl: profile?.avatarUrl ?? null,
-                /** False for links made before the guilds.join scope: joining needs one more consent. */
-                guildsJoin: grantsGuildsJoin(discord.scope),
               }
             : null,
         },
         200,
       );
-    })
-    // Joins the linked Discord account to the esports guild. Linking already
-    // does this (packages/auth onDiscordLinked); this is for accounts linked
-    // before that, or that left and want back in.
-    .post("/discord/join", validate("json", z.strictObject({})), async (c) => {
-      const actor = c.var.user;
-      if (actor.impersonatedBy) {
-        return c.json({ message: "ทำรายการนี้ระหว่างสวมบัญชีไม่ได้" }, 403);
-      }
-      const audience = {
-        staff: isEsportsDiscordStaff(actor),
-        athlete: await isEsportsEntrant(c.var.db, actor.id),
-      };
-      if (!inEsportsDiscord(audience)) {
-        return c.json({ message: "Discord Esport มีไว้สำหรับทีมงานและนักกีฬา Esports" }, 403);
-      }
-      if (!deps.discordGuildJoin) {
-        return c.json({ message: "ยังไม่ได้ตั้งค่าเซิร์ฟเวอร์ Discord" }, 409);
-      }
-      const discord = await linkedDiscord(c.var.db, actor.id);
-      if (!discord) return c.json({ message: "เชื่อม Discord ก่อน" }, 400);
-      if (!grantsGuildsJoin(discord.scope)) return c.json({ status: "consent" as const }, 200);
-      try {
-        const result = await deps.discordGuildJoin({
-          headers: c.req.raw.headers,
-          accountRecordId: discord.id,
-          discordUserId: discord.discordUserId,
-        });
-        c.var.log?.set({ discordGuildJoin: result.status });
-        return c.json(result, 200);
-      } catch (error) {
-        c.var.log?.error(error instanceof Error ? error : new Error(String(error)));
-        return c.json({ message: "Discord ไม่ยอมให้เข้าเซิร์ฟเวอร์ ลองใหม่อีกครั้ง หรือแจ้งทีมงาน" }, 502);
-      }
     })
     .get("/me", async (c) => {
       const db = c.var.db;

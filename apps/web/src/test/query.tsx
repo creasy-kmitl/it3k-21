@@ -83,7 +83,6 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
     qrPresets: apis.qrPresets ?? fakeQrPresetsApi(),
     profile: apis.profile ?? {
       discord: unexpected("profile.discord"),
-      joinDiscordGuild: unexpected("profile.joinDiscordGuild"),
       me: unexpected("profile.me"),
       saveDraft: unexpected("profile.saveDraft"),
       submit: unexpected("profile.submit"),

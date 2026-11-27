@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 
 import { ApiProvider } from "@/lib/api-context";
-import type { MyDiscord, ProfileApi } from "@/lib/profile";
+import type { MyDiscord } from "@/lib/profile";
 import { fakeApis, fakeRegistrationsApi } from "@/test/query";
 import { renderAtRoot } from "@/test/router";
 
@@ -21,17 +21,11 @@ const LINKED = {
   username: "faker",
   displayName: "Faker",
   avatarUrl: null,
-  guildsJoin: true,
 };
 
-type JoinResult = Awaited<ReturnType<ProfileApi["joinDiscordGuild"]>>;
-
-function setup(
-  initial: Omit<MyDiscord, "canJoinGuild"> & { canJoinGuild?: boolean },
-  joinResult: JoinResult = { status: "joined", url: "https://discord.com/channels/42" },
-) {
-  let state: MyDiscord = { canJoinGuild: false, ...initial };
-  const calls = { link: [] as string[], unlink: [] as string[], join: 0 };
+function setup(initial: Omit<MyDiscord, "inviteUrl"> & { inviteUrl?: string | null }) {
+  let state: MyDiscord = { inviteUrl: null, ...initial };
+  const calls = { link: [] as string[], unlink: [] as string[] };
   const registrations = fakeRegistrationsApi({
     linkDiscord: async (returnTo) => {
       calls.link.push(returnTo);
@@ -42,14 +36,7 @@ function setup(
     },
   });
   const base = fakeApis({ registrations });
-  const profile = {
-    ...base.profile,
-    discord: async () => state,
-    joinDiscordGuild: async () => {
-      calls.join += 1;
-      return joinResult;
-    },
-  };
+  const profile = { ...base.profile, discord: async () => state };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = renderAtRoot(() => (
     <QueryClientProvider client={client}>
@@ -90,40 +77,24 @@ describe("Discord card", () => {
     expect(await v.findByText("ยังไม่ได้เชื่อม")).toBeTruthy();
   });
 
-  test("a linked account joins the guild from the card", async () => {
-    const { view, calls } = setup({
+  test("a linked account gets a button into the server when an invite is set", async () => {
+    const { view } = setup({
       enabled: true,
       audience: ATHLETE,
-      canJoinGuild: true,
+      inviteUrl: "https://discord.gg/it3k",
       linked: LINKED,
     });
     const v = await view;
-    fireEvent.click(await v.findByRole("button", { name: "เข้าเซิร์ฟเวอร์ Discord" }));
-    await waitFor(() => expect(calls.join).toBe(1));
-    expect(calls.link).toEqual([]);
+    const link = await v.findByRole("link", { name: "เข้าเซิร์ฟเวอร์ Discord" });
+    expect(link.getAttribute("href")).toBe("https://discord.gg/it3k");
+    expect(link.getAttribute("target")).toBe("_blank");
   });
 
-  test("a link without guilds.join is sent back to Discord for consent", async () => {
-    const { view, calls } = setup(
-      {
-        enabled: true,
-        audience: STAFF,
-        canJoinGuild: true,
-        linked: { ...LINKED, guildsJoin: false },
-      },
-      { status: "consent" },
-    );
-    const v = await view;
-    fireEvent.click(await v.findByRole("button", { name: "เข้าเซิร์ฟเวอร์ Discord" }));
-    await waitFor(() => expect(calls.link).toEqual([`${window.location.origin}/me`]));
-  });
-
-  test("no join button where this stage cannot join the guild", async () => {
+  test("no server button without an invite", async () => {
     const { view } = setup({ enabled: true, audience: STAFF, linked: LINKED });
     const v = await view;
     expect(await v.findByText("Faker")).toBeTruthy();
-    expect(v.queryByRole("button", { name: "เข้าเซิร์ฟเวอร์ Discord" })).toBeNull();
-    expect(v.getByText("✅・verify")).toBeTruthy();
+    expect(v.queryByRole("link", { name: "เข้าเซิร์ฟเวอร์ Discord" })).toBeNull();
   });
 
   test("hidden from accounts the esports Discord is not for, even when linked", async () => {
@@ -147,8 +118,6 @@ describe("perksFor", () => {
     expect(labels(STAFF)).toContain("ยศ Staff");
     expect(labels(STAFF)).not.toContain("ยศเกมที่ลงแข่ง");
     expect(labels(ATHLETE)).toContain("ยศเกมที่ลงแข่ง");
-    expect(labels(ATHLETE)).not.toContain("พาเข้าเซิร์ฟเวอร์ให้อัตโนมัติ");
-    expect(perksFor(ATHLETE, true).map((p) => p.label)).toContain("พาเข้าเซิร์ฟเวอร์ให้อัตโนมัติ");
     expect(labels({ staff: true, athlete: true })).toEqual(
       expect.arrayContaining(["ยศ Staff", "ยศเกมที่ลงแข่ง", "ชื่อในดิสตั้งให้อัตโนมัติ"]),
     );

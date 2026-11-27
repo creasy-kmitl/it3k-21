@@ -25,15 +25,6 @@ export function createProfileApi(baseUrl: string, fetchImpl?: ClientRequestOptio
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
-    /**
-     * Joins the linked Discord account to the esports guild. "consent" means
-     * the link cannot (it predates the guilds.join scope): link Discord again.
-     */
-    async joinDiscordGuild() {
-      const res = await client.discord.join.$post({ json: {} });
-      if (!res.ok) throw await toApiError(res);
-      return res.json();
-    },
     async me(expectedUserId?: string) {
       const res = await client.me.$get();
       if (!res.ok) throw await toApiError(res);

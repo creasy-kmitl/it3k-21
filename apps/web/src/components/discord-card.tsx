@@ -9,16 +9,14 @@ import {
 } from "@it3k/ui/components/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@it3k/ui/components/avatar";
 import { Badge } from "@it3k/ui/components/badge";
-import { Button } from "@it3k/ui/components/button";
+import { Button, buttonVariants } from "@it3k/ui/components/button";
 import { Card, CardContent } from "@it3k/ui/components/card";
 import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BadgeCheck,
   Gamepad2,
-  DoorOpen,
   IdCard,
-  LogIn,
   type LucideIcon,
   MessagesSquare,
   ShieldCheck,
@@ -55,9 +53,8 @@ export function DiscordMark({ className, ...props }: ComponentProps<"svg">) {
 type Perk = { icon: LucideIcon; label: string };
 
 /** What linking brings, for who the account is in the esports Discord. */
-export function perksFor(audience: MyDiscord["audience"], canJoinGuild = false): Perk[] {
+export function perksFor(audience: MyDiscord["audience"]): Perk[] {
   const perks: Perk[] = [];
-  if (canJoinGuild) perks.push({ icon: DoorOpen, label: "พาเข้าเซิร์ฟเวอร์ให้อัตโนมัติ" });
   if (audience.staff) {
     perks.push(
       { icon: ShieldCheck, label: "ยศ Staff" },
@@ -91,25 +88,6 @@ export function DiscordCard() {
     mutationFn: () => registrations.linkDiscord(`${window.location.origin}/me`),
     onError: (error) => toastError(error, "เชื่อม Discord ไม่สำเร็จ"),
   });
-  // Linking already joins the guild (server side); this is for links made
-  // before that, or for coming back after leaving. "consent" means the link
-  // lacks guilds.join: linking again asks Discord for it and joins on return.
-  const join = useMutation({
-    mutationFn: () => profile.joinDiscordGuild(),
-    onSuccess: (result) => {
-      if (result.status === "consent") {
-        link.mutate();
-        return;
-      }
-      toast.success(result.status === "joined" ? "พาเข้าเซิร์ฟเวอร์แล้ว" : "คุณอยู่ในเซิร์ฟเวอร์แล้ว", {
-        action: {
-          label: "เปิด Discord",
-          onClick: () => window.open(result.url, "_blank", "noopener,noreferrer"),
-        },
-      });
-    },
-    onError: (error) => toastError(error, "เข้าเซิร์ฟเวอร์ไม่สำเร็จ"),
-  });
   const unlink = useMutation({
     mutationFn: (accountId: string) => registrations.unlinkDiscord(accountId),
     onSuccess: () => {
@@ -121,7 +99,7 @@ export function DiscordCard() {
   });
 
   if (!discord.data) return null;
-  const { enabled, linked, audience, canJoinGuild } = discord.data;
+  const { enabled, linked, audience, inviteUrl } = discord.data;
   if (!audience.staff && !audience.athlete) return null;
   if (!enabled && !linked) return null;
 
@@ -182,37 +160,31 @@ export function DiscordCard() {
                 ยกเลิกการเชื่อม
               </Button>
             </div>
-            {canJoinGuild ? (
-              <div className="flex flex-col gap-3">
-                <p className="text-sm text-muted-foreground">
-                  ตอนเชื่อม ระบบพาคุณเข้าเซิร์ฟเวอร์ให้ แล้วบอทจะให้ยศและตั้งชื่อให้เอง ถ้ายังไม่เห็นเซิร์ฟเวอร์ใน Discord
-                  กดปุ่มด้านล่าง ข้อมูลบนเว็บเปลี่ยนเมื่อไหร่ กด{" "}
-                  <span className="font-medium text-foreground">รับยศ</span> ในช่อง{" "}
-                  <span className="font-medium text-foreground">✅・verify</span>
-                </p>
-                <LoadingButton
-                  className={cn("self-start hover:bg-[#4752C4]", BLURPLE)}
-                  loading={join.isPending || link.isPending}
-                  onClick={() => join.mutate()}
-                >
-                  {!(join.isPending || link.isPending) && (
-                    <LogIn data-icon="inline-start" aria-hidden />
-                  )}
-                  เข้าเซิร์ฟเวอร์ Discord
-                </LoadingButton>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                ขั้นต่อไป: ในดิสคอร์ด ไปที่ช่อง{" "}
-                <span className="font-medium text-foreground">✅・verify</span> แล้วกด{" "}
-                <span className="font-medium text-foreground">รับยศ</span> ถ้าข้อมูลบนเว็บเปลี่ยนก็กดซ้ำได้
-              </p>
-            )}
+            <p className="text-sm text-muted-foreground">
+              ขั้นต่อไป: {inviteUrl ? "เข้าเซิร์ฟเวอร์ แล้ว" : "ในดิสคอร์ด "}ไปที่ช่อง{" "}
+              <span className="font-medium text-foreground">✅・verify</span> แล้วกด{" "}
+              <span className="font-medium text-foreground">รับยศ</span> ถ้าข้อมูลบนเว็บเปลี่ยนก็กดซ้ำได้
+            </p>
+            {inviteUrl ? (
+              <a
+                href={inviteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  buttonVariants(),
+                  "self-start hover:bg-[#4752C4] hover:text-white",
+                  BLURPLE,
+                )}
+              >
+                <DiscordMark data-icon="inline-start" className="size-4" />
+                เข้าเซิร์ฟเวอร์ Discord
+              </a>
+            ) : null}
           </>
         ) : (
           <>
             <ul className="flex flex-wrap gap-2" aria-label="สิ่งที่ได้เมื่อเชื่อม Discord">
-              {perksFor(audience, canJoinGuild).map(({ icon: Icon, label }) => (
+              {perksFor(audience).map(({ icon: Icon, label }) => (
                 <li
                   key={label}
                   className="flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1 text-sm"

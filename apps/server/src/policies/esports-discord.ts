@@ -7,12 +7,10 @@
 //   everyone else                                      not shown
 import { hasRole, isMember } from "@it3k/auth/permissions";
 import type { Database } from "@it3k/db";
-import { user } from "@it3k/db/schema/auth";
-import { department } from "@it3k/db/schema/department";
 import { sportDivision, sportRegistration } from "@it3k/db/schema/sport";
 import { and, eq, ne } from "drizzle-orm";
 
-import { type CurrentUser, isBanned } from "../middleware/current-user";
+import type { CurrentUser } from "../middleware/current-user";
 import { hasCapability } from "./department-capabilities";
 
 export type EsportsDiscordActor = Pick<CurrentUser, "role" | "departmentCode" | "banned">;
@@ -38,39 +36,4 @@ export async function isEsportsEntrant(db: Database, userId: string): Promise<bo
     )
     .limit(1);
   return row !== undefined;
-}
-
-export type EsportsDiscordAudience = { staff: boolean; athlete: boolean };
-
-export function inEsportsDiscord(audience: EsportsDiscordAudience): boolean {
-  return audience.staff || audience.athlete;
-}
-
-/**
- * The same audience, for code that runs outside a request's requireUser (the
- * Discord link hook, which joins the account to the guild only if it belongs).
- */
-export async function esportsDiscordAudience(
-  db: Database,
-  userId: string,
-): Promise<EsportsDiscordAudience> {
-  const [row] = await db
-    .select({
-      role: user.role,
-      banned: user.banned,
-      banExpires: user.banExpires,
-      departmentCode: department.code,
-    })
-    .from(user)
-    .leftJoin(department, eq(department.id, user.departmentId))
-    .where(eq(user.id, userId));
-  if (!row || isBanned(row)) return { staff: false, athlete: false };
-  return {
-    staff: isEsportsDiscordStaff({
-      role: row.role,
-      departmentCode: row.departmentCode,
-      banned: false,
-    }),
-    athlete: await isEsportsEntrant(db, userId),
-  };
 }

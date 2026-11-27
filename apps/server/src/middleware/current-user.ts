@@ -69,7 +69,7 @@ export const requireJsonPosts = createMiddleware(async (c, next) => {
   await next();
 });
 
-export function isBanned(row: { banned: boolean | null; banExpires: Date | null }) {
+function isBanned(row: { banned: boolean | null; banExpires: Date | null }) {
   if (!row.banned) return false;
   return row.banExpires === null || row.banExpires.getTime() > Date.now();
 }

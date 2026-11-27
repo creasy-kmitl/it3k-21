@@ -38,11 +38,12 @@ import {
   Trash2,
   UserRoundPlus,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { SideDrawer } from "@/components/calendar/side-drawer";
+import { DiscordInviteDialog, discordLinkedSearch } from "@/components/discord-invite-dialog";
 import { FileLibrary } from "@/components/file-library";
 import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
@@ -68,6 +69,8 @@ import { toastError } from "@/lib/errors";
 const searchSchema = z.object({
   // Better Auth sends people back here with ?error= when linking Discord fails.
   error: z.string().max(200).optional().catch(undefined),
+  // ...and with ?discord=linked once linked, to offer the esports server.
+  discord: discordLinkedSearch,
 });
 
 export const Route = createFileRoute("/sports")({
@@ -84,8 +87,9 @@ export const Route = createFileRoute("/sports")({
 
 function RouteComponent() {
   const { session } = Route.useRouteContext();
-  const { error } = Route.useSearch();
+  const { error, discord } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const closeInvite = useCallback(() => void navigate({ search: {}, replace: true }), [navigate]);
   useEffect(() => {
     if (!error) return;
     toast.error(
@@ -97,6 +101,7 @@ function RouteComponent() {
   }, [error, navigate]);
   return (
     <ParticipantShell userId={session.user.id} role={session.user.role ?? "guest"}>
+      <DiscordInviteDialog open={discord === "linked"} onClose={closeInvite} />
       <SportsRegistrationPage userId={session.user.id} />
     </ParticipantShell>
   );

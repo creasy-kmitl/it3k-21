@@ -33,8 +33,7 @@ import type { DiscordDeps } from "./routes/registrations/shared";
 import { discordEnabled } from "@it3k/auth";
 import { createUserRoutes } from "./routes/users";
 import { createLeadershipRoutes, recordContactReveal } from "./routes/leadership";
-import { createAuth, getDb, guildConfig } from "./services";
-import { DiscordApiError, addGuildMember, guildUrl } from "./discord/guild";
+import { createAuth, getDb } from "./services";
 import { createProfileRoutes } from "./routes/profile";
 import { createViewAsRoutes } from "./routes/view-as";
 import { cleanupImpersonationSessions, handleAuthRequest } from "./routes/auth-audit";
@@ -128,30 +127,9 @@ app.route("/api/links", createLinkRoutes({ ...deps, webOrigin: env.CORS_ORIGIN }
 app.route("/api/qr-presets", createQrPresetRoutes(deps));
 app.route("/api/sports", createSportRoutes(deps));
 app.route("/api/sport-rules", createSportRuleRoutes(deps));
-const guild = guildConfig();
 const discordDeps: DiscordDeps = {
   discordEnabled: discordEnabled(env),
-  // Joins with the account's own token, refreshed by Better Auth if it expired.
-  // A token it cannot get (or Discord refuses) means linking again.
-  discordGuildJoin: guild
-    ? async ({ headers, accountRecordId, discordUserId }) => {
-        const auth = await createAuth();
-        const token = await auth.api
-          .getAccessToken({ headers, body: { accountId: accountRecordId } })
-          .catch(() => null);
-        if (!token?.accessToken) return { status: "consent" };
-        try {
-          const status = await addGuildMember(guild, {
-            discordUserId,
-            accessToken: token.accessToken,
-          });
-          return { status, url: guildUrl(guild.guildId) };
-        } catch (error) {
-          if (error instanceof DiscordApiError && error.needsConsent) return { status: "consent" };
-          throw error;
-        }
-      }
-    : null,
+  discordInviteUrl: env.DISCORD_INVITE_URL || null,
   // Asks Discord with the athlete's stored token; best effort.
   discordProfile: async (headers, accountId) => {
     const info = await (await createAuth()).api.accountInfo({ headers, query: { accountId } });

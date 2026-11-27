@@ -224,11 +224,8 @@ export const server = Cloudflare.Worker("server", {
     DISCORD_CLIENT_SECRET: Config.Redacted("DISCORD_CLIENT_SECRET").pipe(
       Config.withDefault(Redacted.make("")),
     ),
-    // Optional too: both set lets linking Discord add the account to the guild.
-    DISCORD_BOT_TOKEN: Config.Redacted("DISCORD_BOT_TOKEN").pipe(
-      Config.withDefault(Redacted.make("")),
-    ),
-    DISCORD_GUILD_ID: Config.String("DISCORD_GUILD_ID").pipe(Config.withDefault("")),
+    // Public and optional: the esports Discord invite the web offers after linking.
+    DISCORD_INVITE_URL: Config.String("DISCORD_INVITE_URL").pipe(Config.withDefault("")),
     // Equal to BETTER_AUTH_URL unless this is a preview, and the plugin
     // skips proxying entirely when the two match.
     AUTH_PROXY_URL: isPreviewStage ? AUTH_RELAY_URL : Cloudflare.Worker.URL,

@@ -42,12 +42,9 @@ test("every editor visit waits for the current draft and saves with its revision
       discord: async () => ({
         enabled: false,
         audience: { staff: false, athlete: false },
-        canJoinGuild: false,
+        inviteUrl: null,
         linked: null,
       }),
-      joinDiscordGuild: async () => {
-        throw new Error("unexpected joinDiscordGuild");
-      },
       me: async (userId) => {
         expect(userId).toBe("guest");
         reads++;
@@ -107,12 +104,9 @@ test("a background profile refresh preserves the open editor's values and revisi
       discord: async () => ({
         enabled: false,
         audience: { staff: false, athlete: false },
-        canJoinGuild: false,
+        inviteUrl: null,
         linked: null,
       }),
-      joinDiscordGuild: async () => {
-        throw new Error("unexpected joinDiscordGuild");
-      },
       me: async () => {
         if (offline) throw new Error("Offline");
         return current;
