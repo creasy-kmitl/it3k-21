@@ -23,6 +23,8 @@ import {
 import { validate } from "../../middleware/validation";
 import { limitJsonBody } from "../../middleware/json-body-limit";
 import { type MailDeps, queueEmails } from "../../email/mailer";
+import { isEsportsDiscordStaff, isEsportsEntrant } from "../../policies/esports-discord";
+import { type DiscordDeps, linkedDiscord } from "../registrations/shared";
 
 export function activeAccount() {
   return sql`(coalesce(${user.banned}, 0) = 0 or (${user.banExpires} is not null and ${user.banExpires} <= ${Date.now()}))`;
@@ -69,11 +71,42 @@ async function readLockState(db: Database, id: string) {
   return { ...row, locked: lockedInstitution(row.institution, row) };
 }
 
-export const createProfileRoutes = (deps: RouteDeps & MailDeps) =>
+/** Without Discord deps (most tests) the card reports Discord as turned off. */
+export const createProfileRoutes = (deps: RouteDeps & MailDeps & Partial<DiscordDeps>) =>
   new Hono<CurrentUserEnv>()
     .use(requireJsonPosts)
     .use(requireUser(deps))
     .use(limitJsonBody)
+    // The Discord account linked to this one, and whether the esports Discord
+    // is for this account at all (policies/esports-discord.ts): the /me card
+    // shows only to its staff and esports entrants.
+    .get("/discord", async (c) => {
+      const actor = c.var.user;
+      const audience = {
+        staff: isEsportsDiscordStaff(actor),
+        athlete: await isEsportsEntrant(c.var.db, actor.id),
+      };
+      const discord = await linkedDiscord(c.var.db, actor.id);
+      const profile = discord
+        ? await deps.discordProfile?.(c.req.raw.headers, discord.id).catch(() => null)
+        : null;
+      return c.json(
+        {
+          enabled: deps.discordEnabled ?? false,
+          audience,
+          linked: discord
+            ? {
+                accountId: discord.id,
+                userId: discord.discordUserId,
+                username: profile?.username ?? null,
+                displayName: profile?.displayName ?? null,
+                avatarUrl: profile?.avatarUrl ?? null,
+              }
+            : null,
+        },
+        200,
+      );
+    })
     .get("/me", async (c) => {
       const db = c.var.db;
       const [account] = await db

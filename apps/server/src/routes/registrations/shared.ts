@@ -17,11 +17,11 @@ import { type CurrentUser, constraintMessage } from "../../middleware/current-us
 
 export const DISCORD = "discord";
 
-/** Looks up the linked Discord account's username; null when it cannot. */
+/** Looks up the linked Discord account's username, display name and avatar; null when it cannot. */
 export type DiscordProfile = (
   headers: Headers,
   accountRecordId: string,
-) => Promise<{ username: string } | null>;
+) => Promise<{ username: string; displayName?: string | null; avatarUrl?: string | null } | null>;
 
 export type DiscordDeps = {
   /** False when no Discord app is configured; esports registration is closed then. */

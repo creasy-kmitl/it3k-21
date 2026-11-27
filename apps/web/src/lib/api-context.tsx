@@ -22,6 +22,7 @@ import { type CompetitionMatchesApi, competitionMatchesApi } from "./competition
 import { type CompetitionScoresApi, competitionScoresApi } from "./competition-scores";
 import { type CompetitionCheckinsApi, competitionCheckinsApi } from "./competition-checkins";
 import { type PublicCompetitionApi, publicCompetitionApi } from "./public-competition";
+import { type BotTokensApi, botTokensApi } from "./bot-tokens";
 
 /** The API clients route pages call; tests swap in fakes with ApiProvider. */
 export type Apis = {
@@ -47,6 +48,7 @@ export type Apis = {
   competitionScores: CompetitionScoresApi;
   competitionCheckins: CompetitionCheckinsApi;
   publicCompetition: PublicCompetitionApi;
+  botTokens: BotTokensApi;
 };
 
 const ApiContext = createContext<Apis>({
@@ -72,6 +74,7 @@ const ApiContext = createContext<Apis>({
   competitionScores: competitionScoresApi,
   competitionCheckins: competitionCheckinsApi,
   publicCompetition: publicCompetitionApi,
+  botTokens: botTokensApi,
 });
 
 export const ApiProvider = ApiContext.Provider;

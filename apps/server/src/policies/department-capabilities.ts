@@ -29,18 +29,27 @@ export type Capability =
   | "sendEmailAsLeader"
   // Seat holders of the host institution create, edit and delete departments
   // and move accounts between them (policies/departments.ts).
-  | "manageDepartmentsAsLeader";
+  | "manageDepartmentsAsLeader"
+  // Members, seat holders included, are staff in the esports Discord: they
+  // link Discord on /me and the bot gives them its Staff role (policies/esports-discord.ts).
+  | "esportsDiscordStaff";
 
 export const DEPARTMENT_CAPABILITIES = {
   // manageAccounts: assign departments, seats and roles to any non-admin account.
-  "tech-live": ["manageAccounts", "manageShortLinks", "runSports", "sendEmail"],
+  "tech-live": [
+    "manageAccounts",
+    "manageShortLinks",
+    "runSports",
+    "sendEmail",
+    "esportsDiscordStaff",
+  ],
   registration: [
     "manageAccounts",
     "registerAthletes",
     "sendEmailAsLeader",
     "manageDepartmentsAsLeader",
   ],
-  sports: ["assistSports"],
+  sports: ["assistSports", "esportsDiscordStaff"],
 } as const satisfies Record<ReservedDepartmentCode, readonly Capability[]>;
 
 function isReserved(code: string): code is ReservedDepartmentCode {

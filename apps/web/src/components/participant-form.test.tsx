@@ -44,6 +44,11 @@ async function setup(
   };
   const apis = fakeApis({
     profile: {
+      discord: async () => ({
+        enabled: false,
+        audience: { staff: false, athlete: false },
+        linked: null,
+      }),
       me: async () => data,
       saveDraft: async (revision, values) => {
         saves.push(values);

@@ -25,7 +25,8 @@ export type NavMainItem = {
     | "/staff/venues"
     | "/staff/qr-code"
     | "/staff/links"
-    | "/staff/email";
+    | "/staff/email"
+    | "/staff/bot-tokens";
   icon: React.ReactNode;
 };
 

@@ -1,0 +1,78 @@
+name: Discord bot
+
+# The esports bot has one deployment, on a homelab VM with no public IP.
+# This workflow only publishes its image to GHCR: the VM pulls it by itself
+# (apps/discord/esport/deploy/update.sh, every minute), so CI needs no way in
+# and holds none of the bot's secrets. Pull requests build without pushing,
+# to catch a broken Dockerfile before merge.
+on:
+  push:
+    branches: [main]
+    paths: &bot-paths
+      - apps/discord/**
+      - apps/server/src/routes/bot/**
+      - apps/server/src/middleware/bot-token.ts
+      - packages/db/src/**
+      - package.json
+      - bun.lock
+      - .dockerignore
+      - .github/workflows/discord-bot.yml
+  pull_request:
+    paths: *bot-paths
+  workflow_dispatch:
+
+concurrency:
+  group: discord-bot-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/it3k-esport-bot
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      # The deploy workflow type-checks every workspace; these are the bot's
+      # own tests, which no other workflow runs.
+      - run: bun test apps/discord/esport
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          # `latest` is what the VM runs; `sha-…` lets it roll back by hand.
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-
+          labels: |
+            org.opencontainers.image.title=it3k esport bot
+            org.opencontainers.image.description=Discord bot for the IT3K esports server
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/discord/esport/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=discord-bot
+          cache-to: type=gha,scope=discord-bot,mode=max

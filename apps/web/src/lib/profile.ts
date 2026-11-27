@@ -12,12 +12,19 @@ import { authClient } from "./auth-client";
 
 type Client = ReturnType<typeof hc<ProfileRoutes>>;
 export type MyProfile = InferResponseType<Client["me"]["$get"], 200>;
+export type MyDiscord = InferResponseType<Client["discord"]["$get"], 200>;
 export function createProfileApi(baseUrl: string, fetchImpl?: ClientRequestOptions["fetch"]) {
   const client = hc<ProfileRoutes>(`${baseUrl}/api/profile`, {
     fetch: fetchImpl,
     init: { credentials: "include" },
   });
   return {
+    /** The Discord account linked to this one; the 3K Discord gives roles by it. */
+    async discord() {
+      const res = await client.discord.$get();
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
     async me(expectedUserId?: string) {
       const res = await client.me.$get();
       if (!res.ok) throw await toApiError(res);

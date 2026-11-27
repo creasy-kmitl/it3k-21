@@ -1,0 +1,24 @@
+# The bot on the deploy VM, in ~/it3k-esport-bot next to its .env.
+# update.sh (run by it3k-esport-bot-update.timer) pulls :latest and
+# recreates the container only when the image changed.
+name: it3k-esport-bot
+
+services:
+  bot:
+    image: ghcr.io/creasy-kmitl/it3k-esport-bot:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Wins over a SQLITE_PATH copied from a local .env: the data lives in
+      # the volume, so /init's ids and the mode survive every update.
+      SQLITE_PATH: /data/bot.sqlite
+    volumes:
+      - data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  data:

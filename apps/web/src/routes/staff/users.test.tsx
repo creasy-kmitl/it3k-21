@@ -91,6 +91,7 @@ function setup(
       institution: null,
       sportAccess: { permissions: [], scope: { kind: "none" } },
       canSendEmail: false,
+      canManageBotTokens: false,
       viewingAs: false,
     }),
     list: async () => ({ items, page: 1, hasMore: false, canGrantAdmin, assignableKinds }),

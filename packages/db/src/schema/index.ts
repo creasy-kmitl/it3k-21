@@ -10,3 +10,4 @@ export * from "./event";
 export * from "./competition";
 export * from "./email";
 export * from "./invitation";
+export * from "./bot-token";

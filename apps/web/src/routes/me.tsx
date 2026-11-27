@@ -34,7 +34,10 @@ import {
   UtensilsCrossed,
   WheatOff,
 } from "lucide-react";
+import { useEffect } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
+import { DiscordCard } from "@/components/discord-card";
 import { PageHeader } from "@/components/page-header";
 import { ParticipantShell } from "@/components/participant-shell";
 import { RoleBadge } from "@/components/role-badge";
@@ -45,8 +48,14 @@ import { publicFileUrl } from "@/lib/files";
 import { requireParticipantSession } from "@/lib/participant-auth";
 import { ErrorState } from "@/components/error-state";
 
+const searchSchema = z.object({
+  // Better Auth sends people back here with ?error= when linking Discord fails.
+  error: z.string().max(200).optional().catch(undefined),
+});
+
 export const Route = createFileRoute("/me")({
   ssr: false,
+  validateSearch: (search) => searchSchema.parse(search),
   beforeLoad: async ({ context, location }) => ({
     session: await requireParticipantSession(context.queryClient, location.href),
   }),
@@ -58,6 +67,17 @@ export const Route = createFileRoute("/me")({
 
 function MePage() {
   const { session } = Route.useRouteContext();
+  const { error } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  useEffect(() => {
+    if (!error) return;
+    toast.error(
+      error.includes("already") || error.includes("ALREADY")
+        ? "บัญชี Discord นี้เชื่อมกับผู้ใช้อื่นอยู่แล้ว หรือคุณเชื่อม Discord ไว้แล้ว"
+        : `เชื่อม Discord ไม่สำเร็จ (${error})`,
+    );
+    void navigate({ search: {}, replace: true });
+  }, [error, navigate]);
   const { profile } = useApis();
   const me = useQuery({
     queryKey: ["profile", "me", session.user.id],
@@ -125,21 +145,24 @@ function MePage() {
           </Button>
         </div>
         {!values ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 [&_svg]:size-5 [&_svg]:shrink-0">
-                <UserRoundPlus className="text-primary" aria-hidden />
-                ยังไม่ได้ลงทะเบียนผู้เข้าร่วม
-              </CardTitle>
-              <CardDescription>กรอกข้อมูลให้ครบเพื่อสร้างโปรไฟล์ของคุณ</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button render={<Link to="/signup" />} nativeButton={false}>
-                กรอกข้อมูลต่อ
-                <ArrowRight data-icon="inline-end" aria-hidden />
-              </Button>
-            </CardContent>
-          </Card>
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 [&_svg]:size-5 [&_svg]:shrink-0">
+                  <UserRoundPlus className="text-primary" aria-hidden />
+                  ยังไม่ได้ลงทะเบียนผู้เข้าร่วม
+                </CardTitle>
+                <CardDescription>กรอกข้อมูลให้ครบเพื่อสร้างโปรไฟล์ของคุณ</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button render={<Link to="/signup" />} nativeButton={false}>
+                  กรอกข้อมูลต่อ
+                  <ArrowRight data-icon="inline-end" aria-hidden />
+                </Button>
+              </CardContent>
+            </Card>
+            <DiscordCard />
+          </>
         ) : (
           <div className="grid items-start gap-6 lg:grid-cols-[20rem_1fr]">
             <div className="flex flex-col gap-6">
@@ -199,6 +222,7 @@ function MePage() {
                 </CardContent>
               </Card>
               <SportCheckinCard />
+              <DiscordCard />
             </div>
             <div className="flex flex-col gap-6">
               <Card>
