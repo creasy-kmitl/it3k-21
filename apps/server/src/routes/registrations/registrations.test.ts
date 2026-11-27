@@ -42,6 +42,11 @@ beforeEach(async () => {
   await t.seedParticipant("a2");
 });
 
+/** A student-card photo of `userId`, `card-<userId>` unless named. */
+function seedCard(userId: string, id = `card-${userId}`, contentType = "image/jpeg") {
+  return t.seedUpload(userId, id, contentType);
+}
+
 async function send(userId: string, method: string, path: string, json?: unknown) {
   const res = await app.request(path, t.as(userId, { method, json }));
   return { res, body: await readJson(res) };
@@ -51,7 +56,17 @@ async function register(userId: string, code: string, extra: Record<string, unkn
   return send(userId, "POST", "/", {
     divisionId: await t.divisionId(code),
     studentId: "65070001",
+    studentCardFileId: await seedCard(userId),
     ...fields,
+    ...extra,
+  });
+}
+
+/** An edit by the athlete, sending the card already on the registration. */
+async function edit(userId: string, id: string, extra: Record<string, unknown>) {
+  return send(userId, "PUT", `/${id}`, {
+    ...fields,
+    studentCardFileId: `card-${userId}`,
     ...extra,
   });
 }
@@ -76,9 +91,10 @@ describe("registering", () => {
 
   test("one account may register for many divisions, but each once", async () => {
     expect((await register("a1", "athletics-100m-male")).res.status).toBe(201);
-    // Later registrations need no student id.
+    // Later registrations may leave out the student id: the remembered one stays.
     const second = await send("a1", "POST", "/", {
       divisionId: await t.divisionId("athletics-400m-male"),
+      studentCardFileId: "card-a1",
       ...fields,
     });
     expect(second.res.status).toBe(201);
@@ -87,7 +103,65 @@ describe("registering", () => {
     expect(again.body.message).toBe("สมัครประเภทนี้ไว้แล้ว");
     const me = await send("a1", "GET", "/me");
     expect((me.body.registrations as unknown[]).length).toBe(2);
-    expect(me.body).toMatchObject({ profileSubmitted: true, studentId: "65070001" });
+    expect(me.body).toMatchObject({
+      profileSubmitted: true,
+      studentId: "65070001",
+      studentCardFileId: "card-a1",
+    });
+  });
+
+  test("every registration needs a student card photo of the athlete's own", async () => {
+    const noCard = await register("a1", "athletics-100m-male", { studentCardFileId: undefined });
+    expect(noCard.res.status).toBe(400);
+    expect(noCard.body.issues).toEqual([
+      { path: ["studentCardFileId"], message: "แนบรูปบัตรนักศึกษา" },
+    ]);
+    // Someone else's upload, or a file that is not an image, is refused.
+    await seedCard("a2");
+    const theirs = await register("a1", "athletics-100m-male", { studentCardFileId: "card-a2" });
+    expect(theirs.res.status).toBe(400);
+    expect((theirs.body.issues as { path: string[] }[])[0]?.path).toEqual(["studentCardFileId"]);
+    await seedCard("a1", "a1-pdf", "application/pdf");
+    const pdf = await register("a1", "athletics-100m-male", { studentCardFileId: "a1-pdf" });
+    expect(pdf.res.status).toBe(400);
+    expect(await t.db.select().from(sportRegistration)).toEqual([]);
+
+    const ok = await register("a1", "athletics-100m-male");
+    expect(ok.body).toMatchObject({ studentCardFileId: "card-a1" });
+  });
+
+  test("a new student id or card replaces the remembered one", async () => {
+    await register("a1", "athletics-100m-male");
+    await seedCard("a1", "card-a1-new");
+    const second = await register("a1", "athletics-400m-male", {
+      studentId: "65070999",
+      studentCardFileId: "card-a1-new",
+    });
+    expect(second.res.status).toBe(201);
+    const [row] = await t.db.select().from(athlete).where(eq(athlete.userId, "a1"));
+    expect(row).toMatchObject({ studentId: "65070999", studentCardFileId: "card-a1-new" });
+    const me = await send("a1", "GET", "/me");
+    expect(me.body).toMatchObject({ studentId: "65070999", studentCardFileId: "card-a1-new" });
+    // Each registration keeps the card it was sent with.
+    const cards = (me.body.registrations as { studentCardFileId: string }[]).map(
+      (registration) => registration.studentCardFileId,
+    );
+    // Sorted: both may be created in the same millisecond.
+    expect(cards.toSorted()).toEqual(["card-a1", "card-a1-new"]);
+    const log = await t.db
+      .select()
+      .from(sportRegistrationChange)
+      .where(eq(sportRegistrationChange.registrationId, second.body.id as string));
+    expect(defined(log[0]).changes.studentId).toEqual(["65070001", "65070999"]);
+  });
+
+  test("a card deleted mid-request is refused", async () => {
+    t.hooks.beforeBatch = () => {
+      t.sqlite.run(`update uploaded_file set state = 'deleting' where id = 'card-a1'`);
+    };
+    const res = await register("a1", "athletics-100m-male");
+    expect(res.res.status).toBe(400);
+    expect(await t.db.select().from(sportRegistration)).toEqual([]);
   });
 
   test("needs a submitted profile, an institution and, at first, a student id", async () => {
@@ -211,15 +285,11 @@ describe("editing and withdrawing", () => {
   test("athletes edit and withdraw their own registration while it is in review", async () => {
     const { body } = await register("a1", "football", { shirtNumber: 7 });
     const id = body.id as string;
-    expect(
-      (await send("a2", "PUT", `/${id}`, { ...fields, shirtNumber: 8, version: 1 })).res.status,
-    ).toBe(404);
-    const edited = await send("a1", "PUT", `/${id}`, { ...fields, shirtNumber: 8, version: 1 });
+    expect((await edit("a2", id, { shirtNumber: 8, version: 1 })).res.status).toBe(404);
+    const edited = await edit("a1", id, { shirtNumber: 8, version: 1 });
     expect(edited.body).toMatchObject({ shirtNumber: 8, version: 2 });
     // A stale version is refused.
-    expect(
-      (await send("a1", "PUT", `/${id}`, { ...fields, shirtNumber: 9, version: 1 })).res.status,
-    ).toBe(409);
+    expect((await edit("a1", id, { shirtNumber: 9, version: 1 })).res.status).toBe(409);
     expect((await send("a1", "POST", `/${id}/withdraw`, { version: 2 })).res.status).toBe(200);
     expect(await t.db.select().from(sportRegistration)).toEqual([]);
     const actions = (await t.db.select().from(sportRegistrationChange)).map((row) => row.action);
@@ -230,9 +300,25 @@ describe("editing and withdrawing", () => {
     const { body } = await register("a1", "football", { shirtNumber: 7 });
     await t.db.update(sportRegistration).set({ status: "approved" });
     const id = body.id as string;
-    expect(
-      (await send("a1", "PUT", `/${id}`, { ...fields, shirtNumber: 8, version: 1 })).res.status,
-    ).toBe(409);
+    expect((await edit("a1", id, { shirtNumber: 8, version: 1 })).res.status).toBe(409);
     expect((await send("a1", "POST", `/${id}/withdraw`, { version: 1 })).res.status).toBe(409);
+  });
+
+  test("an edit needs a card too, and may change it and the student id", async () => {
+    const { body } = await register("a1", "football", { shirtNumber: 7 });
+    const id = body.id as string;
+    const noCard = await send("a1", "PUT", `/${id}`, { ...fields, shirtNumber: 7, version: 1 });
+    expect(noCard.res.status).toBe(400);
+    expect(noCard.body.message).toBe("แนบรูปบัตรนักศึกษา");
+    await seedCard("a1", "card-a1-new");
+    const edited = await edit("a1", id, {
+      shirtNumber: 7,
+      studentId: "65070555",
+      studentCardFileId: "card-a1-new",
+      version: 1,
+    });
+    expect(edited.body).toMatchObject({ studentCardFileId: "card-a1-new", version: 2 });
+    const [row] = await t.db.select().from(athlete).where(eq(athlete.userId, "a1"));
+    expect(row).toMatchObject({ studentId: "65070555", studentCardFileId: "card-a1-new" });
   });
 });

@@ -8,6 +8,7 @@ import {
 } from "@it3k/db/profile";
 import { user } from "@it3k/db/schema/auth";
 import { uploadedFile, userProfile } from "@it3k/db/schema/profile";
+import { athlete, sportRegistration } from "@it3k/db/schema/sport";
 import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
@@ -58,8 +59,9 @@ const queryInput = z.object({
 export function usedBytes(ownerId: string | typeof user.id) {
   return sql<number>`coalesce((select sum(${uploadedFile.size}) from ${uploadedFile} where ${uploadedFile.ownerId} = ${ownerId}), 0)`;
 }
+/** SQL: no profile photo, remembered student card or registration uses the file. */
 function unreferenced(id: string) {
-  return sql`not exists (select 1 from ${userProfile} where json_extract(${userProfile.draft}, '$.photoFileId') = ${id} or json_extract(${userProfile.values}, '$.photoFileId') = ${id})`;
+  return sql`not exists (select 1 from ${userProfile} where json_extract(${userProfile.draft}, '$.photoFileId') = ${id} or json_extract(${userProfile.values}, '$.photoFileId') = ${id}) and not exists (select 1 from ${athlete} where ${athlete.studentCardFileId} = ${id}) and not exists (select 1 from ${sportRegistration} where ${sportRegistration.studentCardFileId} = ${id})`;
 }
 
 /** Abort the persisted multipart upload before releasing bytes or quota. */
@@ -95,7 +97,7 @@ async function removeOwnedFile(
     ]);
   } catch (error) {
     if (constraintError(error))
-      return c.json({ message: "ไฟล์นี้กำลังใช้งานในโปรไฟล์ หรือข้อมูลเปลี่ยนแปลงแล้ว" }, 409);
+      return c.json({ message: "ไฟล์นี้กำลังใช้งานในโปรไฟล์หรือการสมัครกีฬา หรือข้อมูลเปลี่ยนแปลงแล้ว" }, 409);
     throw error;
   }
   // Read the current cancellation ID after fencing new writers.

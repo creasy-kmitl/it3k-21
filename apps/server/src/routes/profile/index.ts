@@ -28,7 +28,8 @@ export function activeAccount() {
   return sql`(coalesce(${user.banned}, 0) = 0 or (${user.banExpires} is not null and ${user.banExpires} <= ${Date.now()}))`;
 }
 
-function ownedPhoto(id: string, ownerId: string) {
+/** SQL: `id` is a finished image upload of `ownerId`, small enough for a photo. */
+export function ownedPhoto(id: string, ownerId: string) {
   return sql`exists (select 1 from ${uploadedFile} where ${uploadedFile.id} = ${id} and ${uploadedFile.ownerId} = ${ownerId} and ${uploadedFile.state} = 'ready' and ${uploadedFile.size} <= ${MAX_PHOTO_SIZE} and ${uploadedFile.contentType} in ('image/jpeg', 'image/png', 'image/webp'))`;
 }
 

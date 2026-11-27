@@ -13,6 +13,9 @@ type Client = ReturnType<typeof hc<RegistrationRoutes>>;
 export type MyRegistrations = InferResponseType<Client["me"]["$get"], 200>;
 export type MyRegistration = MyRegistrations["registrations"][number];
 
+/** Sent with every registration and edit; the API remembers both for the next form. */
+type StudentCard = { studentId?: string; studentCardFileId?: string };
+
 export function createRegistrationsApi(baseUrl: string, fetchImpl?: ClientRequestOptions["fetch"]) {
   const client = hc<RegistrationRoutes>(`${baseUrl}/api/registrations`, {
     fetch: fetchImpl,
@@ -25,12 +28,12 @@ export function createRegistrationsApi(baseUrl: string, fetchImpl?: ClientReques
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
-    async register(json: RegistrationFields & { divisionId: string; studentId?: string }) {
+    async register(json: RegistrationFields & StudentCard & { divisionId: string }) {
       const res = await client.index.$post({ json });
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
-    async update(id: string, json: RegistrationFields & { version: number }) {
+    async update(id: string, json: RegistrationFields & StudentCard & { version: number }) {
       const res = await client[":id"].$put({ param: { id }, json });
       if (!res.ok) throw await toApiError(res);
       return res.json();

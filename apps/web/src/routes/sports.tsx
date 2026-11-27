@@ -28,6 +28,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
   IdCard,
+  ImagePlus,
   Lock,
   Medal,
   MessageCircle,
@@ -42,6 +43,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { SideDrawer } from "@/components/calendar/side-drawer";
+import { FileLibrary } from "@/components/file-library";
 import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
 import { ParticipantShell } from "@/components/participant-shell";
@@ -57,6 +59,7 @@ import { RegistrationRow, RegistrationRows } from "@/components/sport-registrati
 import { DivisionTags, StatusBadge } from "@/components/sport-badges";
 import { useApis } from "@/lib/api-context";
 import { requireParticipantSession } from "@/lib/participant-auth";
+import { publicFileUrl } from "@/lib/files";
 import type { MyRegistration, MyRegistrations } from "@/lib/registrations";
 import type { Division, Sport } from "@/lib/sports";
 import { ErrorState } from "@/components/error-state";
@@ -94,7 +97,7 @@ function RouteComponent() {
   }, [error, navigate]);
   return (
     <ParticipantShell userId={session.user.id} role={session.user.role ?? "guest"}>
-      <SportsRegistrationPage />
+      <SportsRegistrationPage userId={session.user.id} />
     </ParticipantShell>
   );
 }
@@ -127,7 +130,7 @@ export function filterSports(sports: Sport[], query: string): Sport[] {
  * An athlete's registrations, with the sports to enroll in kept in a drawer
  * so the page is about what they have already signed up for.
  */
-export function SportsRegistrationPage() {
+export function SportsRegistrationPage({ userId }: { userId: string }) {
   const { registrations: api, sports: sportsApi } = useApis();
   const me = useQuery({ queryKey: ["registrations", "me"], queryFn: () => api.me() });
   const sports = useQuery({ queryKey: ["sports"], queryFn: () => sportsApi.list() });
@@ -294,7 +297,8 @@ export function SportsRegistrationPage() {
           key={dialog.kind === "edit" ? dialog.registration.id : dialog.division.id}
           division={dialog.division}
           registration={dialog.kind === "edit" ? dialog.registration : null}
-          askStudentId={!data.studentId}
+          userId={userId}
+          remembered={{ studentId: data.studentId, studentCardFileId: data.studentCardFileId }}
           discord={data.discord}
           onClose={() => setDialog(null)}
         />
@@ -483,44 +487,55 @@ function DiscordBar({ discord }: { discord: MyRegistrations["discord"] }) {
 function RegistrationDialog({
   division,
   registration,
-  askStudentId,
+  userId,
+  remembered,
   discord,
   onClose,
 }: {
   division: Division;
   registration: MyRegistration | null;
-  askStudentId: boolean;
+  userId: string;
+  /** The student id and card from the last registration, filled in ready to change. */
+  remembered: Pick<MyRegistrations, "studentId" | "studentCardFileId">;
   discord: MyRegistrations["discord"];
   onClose: () => void;
 }) {
   const { registrations: api } = useApis();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(() => toDraft(registration ?? {}));
-  const [studentId, setStudentId] = useState("");
-  const [issues, setIssues] = useState<FieldIssues & { studentId?: string }>({});
+  const [studentId, setStudentId] = useState(remembered.studentId ?? "");
+  const [cardId, setCardId] = useState(
+    registration?.studentCardFileId ?? remembered.studentCardFileId,
+  );
+  const [pickingCard, setPickingCard] = useState(false);
+  const [issues, setIssues] = useState<
+    FieldIssues & { studentId?: string; studentCardFileId?: string }
+  >({});
   const needsDiscord = division.requiresGameProfile && !discord.linked;
   const link = useLinkDiscord();
 
   const save = useMutation({
     mutationFn: async () => {
       const parsed = parseDraft(division, draft);
-      const id = askStudentId && !registration ? studentIdInput.safeParse(studentId) : null;
-      if (!parsed.ok || (id && !id.success)) {
+      const id = studentIdInput.safeParse(studentId);
+      if (!parsed.ok || !id.success || !cardId) {
         setIssues({
           ...(parsed.ok ? {} : parsed.issues),
-          ...(id && !id.success ? { studentId: id.error.issues[0]?.message } : {}),
+          ...(id.success ? {} : { studentId: id.error.issues[0]?.message }),
+          ...(cardId ? {} : { studentCardFileId: "แนบรูปบัตรนักศึกษา" }),
         });
         return false;
       }
       setIssues({});
+      const card = { studentId: id.data, studentCardFileId: cardId };
       if (registration) {
-        await api.update(registration.id, { ...parsed.fields, version: registration.version });
-      } else {
-        await api.register({
+        await api.update(registration.id, {
           ...parsed.fields,
-          divisionId: division.id,
-          ...(id?.success ? { studentId: id.data } : {}),
+          ...card,
+          version: registration.version,
         });
+      } else {
+        await api.register({ ...parsed.fields, ...card, divisionId: division.id });
       }
       return true;
     },
@@ -571,22 +586,69 @@ function RegistrationDialog({
             </div>
           )}
           <FieldGroup>
-            {askStudentId && !registration && (
-              <Field data-invalid={!!issues.studentId}>
-                <IconLabel htmlFor="registration-student-id" icon={IdCard}>
-                  รหัสนักศึกษา
-                </IconLabel>
-                <Input
-                  id="registration-student-id"
-                  value={studentId}
-                  aria-invalid={!!issues.studentId}
-                  onChange={(event) => setStudentId(event.target.value)}
+            <Field data-invalid={!!issues.studentId}>
+              <IconLabel htmlFor="registration-student-id" icon={IdCard}>
+                รหัสนักศึกษา
+              </IconLabel>
+              <Input
+                id="registration-student-id"
+                value={studentId}
+                aria-invalid={!!issues.studentId}
+                onChange={(event) => setStudentId(event.target.value)}
+              />
+              <FieldDescription>
+                {issues.studentId ??
+                  (remembered.studentId
+                    ? "กรอกให้จากครั้งก่อนแล้ว แก้ได้ถ้าไม่ถูกต้อง"
+                    : "ระบบจะจำไว้ให้ ครั้งต่อไปไม่ต้องกรอกใหม่")}
+              </FieldDescription>
+            </Field>
+            <Field data-invalid={!!issues.studentCardFileId}>
+              <IconLabel htmlFor="registration-student-card" icon={IdCard}>
+                รูปบัตรนักศึกษา
+              </IconLabel>
+              {cardId ? (
+                <img
+                  src={publicFileUrl(cardId)}
+                  alt="รูปบัตรนักศึกษาที่แนบ"
+                  className="aspect-[1.586] w-full rounded-xl border bg-muted object-contain"
                 />
-                <FieldDescription>
-                  {issues.studentId ?? "กรอกครั้งเดียว ใช้กับทุกประเภทที่สมัคร"}
-                </FieldDescription>
-              </Field>
-            )}
+              ) : (
+                <div className="flex aspect-[1.586] w-full items-center justify-center rounded-xl border border-dashed bg-muted">
+                  <ImagePlus className="size-10 text-muted-foreground" aria-hidden />
+                </div>
+              )}
+              <Button
+                id="registration-student-card"
+                type="button"
+                variant="outline"
+                aria-label={cardId ? "เปลี่ยนรูปบัตรนักศึกษา" : "แนบรูปบัตรนักศึกษา"}
+                aria-invalid={!!issues.studentCardFileId}
+                onClick={() => setPickingCard(true)}
+              >
+                <ImagePlus data-icon="inline-start" aria-hidden />
+                {cardId ? "เปลี่ยนรูปบัตร" : "แนบรูปบัตร"}
+              </Button>
+              <FieldDescription>
+                {issues.studentCardFileId ??
+                  (cardId && !registration?.studentCardFileId && remembered.studentCardFileId
+                    ? "ใช้รูปจากการสมัครครั้งก่อน เปลี่ยนได้ถ้าไม่ใช่บัตรปัจจุบัน"
+                    : "ต้องแนบทุกครั้งที่สมัคร ให้เห็นชื่อ รหัส และรูปบนบัตรชัดเจน")}
+              </FieldDescription>
+              {pickingCard && (
+                <FileLibrary
+                  userId={userId}
+                  selectTitle="เลือกรูปบัตรนักศึกษา"
+                  selectHint="ด้านหน้าบัตร เห็นชื่อ รหัส และรูปชัดเจน"
+                  onClose={() => setPickingCard(false)}
+                  onSelect={(file) => {
+                    setCardId(file.id);
+                    setIssues((previous) => ({ ...previous, studentCardFileId: undefined }));
+                    setPickingCard(false);
+                  }}
+                />
+              )}
+            </Field>
             <RegistrationFieldsEditor
               division={division}
               draft={draft}

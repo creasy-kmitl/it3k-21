@@ -89,6 +89,7 @@ import { type FilterControl, useFilters, useSearchText } from "@/hooks/use-filte
 import { useApis } from "@/lib/api-context";
 import type { AthleteFilters, AthleteItem } from "@/lib/athletes";
 import { csvBlob } from "@/lib/csv";
+import { publicFileUrl } from "@/lib/files";
 import { optional, replacesHistory } from "@/lib/list-search";
 import { downloadBlob } from "@/lib/qr-export";
 import { ErrorState } from "@/components/error-state";
@@ -140,6 +141,7 @@ export function athletesCsv(items: AthleteItem[]) {
       "registration_id",
       "user_id",
       "student_id",
+      "student_card_url",
       "prefix",
       "first_name",
       "last_name",
@@ -163,6 +165,7 @@ export function athletesCsv(items: AthleteItem[]) {
       item.id,
       item.athlete.userId,
       item.athlete.studentId,
+      item.studentCardFileId ? publicFileUrl(item.studentCardFileId) : "",
       item.athlete.prefix,
       item.athlete.firstName || item.athlete.name,
       item.athlete.lastName,
@@ -573,6 +576,20 @@ export function AthletesPage({ filters: control }: { filters?: FilterControl<Ath
                       className="rounded-md border px-1.5 py-0.5 text-foreground"
                     />
                     {item.athlete.studentId && <span>รหัส {item.athlete.studentId}</span>}
+                    {item.studentCardFileId ? (
+                      <a
+                        href={publicFileUrl(item.studentCardFileId)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline"
+                      >
+                        <IdCard className="size-3.5" aria-hidden />
+                        ดูบัตรนักศึกษา
+                        <span className="sr-only">ของ {who(item)}</span>
+                      </a>
+                    ) : (
+                      <span>ไม่มีรูปบัตร</span>
+                    )}
                     {item.shirtNumber !== null && <span>เบอร์ {item.shirtNumber}</span>}
                     {item.badmintonRank !== null && <span>มือ {item.badmintonRank}</span>}
                     {item.ign && <span>IGN {item.ign}</span>}

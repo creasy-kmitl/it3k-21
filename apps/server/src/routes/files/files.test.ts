@@ -12,6 +12,7 @@ import {
 } from "@it3k/db/profile";
 import { uploadedFile, userProfile } from "@it3k/db/schema/profile";
 import { user } from "@it3k/db/schema/auth";
+import { athlete, sportRegistration } from "@it3k/db/schema/sport";
 import { createTestContext, defined } from "../../testing";
 import { createProfileRoutes } from "../profile";
 import { createUserRoutes } from "../users";
@@ -532,6 +533,29 @@ describe("file library and quota", () => {
     await cleanupFiles(t.db, store);
     expect(await t.db.select().from(uploadedFile)).toEqual([]);
     expect(objects.size).toBe(0);
+  });
+  test("a student card on an athlete or a registration cannot be deleted", async () => {
+    const remembered = await upload();
+    const attached = await upload();
+    await t.db.insert(athlete).values({
+      userId: "guest",
+      studentId: "65070001",
+      studentCardFileId: remembered,
+    });
+    await t.db.insert(sportRegistration).values({
+      userId: "guest",
+      divisionId: await t.divisionId("football"),
+      institution: "kmutt",
+      studentCardFileId: attached,
+    });
+    for (const id of [remembered, attached]) {
+      const res = await app.request(`/files/${id}`, t.as("guest", { method: "DELETE" }));
+      expect(res.status).toBe(409);
+    }
+    expect((await t.db.select().from(uploadedFile)).map((file) => file.state)).toEqual([
+      "ready",
+      "ready",
+    ]);
   });
   test("cleans expired reservations and removed owners without deleting ready files", async () => {
     const ready = await upload();
