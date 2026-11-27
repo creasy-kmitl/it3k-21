@@ -40,6 +40,7 @@ import {
   managerIsAsRead,
 } from "../../policies/leadership";
 import { validate } from "../../middleware/validation";
+import { canManageBotTokens } from "../../policies/bot-tokens";
 import { canManageDepartments } from "../../policies/departments";
 import { canSendEmail } from "../../policies/email";
 import { canSport, sportAccessIsAsRead, sportAccessJson } from "../../policies/sports";
@@ -192,6 +193,7 @@ export const createUserRoutes = (deps: RouteDeps) =>
           institution: view ? view.institution : account.institution,
           sportAccess: sportAccessJson(actor),
           canSendEmail: canSendEmail(actor),
+          canManageBotTokens: canManageBotTokens(actor),
           viewingAs: actor.simulated,
         },
         200,

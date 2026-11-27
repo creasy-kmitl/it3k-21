@@ -82,6 +82,7 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
     links: apis.links ?? fakeLinksApi(),
     qrPresets: apis.qrPresets ?? fakeQrPresetsApi(),
     profile: apis.profile ?? {
+      discord: unexpected("profile.discord"),
       me: unexpected("profile.me"),
       saveDraft: unexpected("profile.saveDraft"),
       submit: unexpected("profile.submit"),
@@ -106,6 +107,7 @@ export function fakeApis(apis: Partial<Apis> = {}): Apis {
     competitionScores: apis.competitionScores ?? loudFake("competitionScores"),
     competitionCheckins: apis.competitionCheckins ?? loudFake("competitionCheckins"),
     publicCompetition: apis.publicCompetition ?? loudFake("publicCompetition"),
+    botTokens: apis.botTokens ?? loudFake("botTokens"),
   };
 }
 

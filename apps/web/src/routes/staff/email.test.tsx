@@ -21,6 +21,7 @@ function me(canSendEmail: boolean): Me {
     institution: null,
     sportAccess: { permissions: [], scope: { kind: "none" } },
     canSendEmail,
+    canManageBotTokens: false,
     viewingAs: false,
   };
 }

@@ -33,6 +33,7 @@ async function openMenu(role: string, viewedRole?: string) {
         institution: null,
         sportAccess: { permissions: [] },
         canSendEmail: false,
+        canManageBotTokens: false,
         viewingAs: false,
       }) as never,
   });

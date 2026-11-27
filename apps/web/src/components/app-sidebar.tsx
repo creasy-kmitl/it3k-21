@@ -10,6 +10,7 @@ import {
 import { Link } from "@tanstack/react-router";
 import {
   BookOpenIcon,
+  BotIcon,
   Building2Icon,
   CalendarCheckIcon,
   CalendarDaysIcon,
@@ -34,7 +35,7 @@ import { type Me, type SportPermission, useMe } from "@/lib/users";
 
 type NavAccess = Pick<
   Me,
-  "canManageUsers" | "canManageDepartments" | "canSendEmail" | "sportAccess"
+  "canManageUsers" | "canManageDepartments" | "canSendEmail" | "canManageBotTokens" | "sportAccess"
 >;
 
 /** The console's menu for an account; each page and the API still check their own rights. */
@@ -99,6 +100,9 @@ export function staffNavGroups(me: NavAccess | undefined): NavMainGroup[] {
         { title: "ลิงก์สั้น", to: "/staff/links", icon: <Link2Icon /> },
         ...(me?.canSendEmail
           ? [{ title: "ส่งอีเมล", to: "/staff/email", icon: <MailIcon /> } as const]
+          : []),
+        ...(me?.canManageBotTokens
+          ? [{ title: "Bot token", to: "/staff/bot-tokens", icon: <BotIcon /> } as const]
           : []),
       ],
     },

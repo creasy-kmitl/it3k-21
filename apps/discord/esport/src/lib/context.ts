@@ -3,13 +3,13 @@
 import { ENV } from "../env";
 import { type ApiClient, createApiClient } from "./api";
 import type { Endpoint, Endpoints, Mode } from "./mode";
-import { type ModeStore, createModeStore } from "./store";
+import { type BotStore, createBotStore } from "./store";
 
-let store: ModeStore | undefined;
+let opened: BotStore | undefined;
 
-export function modeStore(): ModeStore {
-  store ??= createModeStore(ENV.SQLITE_PATH, ENV.DEFAULT_MODE);
-  return store;
+export function store(): BotStore {
+  opened ??= createBotStore(ENV.SQLITE_PATH, ENV.DEFAULT_MODE);
+  return opened;
 }
 
 export function endpoints(): Endpoints {
@@ -20,9 +20,11 @@ export function endpoints(): Endpoints {
   };
 }
 
-export const currentMode = (): Mode => modeStore().get();
+export const currentMode = (): Mode => store().getMode();
 
 export const endpointFor = (mode: Mode): Endpoint => endpoints()[mode];
 
+export const currentEndpoint = (): Endpoint => endpointFor(currentMode());
+
 /** A client for the API of whichever mode is current right now. */
-export const api = (): ApiClient => createApiClient(endpointFor(currentMode()));
+export const api = (): ApiClient => createApiClient(currentEndpoint());

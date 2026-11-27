@@ -27,6 +27,7 @@ import { createCompetitionCheckinRoutes } from "./routes/competition-checkins";
 import { createPublicCompetitionRoutes } from "./routes/public-competition";
 import { createTicketRoutes } from "./routes/tickets";
 import { createBotRoutes } from "./routes/bot";
+import { createBotTokenRoutes } from "./routes/bot-tokens";
 import { createVenueRoutes } from "./routes/venues";
 import type { DiscordDeps } from "./routes/registrations/shared";
 import { discordEnabled } from "@it3k/auth";
@@ -109,10 +110,10 @@ app.route("/api/departments", createDepartmentRoutes(deps));
 app.route("/api/users", createUserRoutes(deps));
 app.route("/api/invitations", createInvitationRoutes({ ...deps, ...mailDeps }));
 app.route("/api/view-as", createViewAsRoutes(deps));
+app.route("/api/bot-tokens", createBotTokenRoutes(deps));
 const fileDeps = { ...deps, getStore: () => createFileStore(env.UPLOADS), waitUntil };
 app.route("/api/files/public", createPublicFileRoutes(fileDeps));
 app.route("/api/files", createFileRoutes(fileDeps));
-app.route("/api/profile", createProfileRoutes({ ...deps, ...mailDeps }));
 app.route(
   "/api/leadership",
   createLeadershipRoutes({
@@ -131,11 +132,17 @@ const discordDeps: DiscordDeps = {
   // Asks Discord with the athlete's stored token; best effort.
   discordProfile: async (headers, accountId) => {
     const info = await (await createAuth()).api.accountInfo({ headers, query: { accountId } });
-    const data = info?.data as { username?: unknown } | undefined;
-    return typeof data?.username === "string" ? { username: data.username } : null;
+    const data = info?.data as { username?: unknown; global_name?: unknown } | undefined;
+    if (typeof data?.username !== "string") return null;
+    return {
+      username: data.username,
+      displayName: typeof data.global_name === "string" ? data.global_name : null,
+      avatarUrl: typeof info?.user?.image === "string" ? info.user.image : null,
+    };
   },
 };
 app.route("/api/registrations", createRegistrationRoutes({ ...deps, ...discordDeps, ...mailDeps }));
+app.route("/api/profile", createProfileRoutes({ ...deps, ...discordDeps, ...mailDeps }));
 app.route("/api/athletes", createAthleteRoutes({ ...deps, ...mailDeps }));
 app.route("/api/venues", createVenueRoutes(deps));
 app.route("/api/events", createEventRoutes(deps));
@@ -151,10 +158,14 @@ app.route("/api/public/events", createPublicEventRoutes(deps));
 // Public: matches, the live board, standings and medals.
 app.route("/api/public/competition", createPublicCompetitionRoutes(deps));
 
-// The Discord bots, signed in with the stage's BOT_API_TOKEN instead of a session.
+// The Discord bots, signed in with a token an admin issued (/api/bot-tokens) instead of a session.
 app.route(
   "/api/bot",
-  createBotRoutes({ getDb, botToken: env.BOT_API_TOKEN, stage: env.DEPLOY_ENV ?? "dev" }),
+  createBotRoutes({
+    getDb,
+    stage: env.DEPLOY_ENV ?? "dev",
+    webOrigin: env.CORS_ORIGIN,
+  }),
 );
 
 // Public: the web worker forwards its `/l/<slug>` paths here.

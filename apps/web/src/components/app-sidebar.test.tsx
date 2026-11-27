@@ -4,13 +4,14 @@ import type { SportPermission } from "@/lib/users";
 
 import { staffNavGroups } from "./app-sidebar";
 
-type Rights = { canManageUsers?: boolean };
+type Rights = { canManageUsers?: boolean; canManageBotTokens?: boolean };
 
 function groupsFor(permissions: SportPermission[], rights: Rights = {}) {
   return staffNavGroups({
     canManageUsers: rights.canManageUsers ?? false,
     canManageDepartments: false,
     canSendEmail: false,
+    canManageBotTokens: rights.canManageBotTokens ?? false,
     sportAccess: { permissions } as never,
   });
 }
@@ -76,5 +77,10 @@ describe("staff menu", () => {
     expect(menu).toContain("/staff/athletes");
     expect(menu).not.toContain("/staff/teams");
     expect(menu).not.toContain("/staff/matches");
+  });
+
+  test("only those who may manage bot tokens see the page", () => {
+    expect(menu("เครื่องมือ", [])).not.toContain("/staff/bot-tokens");
+    expect(menu("เครื่องมือ", [], { canManageBotTokens: true })).toContain("/staff/bot-tokens");
   });
 });

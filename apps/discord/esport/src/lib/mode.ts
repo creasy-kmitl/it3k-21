@@ -10,6 +10,6 @@ export const MODE_LABEL: Record<Mode, string> = {
 
 export const isMode = (value: unknown): value is Mode => MODES.includes(value as Mode);
 
-/** One stage's API: its origin and the BOT_API_TOKEN it accepts. */
+/** One stage's API: its origin and a bot token an admin issued on that stage's /staff/bot-tokens. */
 export type Endpoint = { url: string; token: string | undefined };
 export type Endpoints = Record<Mode, Endpoint>;

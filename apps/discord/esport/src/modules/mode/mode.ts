@@ -8,8 +8,9 @@ import {
 import { Discord, Slash, SlashChoice, SlashOption } from "discordx";
 
 import { ping } from "../../lib/api";
-import { currentMode, endpointFor, modeStore } from "../../lib/context";
+import { currentMode, endpointFor, store } from "../../lib/context";
 import { MODES, MODE_LABEL, type Mode } from "../../lib/mode";
+import { respond } from "../../lib/replies";
 
 @Discord()
 export class ModeCommand {
@@ -37,27 +38,40 @@ export class ModeCommand {
     if (!target) {
       const mode = currentMode();
       const result = await ping(endpointFor(mode));
-      await interaction.editReply(
-        [
-          `mode ปัจจุบัน: **${MODE_LABEL[mode]}**`,
-          `API: ${endpointFor(mode).url}`,
-          result.ok ? `สถานะ: เชื่อมต่อได้ (${result.ms} ms)` : `สถานะ: ⚠️ ${result.reason}`,
-        ].join("\n"),
-      );
+      await respond(interaction, result.ok ? "info" : "warning", {
+        title: `mode ปัจจุบัน: ${MODE_LABEL[mode]}`,
+        fields: [
+          { name: "API", value: endpointFor(mode).url },
+          {
+            name: "สถานะ",
+            value: result.ok ? `เชื่อมต่อได้ (${result.ms} ms)` : result.reason,
+          },
+        ],
+      });
       return;
     }
 
     // Check the new endpoint first, so a typo'd token never strands the bot.
     const result = await ping(endpointFor(target));
     if (!result.ok) {
-      await interaction.editReply(
-        `ยังไม่สลับ: ${MODE_LABEL[target]} ใช้ไม่ได้ (${result.reason})\nยังใช้ **${MODE_LABEL[currentMode()]}** อยู่`,
-      );
+      await respond(interaction, "error", {
+        title: `ยังไม่สลับ: ${MODE_LABEL[target]} ใช้ไม่ได้`,
+        description: result.reason,
+        fields: [
+          { name: "API ที่ลอง", value: endpointFor(target).url },
+          { name: "ยังใช้อยู่", value: MODE_LABEL[currentMode()] },
+        ],
+      });
       return;
     }
-    modeStore().set(target);
-    await interaction.editReply(
-      `สลับเป็น **${MODE_LABEL[target]}** แล้ว\nAPI: ${endpointFor(target).url} (stage \`${result.stage}\`, ${result.ms} ms)`,
-    );
+    store().setMode(target);
+    await respond(interaction, "success", {
+      title: `สลับเป็น ${MODE_LABEL[target]} แล้ว`,
+      fields: [
+        { name: "API", value: endpointFor(target).url },
+        { name: "stage", value: `\`${result.stage}\``, inline: true },
+        { name: "ตอบใน", value: `${result.ms} ms`, inline: true },
+      ],
+    });
   }
 }
