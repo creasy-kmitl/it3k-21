@@ -69,6 +69,13 @@ export const SHOTS: Shot[] = [
   { file: "athlete/sports", as: "athlete", path: "/sports", mobile: true },
   { file: "athlete/sports-register", as: "athlete", path: "/sports", mobile: true, act: click(/^สมัครกีฬา$/) },
   { file: "athlete/me", as: "athlete", path: "/me", mobile: true },
+  { file: "athlete/checkin-code", as: "athlete", path: "/me", mobile: true, desktop: false, act: async (page) => {
+    // Card title just under the sticky header, so the photo is not blurred behind it.
+    const top = await page.getByText("รหัสเช็คอินกีฬา", { exact: true }).first()
+      .evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+    await page.evaluate((y) => window.scrollTo(0, y - 140), top);
+    await page.waitForTimeout(800);
+  } },
 
   // Other departments: Art
   { file: "art-staff/sidebar", as: "artStaff", path: "/staff/dashboard", sidebar: true },
