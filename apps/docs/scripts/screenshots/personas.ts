@@ -114,6 +114,26 @@ export const PERSONAS = {
     seat: "head",
     institution: "kmitl",
   },
+  sportsStaff: {
+    id: "demo-sports-staff",
+    name: "ธนวัฒน์ เรืองศรี",
+    nickname: "บอส",
+    prefix: "นาย",
+    role: "staff",
+    department: "sports",
+    institution: "kmitl",
+  },
+  // The head's seat is a name-only seat (OTHER_SEATS); this one is the vicehead.
+  sportsHead: {
+    id: "demo-sports-head",
+    name: "กมลชนก ทองดี",
+    nickname: "แพรว",
+    prefix: "นางสาว",
+    role: "staff",
+    department: "sports",
+    seat: "vicehead",
+    institution: "kmitl",
+  },
   admin: {
     id: "demo-admin",
     name: "ศุภชัย มั่นคง",

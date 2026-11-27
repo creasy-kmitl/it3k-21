@@ -10,7 +10,11 @@
     "sports-catalog",
     "events",
     "check-in",
+    "competition-settings",
+    "teams",
     "competition",
+    "match-checkin",
+    "scoring",
     "venues",
     "email"
   ]
