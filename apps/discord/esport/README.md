@@ -12,7 +12,11 @@
    DISCORD_GUILD_ID=...
    BOT_API_TOKEN_DEV=it3kbot_...
    ```
-4. ออก token ของบอทบนเว็บของแต่ละ stage: เข้าด้วยบัญชี admin → เมนู **เครื่องมือ → Bot token** (`/staff/bot-tokens`) → ออก token ใหม่ แล้วคัดลอกมาใส่ `BOT_API_TOKEN_DEV` / `BOT_API_TOKEN_STG` / `BOT_API_TOKEN_PROD` token แสดงครั้งเดียว server เก็บแค่ hash ถ้าหลุดให้กดเพิกถอนในหน้าเดียวกัน บอทจะโดนปฏิเสธ (401) ทันที แล้วออกอันใหม่
+4. **พาคนเข้าเซิร์ฟเวอร์อัตโนมัติ:** เว็บต้องใช้ application เดียวกับบอทสำหรับเชื่อม Discord เพราะ Discord ให้แค่บอทของ app ที่ออก token พาคนเข้า guild ได้ (scope `guilds.join`)
+   - ใน Developer Portal ของ app บอท → OAuth2 → Redirects เพิ่ม `<BETTER_AUTH_URL>/api/auth/callback/discord` ของทุก stage (localhost, staging, prod)
+   - ตั้ง secret ของ repo `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` เป็นของ app บอท และ `DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` ค่าเดียวกับ `.env` ของบอท (local: `apps/server/.env`)
+   - พอเชื่อม Discord บนเว็บ server ใช้ token ของคนนั้นพาเข้า guild ทันที (เฉพาะทีมงานฝ่ายกีฬา/Tech และผู้สมัคร Esports) แล้วบอทให้ยศและตั้งชื่อตอนเห็นคนเข้า (`guildMemberAdd`) ถ้าว่าง server จะข้ามขั้นนี้
+5. ออก token ของบอทบนเว็บของแต่ละ stage: เข้าด้วยบัญชี admin → เมนู **เครื่องมือ → Bot token** (`/staff/bot-tokens`) → ออก token ใหม่ แล้วคัดลอกมาใส่ `BOT_API_TOKEN_DEV` / `BOT_API_TOKEN_STG` / `BOT_API_TOKEN_PROD` token แสดงครั้งเดียว server เก็บแค่ hash ถ้าหลุดให้กดเพิกถอนในหน้าเดียวกัน บอทจะโดนปฏิเสธ (401) ทันที แล้วออกอันใหม่
 
 ## รัน
 
@@ -73,6 +77,7 @@ bun run --cwd apps/discord/esport init:reset
 - **ห้องทีม:** แบ่งตามสถาบัน (1 ทีม = ตัวแทน 1 สถาบัน) เห็นเฉพาะยศทีมนั้นกับ Staff
 - **ticket:** ปุ่มในช่อง ticket เปิด private thread ที่เห็นแค่ผู้แจ้งกับ Staff ปิดได้โดยผู้แจ้งหรือ Staff
 - **honeypot:** ใครพิมพ์ในช่อง `🍯・honeypot` จะโดน softban (แบน + ลบข้อความ 24 ชม. แล้วปลดแบน) ยกเว้น Staff และคนที่มีสิทธิ์ Manage Messages log ส่งไปที่ `💼・คุยงาน`
+- **พาเข้าเซิร์ฟเวอร์:** เชื่อม Discord บนเว็บแล้ว server พาเข้าเซิร์ฟเวอร์ให้เลย (`packages/auth` `onDiscordLinked` → `apps/server/src/services.ts`) บัญชีที่เชื่อมไว้ก่อนมี `guilds.join` กด **เข้าเซิร์ฟเวอร์ Discord** ที่ `/me` แล้ว Discord จะขออนุญาตอีกครั้ง
 - **คนเข้าใหม่:** บอททักในช่อง new-member และชี้ไปช่อง verify ถ้าเชื่อม Discord บนเว็บไว้แล้ว บอทให้ยศและตั้งชื่อให้ทันทีโดยไม่ต้องกดปุ่ม
 
 ## เพิ่มคำสั่งใหม่

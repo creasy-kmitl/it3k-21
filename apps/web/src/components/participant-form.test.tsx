@@ -47,8 +47,12 @@ async function setup(
       discord: async () => ({
         enabled: false,
         audience: { staff: false, athlete: false },
+        canJoinGuild: false,
         linked: null,
       }),
+      joinDiscordGuild: async () => {
+        throw new Error("unexpected joinDiscordGuild");
+      },
       me: async () => data,
       saveDraft: async (revision, values) => {
         saves.push(values);

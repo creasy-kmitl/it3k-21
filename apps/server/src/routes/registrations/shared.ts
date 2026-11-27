@@ -23,15 +23,27 @@ export type DiscordProfile = (
   accountRecordId: string,
 ) => Promise<{ username: string; displayName?: string | null; avatarUrl?: string | null } | null>;
 
+/** "consent": the stored token cannot join (no guilds.join, or unusable): link Discord again. */
+export type GuildJoinResult = { status: "joined" | "member"; url: string } | { status: "consent" };
+
+/** Adds the linked Discord account to the esports guild with its stored token. */
+export type DiscordGuildJoin = (input: {
+  headers: Headers;
+  accountRecordId: string;
+  discordUserId: string;
+}) => Promise<GuildJoinResult>;
+
 export type DiscordDeps = {
   /** False when no Discord app is configured; esports registration is closed then. */
   discordEnabled: boolean;
   discordProfile: DiscordProfile;
+  /** Null when this stage has no bot token or guild id: joining from the web is off. */
+  discordGuildJoin?: DiscordGuildJoin | null;
 };
 
 export async function linkedDiscord(db: Database, userId: string) {
   const [row] = await db
-    .select({ id: account.id, discordUserId: account.accountId })
+    .select({ id: account.id, discordUserId: account.accountId, scope: account.scope })
     .from(account)
     .where(and(eq(account.userId, userId), eq(account.providerId, DISCORD)));
   return row ?? null;

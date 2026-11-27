@@ -83,11 +83,76 @@ export function discordEnabled(
   return !!env.DISCORD_CLIENT_ID && !!env.DISCORD_CLIENT_SECRET;
 }
 
+/** Lets the bot add the user to the esports guild (apps/server/src/discord/guild.ts). */
+export const DISCORD_SCOPES = ["guilds.join"];
+
+/** A Discord account just linked (or relinked) through the OAuth flow, with its fresh token. */
+export type DiscordLink = {
+  userId: string;
+  discordUserId: string;
+  accessToken: string;
+  scope: string;
+};
+
+export type AuthHooks = {
+  /**
+   * Runs after the Discord OAuth callback creates or updates the account row;
+   * never on a token refresh, so someone who left the guild is not pulled back
+   * by a later page load. Errors are logged, never shown: the link itself
+   * already succeeded.
+   */
+  onDiscordLinked?: (link: DiscordLink) => Promise<void>;
+};
+
+type AccountRow = {
+  userId: string;
+  providerId: string;
+  accountId: string;
+  accessToken?: string | null;
+  scope?: string | null;
+};
+
+/**
+ * The Discord link an account write records, if it is one. Only the OAuth
+ * callback (`/callback/:id`) links Discord; a token refresh
+ * (`/get-access-token`, `/account-info`) also updates the row and is not one.
+ */
+export function discordLinkFrom(
+  row: AccountRow | null | undefined,
+  path: string | undefined,
+): DiscordLink | null {
+  if (row?.providerId !== DISCORD || !row.accessToken) return null;
+  if (!path?.startsWith("/callback")) return null;
+  return {
+    userId: row.userId,
+    discordUserId: row.accountId,
+    accessToken: row.accessToken,
+    scope: row.scope ?? "",
+  };
+}
+
 export function createAuth(
   env: AuthConfig,
   database: Database,
   desktopOrigins: readonly string[] = [],
+  authHooks: AuthHooks = {},
 ) {
+  const discordLinked = async (
+    row: AccountRow | null | undefined,
+    ctx: {
+      path?: string;
+      context: { logger: { error: (message: string, ...args: unknown[]) => void } };
+    } | null,
+  ) => {
+    const link = authHooks.onDiscordLinked ? discordLinkFrom(row, ctx?.path) : null;
+    if (!link || !ctx) return;
+    try {
+      await authHooks.onDiscordLinked?.(link);
+    } catch (error) {
+      ctx.context.logger.error("Discord link hook failed", error);
+    }
+  };
+
   return betterAuth({
     database: drizzleAdapter(database, {
       provider: "sqlite",
@@ -117,6 +182,7 @@ export function createAuth(
             discord: {
               clientId: env.DISCORD_CLIENT_ID ?? "",
               clientSecret: env.DISCORD_CLIENT_SECRET ?? "",
+              scope: DISCORD_SCOPES,
             },
           }
         : {}),
@@ -199,6 +265,12 @@ export function createAuth(
               });
             }
           },
+          after: (account, ctx) => discordLinked(account, ctx),
+        },
+        // Linking the same Discord account again (to grant a scope it lacked)
+        // updates the row instead of creating one.
+        update: {
+          after: (account, ctx) => discordLinked(account as AccountRow | null, ctx),
         },
       },
     },
