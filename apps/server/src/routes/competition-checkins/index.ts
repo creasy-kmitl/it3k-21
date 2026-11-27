@@ -1,20 +1,24 @@
-// Checking athletes in to matches at the venue kiosk or by hand (esports, via
-// Discord), and forfeiting sides that did not turn up.
+// Checking athletes in to one match at a time, at the match's kiosk or by
+// hand (esports, via Discord), and forfeiting sides that did not turn up.
 //
-// An athlete scans the barcode on /me at a venue's kiosk and is checked in to
-// their next match there whose check-in window is open: from the division's
-// `checkinOpensMin` minutes before the start until `checkinClosesMin` minutes
-// before it. They must be in their side's lineup when it has one, else in the
-// team. Staff may tick athletes in or out by hand at any time before the match
-// starts, and once check-in has closed, forfeit a side short of the minimum.
+// A match's kiosk lives on its staff page. An athlete shows their six-digit
+// sport check-in code on /me (or the account barcode) and is checked in to
+// that match while its window is open: from the division's `checkinOpensMin`
+// minutes before the start until `checkinClosesMin` minutes before it. They
+// must be in their side's lineup when it has one, else in the team. Staff may
+// tick athletes in or out by hand at any time before the match starts, and
+// once check-in has closed, forfeit a side short of the minimum.
 import { loadMatch, matchAsRead } from "../../competition/access";
 import { logCompetitionChange } from "../../competition/audit";
 import { resultStatements } from "../../competition/results";
-import { matchCheckinManualInput, matchCheckinScanInput } from "@it3k/db/competition-rules";
+import {
+  matchCheckinManualInput,
+  matchCheckinScanInput,
+  parseSportScan,
+} from "@it3k/db/competition-rules";
 import type { MatchState } from "@it3k/db/competition-rules";
-import { parseScan } from "@it3k/db/event-rules";
-import { competitionMatch, competitionMatchCheckin, venue } from "@it3k/db/schema/index";
-import { and, asc, between, eq, inArray, sql } from "drizzle-orm";
+import { athlete, competitionMatch, competitionMatchCheckin } from "@it3k/db/schema/index";
+import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -32,7 +36,6 @@ import { validate } from "../../middleware/validation";
 import { canSport, sportAccessIsAsRead } from "../../policies/sports";
 import {
   CHECKIN_STATUSES,
-  type MatchSummary,
   athleteFor,
   checkinCount,
   eligibleSides,
@@ -46,15 +49,13 @@ import {
 } from "./queries";
 import { checkinWindow, minPlayers } from "./rules";
 
-const HOUR = 60 * 60_000;
-
 const NOT_FOUND = "ไม่พบแมตช์นี้";
-const NO_VENUE = "ไม่พบสนามนี้";
 const STALE = "ข้อมูลแมตช์เปลี่ยนไปแล้ว โหลดใหม่แล้วลองอีกครั้ง";
 const CLOSED_MATCH = "แมตช์นี้เริ่มแข่ง จบ หรือยกเลิกแล้ว เช็คอินไม่ได้";
-const TICKET = "นี่คือ QR ตั๋วกิจกรรม ใช้บาร์โค้ดในหน้าโปรไฟล์ของนักกีฬาเพื่อรายงานตัวแข่งขัน";
-const UNKNOWN = "ไม่พบบัญชีของบาร์โค้ดนี้";
-const NO_MATCH = "ไม่มีแมตช์ของนักกีฬาคนนี้ที่สนามนี้ในช่วงนี้";
+const TICKET = "นี่คือ QR ตั๋วกิจกรรม ใช้รหัสเช็คอินกีฬาในหน้าโปรไฟล์ของนักกีฬาเพื่อรายงานตัวแข่งขัน";
+const UNKNOWN = "ไม่พบนักกีฬาของรหัสนี้";
+const MANUAL = "ประเภทนี้รายงานตัวกับเจ้าหน้าที่ ไม่ใช้ kiosk";
+const NOT_IN_MATCH = "นักกีฬาคนนี้ไม่ได้อยู่ในทีมของแมตช์นี้";
 const NOT_IN_LINEUP = "ไม่อยู่ในรายชื่อผู้เล่นของแมตช์นี้ ติดต่อผู้จัดการทีม";
 const TOO_EARLY = "ยังไม่เปิดรายงานตัว";
 const CLOSED = "ปิดรายงานตัวแล้ว ติดต่อเจ้าหน้าที่สนาม";
@@ -65,10 +66,8 @@ const NO_CHECKIN = "ไม่พบการเช็คอินนี้";
 const checkinOf = (matchId: string, userId: string) =>
   and(eq(competitionMatchCheckin.matchId, matchId), eq(competitionMatchCheckin.userId, userId));
 
-const venueParam = z.strictObject({ venueId: z.string().min(1) });
 const matchParam = z.strictObject({ matchId: z.string().min(1) });
 const checkinParam = z.strictObject({ matchId: z.string().min(1), userId: z.string().min(1) });
-const listQuery = z.strictObject({ venueId: z.string().min(1).optional() });
 const forfeitInput = z.strictObject({
   participantIds: z.array(z.string().min(1)).min(1).max(16),
   version: z.number().int().min(0),
@@ -77,7 +76,9 @@ const forfeitInput = z.strictObject({
 export type ScanFailureCode =
   | "ticket"
   | "unknown"
-  | "no-match"
+  | "manual"
+  | "match-closed"
+  | "not-in-match"
   | "not-in-lineup"
   | "too-early"
   | "closed";
@@ -90,222 +91,6 @@ export const createCompetitionCheckinRoutes = (deps: RouteDeps & { now?: () => n
       .use(requireUser(deps))
       .use(requireMember)
       .use(allowSport("matches.checkin"))
-
-      // Matches around now that still take check-ins, for the staff page.
-      .get("/", validate("query", listQuery), async (c) => {
-        const db = c.var.db;
-        const at = now();
-        const { venueId } = c.req.valid("query");
-        const matches = await selectMatches(
-          db,
-          and(
-            inArray(competitionMatch.status, [...CHECKIN_STATUSES]),
-            between(competitionMatch.startAt, new Date(at - 3 * HOUR), new Date(at + 24 * HOUR)),
-            venueId ? eq(competitionMatch.venueId, venueId) : undefined,
-          ),
-        );
-        const venues = await db
-          .select({ id: venue.id, name: venue.name })
-          .from(venue)
-          .orderBy(asc(venue.name));
-        return c.json(
-          {
-            items: await summarize(db, matches, at),
-            venues,
-            now: new Date(at).toISOString(),
-            canForfeit:
-              canSport(c.var.user, "matches.manage") || canSport(c.var.user, "matches.score"),
-          },
-          200,
-        );
-      })
-
-      // What a venue's kiosk shows: matches whose check-in is open or has
-      // closed but not yet started, and the next one to open.
-      .get("/venues/:venueId", validate("param", venueParam), async (c) => {
-        const db = c.var.db;
-        const at = now();
-        const { venueId } = c.req.valid("param");
-        const [place] = await db
-          .select({ id: venue.id, name: venue.name })
-          .from(venue)
-          .where(eq(venue.id, venueId));
-        if (!place) return c.json({ message: NO_VENUE }, 404);
-        const matches = (
-          await selectMatches(
-            db,
-            and(
-              eq(competitionMatch.venueId, venueId),
-              inArray(competitionMatch.status, [...CHECKIN_STATUSES]),
-              between(competitionMatch.startAt, new Date(at), new Date(at + 25 * HOUR)),
-            ),
-          )
-        ).filter((match) => match.checkinMode === "kiosk");
-        const current = matches.filter(
-          (match) =>
-            match.startAt && checkinWindow(match.startAt.getTime(), match, at).state !== "early",
-        );
-        const upcoming = matches.find((match) => !current.includes(match));
-        const next: MatchSummary | null = upcoming
-          ? ((await summarize(db, [upcoming], at))[0] ?? null)
-          : null;
-        return c.json(
-          {
-            venue: place,
-            now: new Date(at).toISOString(),
-            matches: await summarize(db, current, at),
-            next,
-          },
-          200,
-        );
-      })
-
-      // The kiosk: the barcode on /me (an account id) checks the athlete in to
-      // their next match at this venue whose window is open.
-      .post(
-        "/venues/:venueId/scan",
-        validate("param", venueParam),
-        validate("json", matchCheckinScanInput),
-        async (c) => {
-          const db = c.var.db;
-          const actor = c.var.user;
-          const at = now();
-          const { venueId } = c.req.valid("param");
-          const fail = (
-            code: ScanFailureCode,
-            message: string,
-            status: 400 | 404 | 409,
-            extra: Record<string, unknown> = {},
-          ) => c.json({ code, message, ...extra }, status);
-
-          const scanned = parseScan(c.req.valid("json").code);
-          if ("ticketCode" in scanned) return fail("ticket", TICKET, 400);
-          const [place] = await db
-            .select({ id: venue.id })
-            .from(venue)
-            .where(eq(venue.id, venueId));
-          if (!place) return c.json({ message: NO_VENUE }, 404);
-          const { userId } = scanned;
-          const known = await athleteFor(db, userId, null);
-          if (!known) return fail("unknown", UNKNOWN, 404);
-
-          // Matches here from a little before now, so a late athlete hears
-          // check-in has closed rather than that they have no match.
-          const nearby = (
-            await selectMatches(
-              db,
-              and(
-                eq(competitionMatch.venueId, venueId),
-                inArray(competitionMatch.status, [...CHECKIN_STATUSES]),
-                between(
-                  competitionMatch.startAt,
-                  new Date(at - 2 * HOUR),
-                  new Date(at + 25 * HOUR),
-                ),
-              ),
-            )
-          ).filter((match) => match.checkinMode === "kiosk" && match.startAt);
-          const ids = nearby.map((match) => match.id);
-          const [eligible, onTeam] = await Promise.all([
-            eligibleSides(db, userId, ids),
-            teamMatches(db, userId, ids),
-          ]);
-          const windowOf = (match: (typeof nearby)[number]) =>
-            checkinWindow((match.startAt as Date).getTime(), match, at);
-          const target = nearby.find(
-            (match) => eligible.has(match.id) && windowOf(match).state === "open",
-          );
-
-          if (!target) {
-            const theirs = nearby.filter((match) => eligible.has(match.id) || onTeam.has(match.id));
-            const person = await athleteFor(db, userId, theirs[0]?.divisionId ?? null);
-            const [summary] = theirs[0] ? await summarize(db, [theirs[0]], at) : [];
-            const benched = theirs.find(
-              (match) => !eligible.has(match.id) && windowOf(match).state === "open",
-            );
-            if (benched) {
-              const [match] = await summarize(db, [benched], at);
-              return fail("not-in-lineup", NOT_IN_LINEUP, 409, { person, match });
-            }
-            const early = theirs.find(
-              (match) => eligible.has(match.id) && windowOf(match).state === "early",
-            );
-            if (early) {
-              const [match] = await summarize(db, [early], at);
-              return fail("too-early", TOO_EARLY, 409, {
-                person,
-                match,
-                opensAt: new Date(windowOf(early).opensAt).toISOString(),
-              });
-            }
-            const late = theirs.find(
-              (match) =>
-                eligible.has(match.id) &&
-                windowOf(match).state === "closed" &&
-                (match.startAt as Date).getTime() >= at - HOUR,
-            );
-            if (late) {
-              const [match] = await summarize(db, [late], at);
-              return fail("closed", CLOSED, 409, { person, match });
-            }
-            return fail("no-match", NO_MATCH, 404, { person, match: summary ?? null });
-          }
-
-          const participantId = eligible.get(target.id) as string;
-          const id = crypto.randomUUID();
-          try {
-            await db.batch([
-              abortUnless(
-                db,
-                actor.id,
-                and(sportAccessIsAsRead(actor), stillChecksIn(target.id)) ?? sql`0`,
-              ),
-              db
-                .insert(competitionMatchCheckin)
-                .values({
-                  id,
-                  matchId: target.id,
-                  participantId,
-                  userId,
-                  method: "scan",
-                  checkedInBy: actor.id,
-                })
-                .onConflictDoNothing({
-                  target: [competitionMatchCheckin.matchId, competitionMatchCheckin.userId],
-                }),
-            ]);
-          } catch (error) {
-            if (constraintError(error) === "stale") return c.json({ message: CLOSED_MATCH }, 409);
-            throw error;
-          }
-          const [row] = await db
-            .select()
-            .from(competitionMatchCheckin)
-            .where(checkinOf(target.id, userId));
-          if (!row) throw new Error("Check-in vanished");
-          const [person, [match]] = await Promise.all([
-            athleteFor(db, userId, target.divisionId),
-            summarize(db, [target], at),
-          ]);
-          const side = match?.sides.find((s) => s.participantId === row.participantId);
-          const duplicate = row.id !== id;
-          return c.json(
-            {
-              code: duplicate ? ("duplicate" as const) : ("checked-in" as const),
-              checkedInAt: row.createdAt.toISOString(),
-              person: person as NonNullable<typeof person>,
-              match: match as NonNullable<typeof match>,
-              side: {
-                participantId: row.participantId,
-                label: side?.label ?? "",
-                checkedIn: side?.checkedIn ?? 0,
-                min: match?.minPlayers ?? 1,
-              },
-            },
-            duplicate ? 200 : 201,
-          );
-        },
-      )
 
       // One match: every side's roster with who has checked in.
       .get("/matches/:matchId", validate("param", matchParam), async (c) => {
@@ -336,6 +121,124 @@ export const createCompetitionCheckinRoutes = (deps: RouteDeps & { now?: () => n
           200,
         );
       })
+
+      // The match's kiosk: a six-digit check-in code (or an account id from
+      // the barcode on /me) checks the athlete in while the window is open.
+      .post(
+        "/matches/:matchId/scan",
+        validate("param", matchParam),
+        validate("json", matchCheckinScanInput),
+        async (c) => {
+          const db = c.var.db;
+          const actor = c.var.user;
+          const at = now();
+          const { matchId } = c.req.valid("param");
+          const fail = (
+            code: ScanFailureCode,
+            message: string,
+            status: 400 | 404 | 409,
+            extra: Record<string, unknown> = {},
+          ) => c.json({ code, message, ...extra }, status);
+
+          const [found] = await selectMatches(db, eq(competitionMatch.id, matchId));
+          if (!found) return c.json({ message: NOT_FOUND }, 404);
+          const scanned = parseSportScan(c.req.valid("json").code);
+          if ("ticketCode" in scanned) return fail("ticket", TICKET, 400);
+          const userId =
+            "checkinCode" in scanned
+              ? (
+                  await db
+                    .select({ userId: athlete.userId })
+                    .from(athlete)
+                    .where(eq(athlete.checkinCode, scanned.checkinCode))
+                ).at(0)?.userId
+              : scanned.userId;
+          const known = userId ? await athleteFor(db, userId, found.divisionId) : null;
+          if (!userId || !known) return fail("unknown", UNKNOWN, 404);
+
+          const [summary] = await summarize(db, [found], at);
+          const match = summary as NonNullable<typeof summary>;
+          const told = { person: known, match };
+          if (found.checkinMode !== "kiosk") return fail("manual", MANUAL, 409, told);
+          if (!(CHECKIN_STATUSES as readonly string[]).includes(found.status)) {
+            return fail("match-closed", CLOSED_MATCH, 409, told);
+          }
+          const [eligible, onTeam] = await Promise.all([
+            eligibleSides(db, userId, [matchId]),
+            teamMatches(db, userId, [matchId]),
+          ]);
+          const participantId = eligible.get(matchId);
+          if (!participantId) {
+            return onTeam.has(matchId)
+              ? fail("not-in-lineup", NOT_IN_LINEUP, 409, told)
+              : fail("not-in-match", NOT_IN_MATCH, 409, told);
+          }
+          const window = found.startAt
+            ? checkinWindow(found.startAt.getTime(), found, at)
+            : null;
+          if (window?.state === "early") {
+            return fail("too-early", TOO_EARLY, 409, {
+              ...told,
+              opensAt: new Date(window.opensAt).toISOString(),
+            });
+          }
+          // A match without a time has no window; staff tick its athletes by hand.
+          if (!window || window.state === "closed") return fail("closed", CLOSED, 409, told);
+
+          const id = crypto.randomUUID();
+          try {
+            await db.batch([
+              abortUnless(
+                db,
+                actor.id,
+                and(sportAccessIsAsRead(actor), stillChecksIn(matchId)) ?? sql`0`,
+              ),
+              db
+                .insert(competitionMatchCheckin)
+                .values({
+                  id,
+                  matchId,
+                  participantId,
+                  userId,
+                  method: "scan",
+                  checkedInBy: actor.id,
+                })
+                .onConflictDoNothing({
+                  target: [competitionMatchCheckin.matchId, competitionMatchCheckin.userId],
+                }),
+            ]);
+          } catch (error) {
+            if (constraintError(error) === "stale") {
+              return fail("match-closed", CLOSED_MATCH, 409, told);
+            }
+            throw error;
+          }
+          const [row] = await db
+            .select()
+            .from(competitionMatchCheckin)
+            .where(checkinOf(matchId, userId));
+          if (!row) throw new Error("Check-in vanished");
+          const [after] = await summarize(db, [found], at);
+          const latest = after as NonNullable<typeof after>;
+          const side = latest.sides.find((s) => s.participantId === row.participantId);
+          const duplicate = row.id !== id;
+          return c.json(
+            {
+              code: duplicate ? ("duplicate" as const) : ("checked-in" as const),
+              checkedInAt: row.createdAt.toISOString(),
+              person: known,
+              match: latest,
+              side: {
+                participantId: row.participantId,
+                label: side?.label ?? "",
+                checkedIn: side?.checkedIn ?? 0,
+                min: latest.minPlayers,
+              },
+            },
+            duplicate ? 200 : 201,
+          );
+        },
+      )
 
       // Staff tick an athlete in: esports over Discord, or an override.
       .post(

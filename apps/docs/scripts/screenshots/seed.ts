@@ -264,9 +264,11 @@ db.transaction((tx) => {
   register(p10, "athletics-100m-female", "approved");
   register(p10, "badminton-singles-female", "approved", { badmintonRank: 2 });
   register(p03, "athletics-100m-male", "review");
-  for (const [userId, studentId] of Object.entries(studentIds)) {
-    tx.insert(s.athlete).values({ userId, studentId }).run();
-  }
+  // Fixed sport check-in codes, so /me and the match kiosk look the same on every run.
+  Object.entries(studentIds).forEach(([userId, studentId], index) => {
+    const checkinCode = String(482_150 + index * 37).padStart(6, "0");
+    tx.insert(s.athlete).values({ userId, studentId, checkinCode }).run();
+  });
   for (const row of registrations) tx.insert(s.sportRegistration).values(row).run();
 
   // Venues.

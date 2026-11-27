@@ -150,11 +150,11 @@ export const SHOTS: Shot[] = [
     await page.waitForTimeout(800);
   } },
   { file: "tech-head/match-detail", as: "techHead", path: "/staff/matches/demo-match-sf2" },
-  { file: "tech-head/match-checkin", as: "techHead", path: "/staff/match-checkin", act: async (page) => {
-    await page.getByText(/รอบรองชนะเลิศ · M2/).first().click();
+  { file: "tech-head/match-checkin", as: "techHead", path: "/staff/matches/demo-match-sf2", act: async (page) => {
+    await page.getByRole("region", { name: "รายงานตัว" }).scrollIntoViewIfNeeded();
     await page.waitForTimeout(800);
   } },
-  { file: "tech-head/match-kiosk", as: "techHead", path: "/kiosk/matches/demo-venue-gym", css: "video { visibility: hidden; }" },
+  { file: "tech-head/match-kiosk", as: "techHead", path: "/kiosk/matches/demo-match-sf2", css: "video { visibility: hidden; }" },
   { file: "public/match", path: "/matches/demo-match-sf1", mobile: true },
   { file: "public/live", path: "/live" },
 
@@ -175,9 +175,8 @@ export const SHOTS: Shot[] = [
   { file: "sports-head/teams-auto", as: "sportsHead", path: "/staff/teams", act: click(/จัดทีมอัตโนมัติทุกประเภท/) },
   { file: "sports-head/bracket-builder", as: "sportsHead", path: "/staff/matches", act: click(/^เพิ่มสายการแข่ง$/) },
   { file: "sports-head/match-detail", as: "sportsHead", path: "/staff/matches/demo-match-sf2" },
-  { file: "sports-head/match-checkin-venue", as: "sportsHead", path: "/staff/match-checkin", act: click("โรงยิมเนเซียม") },
-  { file: "sports-head/match-checkin", as: "sportsHead", path: "/staff/match-checkin", act: async (page) => {
-    await page.getByText(/รอบรองชนะเลิศ · M2/).first().click();
+  { file: "sports-head/match-checkin", as: "sportsHead", path: "/staff/matches/demo-match-sf2", act: async (page) => {
+    await page.getByRole("region", { name: "รายงานตัว" }).scrollIntoViewIfNeeded();
     await page.waitForTimeout(800);
   } },
 

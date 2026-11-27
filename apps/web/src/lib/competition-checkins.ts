@@ -1,4 +1,4 @@
-// Match check-in: the venue kiosk's scans, the staff page's ticks and forfeits.
+// Match check-in: a match's kiosk scans, and the match page's ticks and forfeits.
 import { hc } from "hono/client";
 import type { ClientRequestOptions, InferResponseType } from "hono/client";
 
@@ -10,22 +10,29 @@ import { ApiError, toApiError } from "./leadership";
 /** The typed client the methods call. */
 export type Client = ReturnType<typeof hc<CompetitionCheckinRoutes>>;
 
-export type CheckinList = InferResponseType<Client["index"]["$get"], 200>;
-export type CheckinMatch = CheckinList["items"][number];
-export type CheckinSide = CheckinMatch["sides"][number];
-export type VenueCheckins = InferResponseType<Client["venues"][":venueId"]["$get"], 200>;
 export type MatchCheckins = InferResponseType<Client["matches"][":matchId"]["$get"], 200>;
 export type RosterSide = MatchCheckins["match"]["sides"][number];
 export type RosterEntry = RosterSide["roster"][number];
 
-type ScanSuccess = InferResponseType<Client["venues"][":venueId"]["scan"]["$post"], 200 | 201>;
+type ScanSuccess = InferResponseType<Client["matches"][":matchId"]["scan"]["$post"], 200 | 201>;
 export type ScanPerson = ScanSuccess["person"];
+/** A match with each side's count, without the rosters. */
+export type CheckinMatch = ScanSuccess["match"];
+export type CheckinSide = CheckinMatch["sides"][number];
 
 /** What one scan at the kiosk came to: checked in, already in, or why not. */
 export type ScanOutcome =
   | ScanSuccess
   | {
-      code: "ticket" | "unknown" | "no-match" | "not-in-lineup" | "too-early" | "closed";
+      code:
+        | "ticket"
+        | "unknown"
+        | "manual"
+        | "match-closed"
+        | "not-in-match"
+        | "not-in-lineup"
+        | "too-early"
+        | "closed";
       message: string;
       person?: ScanPerson | null;
       match?: CheckinMatch | null;
@@ -37,7 +44,9 @@ const OUTCOME_CODES = new Set([
   "duplicate",
   "ticket",
   "unknown",
-  "no-match",
+  "manual",
+  "match-closed",
+  "not-in-match",
   "not-in-lineup",
   "too-early",
   "closed",
@@ -60,22 +69,10 @@ export function createCompetitionCheckinsApi(
   });
 
   return {
-    /** Matches around now that still take check-ins, and every venue. */
-    async list(venueId?: string) {
-      const res = await client.index.$get({ query: venueId ? { venueId } : {} });
-      if (!res.ok) throw await toApiError(res);
-      return res.json();
-    },
-    /** What a venue's kiosk shows now. */
-    async venue(venueId: string) {
-      const res = await client.venues[":venueId"].$get({ param: { venueId } });
-      if (!res.ok) throw await toApiError(res);
-      return res.json();
-    },
     /** A scanned code; refusals the kiosk shows come back as outcomes, not errors. */
-    async scan(venueId: string, code: string): Promise<ScanOutcome> {
-      const res = await client.venues[":venueId"].scan.$post({
-        param: { venueId },
+    async scan(matchId: string, code: string): Promise<ScanOutcome> {
+      const res = await client.matches[":matchId"].scan.$post({
+        param: { matchId },
         json: { code },
       });
       const body: unknown = await res.json().catch(() => null);

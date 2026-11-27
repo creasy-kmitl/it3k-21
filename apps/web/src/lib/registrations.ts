@@ -28,6 +28,12 @@ export function createRegistrationsApi(baseUrl: string, fetchImpl?: ClientReques
       if (!res.ok) throw await toApiError(res);
       return res.json();
     },
+    /** The six-digit sport check-in code, or null before any sport registration. */
+    async checkinCode() {
+      const res = await client.me["checkin-code"].$get();
+      if (!res.ok) throw await toApiError(res);
+      return res.json();
+    },
     async register(json: RegistrationFields & StudentCard & { divisionId: string }) {
       const res = await client.index.$post({ json });
       if (!res.ok) throw await toApiError(res);

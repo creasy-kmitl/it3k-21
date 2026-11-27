@@ -21,7 +21,6 @@ export type NavMainItem = {
     | "/staff/athletes"
     | "/staff/teams"
     | "/staff/matches"
-    | "/staff/match-checkin"
     | "/staff/events"
     | "/staff/venues"
     | "/staff/qr-code"

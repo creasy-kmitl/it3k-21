@@ -4,6 +4,7 @@
 // not by CHECK constraints, so adding one never rebuilds a table.
 import { z } from "zod";
 
+import { parseScan } from "./event-rules";
 import { imageUrlSchema } from "./image-url";
 import { INSTITUTION_IDS } from "./profile";
 import { scoringConfigSchema } from "./scoring/config";
@@ -58,12 +59,40 @@ export const LINEUP_ROLE_LABELS: Record<LineupRole, string> = {
   sub: "ตัวสำรอง",
 };
 
-/** Kiosk: athletes scan in at the venue. Manual: staff tick them (esports, via Discord). */
+/** Kiosk: athletes scan in at the match's kiosk. Manual: staff tick them (esports, via Discord). */
 export const CHECKIN_MODES = ["kiosk", "manual"] as const;
 export type CheckinMode = (typeof CHECKIN_MODES)[number];
 
 export const CHECKIN_METHODS = ["scan", "manual"] as const;
 export type CheckinMethod = (typeof CHECKIN_METHODS)[number];
+
+/**
+ * An athlete's sport check-in code: six digits, short enough for a CODE128
+ * barcode (set C packs two digits per symbol) that any camera reads. Account
+ * ids never look like this, so the kiosk tells the two apart.
+ */
+export const SPORT_CHECKIN_CODE_PATTERN = /^\d{6}$/;
+
+/** A new random check-in code, 000000 to 999999, every value equally likely. */
+export function newSportCheckinCode(): string {
+  // 2^32 is not a multiple of a million: redraw the top sliver so no code is likelier.
+  const limit = 2 ** 32 - (2 ** 32 % 1_000_000);
+  const word = new Uint32Array(1);
+  do crypto.getRandomValues(word);
+  while ((word[0] as number) >= limit);
+  return String((word[0] as number) % 1_000_000).padStart(6, "0");
+}
+
+/** What a code scanned at a match's kiosk means: a ticket, a check-in code or an account id. */
+export function parseSportScan(
+  raw: string,
+): { ticketCode: string } | { checkinCode: string } | { userId: string } {
+  const scanned = parseScan(raw);
+  if ("userId" in scanned && SPORT_CHECKIN_CODE_PATTERN.test(scanned.userId)) {
+    return { checkinCode: scanned.userId };
+  }
+  return scanned;
+}
 
 /** Ways to order teams on equal points, tried in the order a division lists them. */
 export const TIEBREAKS = [

@@ -12,7 +12,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
-  Barcode,
   Building2,
   CalendarDays,
   CalendarRange,
@@ -25,6 +24,7 @@ import {
   Pencil,
   Phone,
   Pill,
+  ScanBarcode,
   Smile,
   Stethoscope,
   Ticket,
@@ -39,7 +39,7 @@ import { PageHeader } from "@/components/page-header";
 import { ParticipantShell } from "@/components/participant-shell";
 import { RoleBadge } from "@/components/role-badge";
 import { RegistrationRow, RegistrationRows } from "@/components/sport-registration-row";
-import { UserBarcode } from "@/components/user-barcode";
+import { Barcode, UserBarcode } from "@/components/user-barcode";
 import { useApis } from "@/lib/api-context";
 import { publicFileUrl } from "@/lib/files";
 import { requireParticipantSession } from "@/lib/participant-auth";
@@ -175,33 +175,30 @@ function MePage() {
                       <p className="text-sm">{institution.name}</p>
                     </div>
                   )}
+                  <div className="flex flex-col gap-2 border-t pt-4">
+                    <UserBarcode id={account.id} />
+                    <div className="flex items-center gap-2">
+                      <code className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                        {account.id}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="คัดลอกรหัสผู้ใช้"
+                        onClick={() =>
+                          void navigator.clipboard
+                            .writeText(account.id)
+                            .then(() => toast.success("คัดลอกรหัสแล้ว"))
+                            .catch(() => toast.error("คัดลอกไม่สำเร็จ"))
+                        }
+                      >
+                        <Copy aria-hidden />
+                      </Button>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 [&_svg]:size-5 [&_svg]:shrink-0">
-                    <Barcode className="text-primary" aria-hidden />
-                    รหัสผู้ใช้
-                  </CardTitle>
-                  <CardDescription>user_id</CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-3">
-                  <code className="break-all text-sm">{account.id}</code>
-                  <UserBarcode id={account.id} />
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      void navigator.clipboard
-                        .writeText(account.id)
-                        .then(() => toast.success("คัดลอกรหัสแล้ว"))
-                        .catch(() => toast.error("คัดลอกไม่สำเร็จ"))
-                    }
-                  >
-                    <Copy data-icon="inline-start" aria-hidden />
-                    คัดลอกรหัส
-                  </Button>
-                </CardContent>
-              </Card>
+              <SportCheckinCard />
             </div>
             <div className="flex flex-col gap-6">
               <Card>
@@ -238,6 +235,35 @@ function MePage() {
         )}
       </div>
     </ParticipantShell>
+  );
+}
+
+/**
+ * The six digits an athlete shows at a match's kiosk, as a barcode short
+ * enough for any camera. Hidden until the account has registered for a sport.
+ */
+export function SportCheckinCard() {
+  const { registrations } = useApis();
+  const code = useQuery({
+    queryKey: ["registrations", "me", "checkin-code"],
+    queryFn: () => registrations.checkinCode(),
+  });
+  const value = code.data?.code;
+  if (!value) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 [&_svg]:size-5 [&_svg]:shrink-0">
+          <ScanBarcode className="text-primary" aria-hidden />
+          รหัสเช็คอินกีฬา
+        </CardTitle>
+        <CardDescription>ใช้รายงานตัวก่อนแข่งที่ kiosk ของแมตช์</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col items-center gap-2">
+        <Barcode value={value} label={`บาร์โค้ดรหัสเช็คอินกีฬา ${value}`} height={72} width={3} />
+        <p className="font-mono text-3xl font-semibold tracking-[0.3em] tabular-nums">{value}</p>
+      </CardContent>
+    </Card>
   );
 }
 
