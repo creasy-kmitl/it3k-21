@@ -5,6 +5,7 @@ import {
   department,
   leadership,
   sportDivision,
+  uploadedFile,
   user,
   userProfile,
 } from "@it3k/db/schema/index";
@@ -119,6 +120,28 @@ export function createTestContext() {
     return id;
   }
 
+  /**
+   * A finished upload of `ownerId`, a JPEG unless `contentType` says otherwise,
+   * e.g. the student card a sport registration needs. Seeding the same id again
+   * does nothing.
+   */
+  async function seedUpload(ownerId: string, id: string, contentType = "image/jpeg") {
+    await db
+      .insert(uploadedFile)
+      .values({
+        id,
+        ownerId,
+        key: `users/${ownerId}/${id}`,
+        name: "upload.jpg",
+        contentType,
+        size: 1000,
+        state: "ready",
+        expiresAt: new Date(),
+      })
+      .onConflictDoNothing();
+    return id;
+  }
+
   /** The id of a seeded sport division, by code. */
   async function divisionId(code: string) {
     const [row] = await db
@@ -158,7 +181,19 @@ export function createTestContext() {
     };
   }
 
-  return { db, sqlite, hooks, deps, mail, departmentId, seedUser, seedParticipant, divisionId, as };
+  return {
+    db,
+    sqlite,
+    hooks,
+    deps,
+    mail,
+    departmentId,
+    seedUser,
+    seedParticipant,
+    seedUpload,
+    divisionId,
+    as,
+  };
 }
 
 /** Parsed JSON body, typed loosely enough for `toEqual` assertions. */

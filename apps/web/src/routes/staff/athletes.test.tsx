@@ -24,6 +24,7 @@ function item(overrides: Partial<AthleteItem> = {}): AthleteItem {
     facebookUrl: "",
     discordUserId: null,
     discordUsername: null,
+    studentCardFileId: null,
     reviewNote: null,
     reviewedBy: null,
     reviewedAt: null,

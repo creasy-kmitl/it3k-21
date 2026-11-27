@@ -1,8 +1,10 @@
 // An athlete's own sport registrations. Registering needs a submitted
-// participant profile; the first registration also records the student id.
+// participant profile, the student id and a photo of the student card. Both
+// are remembered on the athlete row and offered again on the next form.
+import type { Database } from "@it3k/db";
 import type { Institution } from "@it3k/db/profile";
 import { user } from "@it3k/db/schema/auth";
-import { userProfile } from "@it3k/db/schema/profile";
+import { uploadedFile, userProfile } from "@it3k/db/schema/profile";
 import {
   athlete,
   missingFields,
@@ -12,6 +14,7 @@ import {
   studentIdInput,
   applicableFields,
 } from "@it3k/db/schema/sport";
+import { MAX_PHOTO_SIZE, PHOTO_TYPES } from "@it3k/db/profile";
 import { type SQL, and, asc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -27,7 +30,7 @@ import {
 import { limitJsonBody } from "../../middleware/json-body-limit";
 import { type MailDeps, queueEmails, recipientOf } from "../../email/mailer";
 import { validate } from "../../middleware/validation";
-import { activeAccount } from "../profile";
+import { activeAccount, ownedPhoto } from "../profile";
 import {
   approvedCounts,
   type DiscordDeps,
@@ -41,12 +44,20 @@ import {
 
 const idParam = z.strictObject({ id: z.string().min(1) });
 
+// Optional in the schema so a missing value gets a field message, not a raw 400.
+const studentCard = {
+  // Left out: keep the remembered student id (required before there is one).
+  studentId: studentIdInput.optional(),
+  studentCardFileId: z.string().min(1).max(100).optional(),
+};
 const registerInput = registrationFields.extend({
   divisionId: z.string().min(1),
-  // Required on the first registration only; ignored afterwards.
-  studentId: studentIdInput.optional(),
+  ...studentCard,
 });
-const updateInput = registrationFields.extend({ version: z.number().int().positive() });
+const updateInput = registrationFields.extend({
+  version: z.number().int().positive(),
+  ...studentCard,
+});
 const withdrawInput = z.strictObject({ version: z.number().int().positive() });
 
 const NO_PROFILE = "ส่งข้อมูลผู้เข้าร่วมให้ครบก่อนสมัครกีฬา";
@@ -55,6 +66,57 @@ const CLOSED = "ประเภทนี้ปิดรับสมัครแ�
 const CLOSED_SINCE = "ประเภทนี้เพิ่งปิดรับสมัคร กรุณาโหลดใหม่";
 const NEEDS_DISCORD = "เชื่อมบัญชี Discord ก่อนสมัครกีฬา Esports";
 const DISCORD_OFF = "ยังไม่เปิดให้เชื่อม Discord จึงสมัคร Esports ไม่ได้ในตอนนี้";
+
+const NO_STUDENT_ID = "กรอกรหัสนักศึกษา";
+const NO_CARD = "แนบรูปบัตรนักศึกษา";
+const BAD_CARD = "เลือกรูปบัตรนักศึกษาที่อัปโหลดสำเร็จ (JPEG, PNG หรือ WebP ไม่เกิน 10 MB)";
+
+/** Whether `fileId` is a finished image upload of `userId`, for a friendly answer. */
+async function isOwnedImage(db: Database, fileId: string, userId: string) {
+  const [file] = await db
+    .select({ contentType: uploadedFile.contentType, size: uploadedFile.size })
+    .from(uploadedFile)
+    .where(
+      and(
+        eq(uploadedFile.id, fileId),
+        eq(uploadedFile.ownerId, userId),
+        eq(uploadedFile.state, "ready"),
+      ),
+    );
+  return (
+    !!file && PHOTO_TYPES.some((type) => type === file.contentType) && file.size <= MAX_PHOTO_SIZE
+  );
+}
+
+/**
+ * Checks the student id and card a registration form sent against the
+ * athlete's remembered ones: the missing ones as field issues, or what to save.
+ */
+async function studentCardFor(
+  db: Database,
+  userId: string,
+  remembered: { studentId: string } | undefined,
+  input: { studentId?: string; studentCardFileId?: string },
+) {
+  const studentId = input.studentId ?? remembered?.studentId;
+  const cardId = input.studentCardFileId;
+  const missing: Record<string, string> = {};
+  if (!studentId) missing.studentId = NO_STUDENT_ID;
+  if (!cardId) missing.studentCardFileId = NO_CARD;
+  else if (!(await isOwnedImage(db, cardId, userId))) missing.studentCardFileId = BAD_CARD;
+  return { missing, studentId, cardId };
+}
+
+/** Saves the student id and card on the athlete row, for the next registration. */
+function rememberStudentCard(db: Database, userId: string, studentId: string, cardId: string) {
+  return db
+    .insert(athlete)
+    .values({ userId, studentId, studentCardFileId: cardId })
+    .onConflictDoUpdate({
+      target: athlete.userId,
+      set: { studentId, studentCardFileId: cardId },
+    });
+}
 
 const fieldIssues = (missing: Record<string, string>) => ({
   message: Object.values(missing)[0] ?? "ข้อมูลไม่ถูกต้อง",
@@ -98,6 +160,8 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps & MailDep
           approvedCounts: institution ? await approvedCounts(db, institution) : {},
           // .at(): indexing an array leaves undefined out of the type.
           studentId: athleteRows.at(0)?.studentId ?? null,
+          // The card last attached, offered again on the next registration.
+          studentCardFileId: athleteRows.at(0)?.studentCardFileId ?? null,
           discord: {
             enabled: deps.discordEnabled,
             linked: discord
@@ -121,7 +185,12 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps & MailDep
     .post("/", validate("json", registerInput), async (c) => {
       const db = c.var.db;
       const me = c.var.user;
-      const { divisionId, studentId, ...input } = c.req.valid("json");
+      const {
+        divisionId,
+        studentId: studentIdInput,
+        studentCardFileId,
+        ...input
+      } = c.req.valid("json");
 
       const [[profile], [athleteRow], [division]] = await Promise.all([
         db
@@ -135,13 +204,17 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps & MailDep
       const institution: Institution | null =
         me.institution ?? (profile.values.institution || null);
       if (!institution) return c.json({ message: NO_INSTITUTION }, 409);
-      if (!athleteRow && !studentId) {
-        return c.json(fieldIssues({ studentId: "กรอกรหัสนักศึกษา" }), 400);
-      }
       if (!division) return c.json({ message: "ไม่พบประเภทนี้" }, 404);
       if (!division.registrationOpen) return c.json({ message: CLOSED }, 409);
-      const missing = missingFields(division, input);
-      if (Object.keys(missing).length > 0) return c.json(fieldIssues(missing), 400);
+      const card = await studentCardFor(db, me.id, athleteRow, {
+        studentId: studentIdInput,
+        studentCardFileId,
+      });
+      const missing = { ...card.missing, ...missingFields(division, input) };
+      const { studentId, cardId } = card;
+      if (Object.keys(missing).length > 0 || !studentId || !cardId) {
+        return c.json(fieldIssues(missing), 400);
+      }
       const fields = applicableFields(division, input);
 
       let discordUserId: string | null = null;
@@ -159,6 +232,7 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps & MailDep
       // No limit check here: the limit counts approvals, so it is checked on review.
       const stillOpen = and(
         activeAccount(),
+        ownedPhoto(cardId, me.id),
         me.institution ? eq(user.institution, me.institution) : sql`${user.institution} is null`,
         sql`exists (select 1 from ${sportDivision} where ${sportDivision.id} = ${divisionId} and ${sportDivision.registrationOpen} = 1)`,
       );
@@ -171,6 +245,7 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps & MailDep
         ...fields,
         discordUserId,
         discordUsername,
+        studentCardFileId: cardId,
       };
       try {
         await db.batch([
@@ -179,18 +254,29 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps & MailDep
           ...(me.institution
             ? []
             : [db.update(user).set({ institution }).where(eq(user.id, me.id))]),
-          ...(athleteRow || !studentId
-            ? []
-            : [db.insert(athlete).values({ userId: me.id, studentId })]),
+          rememberStudentCard(db, me.id, studentId, cardId),
           db.insert(sportRegistration).values(values),
-          logChange(db, me, values, "register", diff({}, { divisionId, institution, ...fields })),
+          logChange(
+            db,
+            me,
+            values,
+            "register",
+            diff<Record<string, unknown>>(
+              { studentId: athleteRow?.studentId },
+              { divisionId, institution, ...fields, studentId, studentCardFileId: cardId },
+            ),
+          ),
         ]);
       } catch (error) {
         const conflict = registrationConflict(error);
         if (conflict) return c.json({ message: conflict }, 409);
-        if (constraintError(error) === "stale") return c.json({ message: CLOSED_SINCE }, 409);
-        // A first registration racing another one: both insert the athlete row.
-        if (constraintError(error) === "unique") return c.json({ message: STALE }, 409);
+        if (constraintError(error) === "stale") {
+          const gone = !(await isOwnedImage(db, cardId, me.id));
+          return c.json(
+            gone ? fieldIssues({ studentCardFileId: BAD_CARD }) : { message: CLOSED_SINCE },
+            gone ? 400 : 409,
+          );
+        }
         throw error;
       }
       const [created] = await selectRegistrations(db).where(eq(sportRegistration.id, id));
@@ -225,18 +311,37 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps & MailDep
       const db = c.var.db;
       const me = c.var.user;
       const { id } = c.req.valid("param");
-      const { version, ...input } = c.req.valid("json");
+      const {
+        version,
+        studentId: studentIdInput,
+        studentCardFileId,
+        ...input
+      } = c.req.valid("json");
       const [row] = await db
-        .select({ registration: sportRegistration, division: sportDivision })
+        .select({
+          registration: sportRegistration,
+          division: sportDivision,
+          studentId: athlete.studentId,
+        })
         .from(sportRegistration)
         .innerJoin(sportDivision, eq(sportDivision.id, sportRegistration.divisionId))
+        .leftJoin(athlete, eq(athlete.userId, sportRegistration.userId))
         .where(and(eq(sportRegistration.id, id), eq(sportRegistration.userId, me.id)));
       if (!row) return c.json({ message: "ไม่พบการสมัครนี้" }, 404);
       if (row.registration.status !== "review") {
         return c.json({ message: "แก้ไขได้เฉพาะตอนรอตรวจสอบ ติดต่อฝ่ายทะเบียนเพื่อแก้ไข" }, 409);
       }
-      const missing = missingFields(row.division, input);
-      if (Object.keys(missing).length > 0) return c.json(fieldIssues(missing), 400);
+      const card = await studentCardFor(
+        db,
+        me.id,
+        row.studentId === null ? undefined : { studentId: row.studentId },
+        { studentId: studentIdInput, studentCardFileId },
+      );
+      const missing = { ...card.missing, ...missingFields(row.division, input) };
+      const { studentId, cardId } = card;
+      if (Object.keys(missing).length > 0 || !studentId || !cardId) {
+        return c.json(fieldIssues(missing), 400);
+      }
       const fields = applicableFields(row.division, input);
       let discordUpdate = {};
       if (row.division.requiresGameProfile) {
@@ -248,20 +353,34 @@ export const createRegistrationRoutes = (deps: RouteDeps & DiscordDeps & MailDep
           discordUsername: profile?.username ?? row.registration.discordUsername,
         };
       }
-      const changes = diff(row.registration, { ...fields, ...discordUpdate });
+      const changes = diff(
+        { ...row.registration, studentId: row.studentId },
+        { ...fields, ...discordUpdate, studentId, studentCardFileId: cardId },
+      );
       try {
         await db.batch([
-          abortUnless(db, me.id, and(activeAccount(), ownReviewAt(id, me.id, version)) ?? sql`0`),
+          abortUnless(
+            db,
+            me.id,
+            and(activeAccount(), ownedPhoto(cardId, me.id), ownReviewAt(id, me.id, version)) ??
+              sql`0`,
+          ),
           db
             .update(sportRegistration)
-            .set({ ...fields, ...discordUpdate, version: version + 1 })
+            .set({ ...fields, ...discordUpdate, studentCardFileId: cardId, version: version + 1 })
             .where(eq(sportRegistration.id, id)),
+          rememberStudentCard(db, me.id, studentId, cardId),
           logChange(db, me, row.registration, "update", changes),
         ]);
       } catch (error) {
         const conflict = registrationConflict(error);
         if (conflict) return c.json({ message: conflict }, 409);
-        if (constraintError(error) === "stale") return c.json({ message: STALE }, 409);
+        if (constraintError(error) === "stale") {
+          if (!(await isOwnedImage(db, cardId, me.id))) {
+            return c.json(fieldIssues({ studentCardFileId: BAD_CARD }), 400);
+          }
+          return c.json({ message: STALE }, 409);
+        }
         throw error;
       }
       const [updated] = await selectRegistrations(db).where(eq(sportRegistration.id, id));

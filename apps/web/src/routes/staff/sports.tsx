@@ -20,6 +20,7 @@ import {
   ArrowDownUp,
   DoorOpen,
   Gamepad2,
+  IdCard,
   Hash,
   ImageIcon,
   Layers,
@@ -521,6 +522,13 @@ function DivisionForm({
         />
       </div>
       <div className="flex flex-col gap-3 rounded-2xl border p-3">
+        {/* Not a setting: every registration needs the card, so it only shows here. */}
+        <Field orientation="horizontal">
+          <Checkbox id="division-student-card" checked disabled />
+          <FormLabel htmlFor="division-student-card" icon={IdCard} className="font-normal">
+            ต้องแนบรูปบัตรนักศึกษา (ทุกประเภท)
+          </FormLabel>
+        </Field>
         {flags.map(([key, label, icon]) => (
           <Field key={key} orientation="horizontal">
             <Checkbox

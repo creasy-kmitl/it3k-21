@@ -81,6 +81,7 @@ function registration(overrides: Partial<MyRegistration> = {}): MyRegistration {
     facebookUrl: "",
     discordUserId: null,
     discordUsername: null,
+    studentCardFileId: null,
     reviewNote: null,
     reviewedBy: null,
     reviewedAt: null,
@@ -114,6 +115,7 @@ function mine(overrides: Partial<MyRegistrations> = {}): MyRegistrations {
     institution: "kmutt",
     approvedCounts: {},
     studentId: null,
+    studentCardFileId: null,
     discord: { enabled: true, linked: null },
     registrations: [],
     ...overrides,
@@ -127,12 +129,34 @@ function setup(
 ) {
   const api = fakeRegistrationsApi({ me: async () => data, ...overrides });
   const sports = fakeSportsApi({ list: async () => ({ items, canManage: false }) });
+  // The library the student card is picked from.
+  const files = {
+    list: async () => ({
+      items: [
+        {
+          id: "f-new-card",
+          name: "card.jpg",
+          size: 100,
+          contentType: "image/jpeg",
+          url: "/card.jpg",
+          createdAt: NOW,
+        },
+      ],
+      uploads: [],
+      page: 1,
+      hasMore: false,
+      used: 100,
+      limit: 1024 ** 3,
+    }),
+    remove: async () => ({ success: true as const }),
+    upload: async () => ({ id: "00000000-0000-4000-8000-000000000000" as const }),
+  };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // In a router, because the page links to /signup.
   return renderAtRoot(() => (
     <QueryClientProvider client={client}>
-      <ApiProvider value={fakeApis({ registrations: api, sports })}>
-        <SportsRegistrationPage />
+      <ApiProvider value={fakeApis({ registrations: api, sports, files })}>
+        <SportsRegistrationPage userId="u-1" />
       </ApiProvider>
     </QueryClientProvider>
   ));
@@ -163,7 +187,7 @@ describe("/sports", () => {
     expect(view.getByText("กีฬาฟุตบอล")).toBeTruthy();
   });
 
-  test("the first registration asks for the student id and the shirt number", async () => {
+  test("the first registration asks for the student id, the card and the shirt number", async () => {
     const registered: unknown[] = [];
     const view = await setup(mine(), {
       register: async (json) => {
@@ -175,10 +199,15 @@ describe("/sports", () => {
     fireEvent.click(view.getByRole("button", { name: "สมัคร ฟุตบอลชาย" }));
     fireEvent.click(await view.findByRole("button", { name: "สมัคร" }));
     expect(await view.findByText("กรอกเบอร์เสื้อ")).toBeTruthy();
+    expect(view.getByText("แนบรูปบัตรนักศึกษา")).toBeTruthy();
     expect(registered).toEqual([]);
 
     fireEvent.change(view.getByLabelText("รหัสนักศึกษา"), { target: { value: "65070001" } });
     fireEvent.change(view.getByLabelText("เบอร์เสื้อ"), { target: { value: "7" } });
+    fireEvent.click(view.getByRole("button", { name: "แนบรูปบัตรนักศึกษา" }));
+    fireEvent.click(await view.findByRole("button", { name: /card\.jpg/ }));
+    fireEvent.click(view.getByRole("button", { name: "ใช้รูปนี้" }));
+    await waitFor(() => expect(view.getByAltText("รูปบัตรนักศึกษาที่แนบ")).toBeTruthy());
     fireEvent.click(view.getByRole("button", { name: "สมัคร" }));
     await waitFor(() =>
       expect(registered).toEqual([
@@ -190,7 +219,35 @@ describe("/sports", () => {
           facebookUrl: "",
           divisionId: "d-football",
           studentId: "65070001",
+          studentCardFileId: "f-new-card",
         },
+      ]),
+    );
+  });
+
+  test("the remembered student id and card are filled in and can be changed", async () => {
+    const registered: { studentId?: string; studentCardFileId?: string }[] = [];
+    const view = await setup(mine({ studentId: "65070001", studentCardFileId: "f-old-card" }), {
+      register: async (json) => {
+        registered.push(json);
+        return registration();
+      },
+    });
+    await openCatalog(view);
+    fireEvent.click(view.getByRole("button", { name: "สมัคร ฟุตบอลชาย" }));
+    const dialog = await view.findByRole("dialog", { name: "สมัคร ฟุตบอลชาย" });
+    const studentId = within(dialog).getByLabelText("รหัสนักศึกษา") as HTMLInputElement;
+    expect(studentId.value).toBe("65070001");
+    const card = within(dialog).getByAltText("รูปบัตรนักศึกษาที่แนบ") as HTMLImageElement;
+    expect(card.src).toContain("f-old-card");
+    expect(within(dialog).getByText(/ใช้รูปจากการสมัครครั้งก่อน/)).toBeTruthy();
+
+    fireEvent.change(studentId, { target: { value: "65070002" } });
+    fireEvent.change(within(dialog).getByLabelText("เบอร์เสื้อ"), { target: { value: "7" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "สมัคร" }));
+    await waitFor(() =>
+      expect(registered).toMatchObject([
+        { studentId: "65070002", studentCardFileId: "f-old-card" },
       ]),
     );
   });
@@ -210,7 +267,6 @@ describe("/sports", () => {
 
     fireEvent.click(view.getByRole("button", { name: "สมัคร ROV" }));
     const dialog = await view.findByRole("dialog", { name: "สมัคร ROV" });
-    expect(within(dialog).queryByLabelText("รหัสนักศึกษา")).toBeNull();
     expect(within(dialog).getByLabelText("ชื่อภายในเกม (IGN)")).toBeTruthy();
     const submit = within(dialog).getByRole("button", { name: "สมัคร" }) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);

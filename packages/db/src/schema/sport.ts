@@ -134,6 +134,10 @@ export const athlete = sqliteTable("athlete", {
     .primaryKey()
     .references(() => user.id, { onDelete: "cascade" }),
   studentId: text("student_id").notNull(),
+  // The student card last attached (an uploaded_file id), offered again on the
+  // next registration. No foreign key: the files route refuses to delete a
+  // card still named here or on a registration.
+  studentCardFileId: text("student_card_file_id"),
   ...timestamps(),
 });
 
@@ -166,6 +170,9 @@ export const sportRegistration = sqliteTable(
     // Snapshot of the linked Discord account when the athlete last saved.
     discordUserId: text("discord_user_id"),
     discordUsername: text("discord_username"),
+    // The student card attached to this registration (an uploaded_file id).
+    // Required on every registration since 2026-11-27; older ones have none.
+    studentCardFileId: text("student_card_file_id"),
     // Shown to the athlete; required when rejecting.
     reviewNote: text("review_note"),
     reviewedBy: text("reviewed_by").references(() => user.id, { onDelete: "set null" }),

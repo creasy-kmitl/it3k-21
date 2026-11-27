@@ -83,6 +83,7 @@ describe("transactional emails", () => {
 
   test("a sport registration queues a confirmation, and a broken queue does not fail it", async () => {
     await t.seedParticipant("a1");
+    await t.seedUpload("a1", "card-a1");
     const app = createRegistrationRoutes({
       ...t.deps,
       discordEnabled: false,
@@ -97,6 +98,7 @@ describe("transactional emails", () => {
             json: {
               divisionId,
               studentId: "65070001",
+              studentCardFileId: "card-a1",
               shirtNumber: null,
               badmintonRank: null,
               ign: "",
