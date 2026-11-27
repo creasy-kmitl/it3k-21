@@ -262,6 +262,7 @@ db.transaction((tx) => {
   register(p07, "basketball-5x5-male", "rejected", { shirtNumber: 23 });
   register(p08, "petanque-female", "review");
   register(p10, "athletics-100m-female", "approved");
+  register(p10, "badminton-singles-female", "approved", { badmintonRank: 1 });
   register(p03, "athletics-100m-male", "review");
   for (const [userId, studentId] of Object.entries(studentIds)) {
     tx.insert(s.athlete).values({ userId, studentId }).run();
@@ -485,9 +486,23 @@ db.transaction((tx) => {
     startedAt: at(-1, "10:05"),
     finishedAt: at(-1, "10:50"),
   });
-  match("demo-match-sf2", 2, "รอบรองชนะเลิศ", at(1, "10:00"));
+  // Starts soon after the seed runs, so its check-in is open for the screenshots.
+  const soon = new Date(Math.ceil((Date.now() + 30 * 60_000) / 300_000) * 300_000);
+  match("demo-match-sf2", 2, "รอบรองชนะเลิศ", soon);
   match("demo-match-final", 3, "ชิงชนะเลิศ", at(2, "14:00"));
   match("demo-match-third", 4, "ชิงอันดับ 3", at(2, "13:00"));
+  const member = (teamId: string, p: Persona, code: string) =>
+    tx
+      .insert(s.competitionTeamMember)
+      .values({
+        teamId,
+        registrationId: `demo-reg-${p.id}-${code}`,
+        userId: p.id,
+        displayName: p.name.split(" ")[0] ?? p.name,
+      })
+      .run();
+  member(kmitl1, p02, "badminton-singles-female");
+  member(kmutt1, p10, "badminton-singles-female");
   tx.insert(s.competitionMatchParticipant)
     .values([
       { matchId: "demo-match-sf1", slot: 1, teamId: kmitl1, score: 2, outcome: "win", rank: 1 },
