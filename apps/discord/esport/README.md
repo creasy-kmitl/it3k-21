@@ -45,7 +45,17 @@ scp apps/discord/esport/deploy/it3k-esport-bot-update.{service,timer} suwizx@100
 ssh suwizx@100.96.0.14 'systemctl --user daemon-reload && systemctl --user enable --now it3k-esport-bot-update.timer'
 ```
 
-แล้ววาง `.env` ที่ `~/it3k-esport-bot/.env` (ไม่มีไฟล์นี้ timer จะไม่ทำอะไร) ดู log: `journalctl --user -u it3k-esport-bot-update -f` และ `docker compose -f ~/it3k-esport-bot/compose.yaml logs -f`
+image บน GHCR เป็น private จึงต้องให้ VM login ก่อน ใช้ gh ของ VM เอง (ไม่ต้องย้าย token จากเครื่องอื่น):
+
+```bash
+ssh suwizx@100.96.0.14
+gh auth refresh -h github.com -s read:packages   # ครั้งแรก: เพิ่มสิทธิ์อ่าน package ให้ token ของ gh
+gh auth token | docker login ghcr.io -u suwizx --password-stdin
+```
+
+login นี้ผูกกับ token ของ gh บน VM ถ้า logout gh หรือ token ถูกเพิกถอน timer จะ pull ไม่ได้ (`denied` ใน journal) ให้รันสองบรรทัดล่างซ้ำ
+
+แล้ววาง `.env` ที่ `~/it3k-esport-bot/.env` (ไม่มีไฟล์นี้ timer จะไม่ทำอะไร) บน VM ใช้ mode `dev` ไม่ได้ (ชี้ไป localhost) จึงตั้ง `DEFAULT_MODE=stg` หรือ `prod` พร้อม token ของ stage นั้น ถ้าย้ายมาจากเครื่องอื่น ให้ copy `data/bot.sqlite` เข้า volume `it3k-esport-bot_data` ด้วย ไม่งั้นบอทจะไม่รู้จักช่องและยศที่ `/init` สร้างไว้ ดู log: `journalctl --user -u it3k-esport-bot-update -f` และ `docker compose -f ~/it3k-esport-bot/compose.yaml logs -f`
 
 ย้อนเวอร์ชัน: แก้ `image:` ใน `compose.yaml` บน VM เป็น `:sha-<commit>` แล้ว `docker compose up -d` (กลับเป็น `:latest` เมื่อแก้เสร็จ)
 
