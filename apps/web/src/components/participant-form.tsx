@@ -17,16 +17,6 @@ import {
   CardTitle,
 } from "@it3k/ui/components/card";
 import {
-  Combobox,
-  ComboboxCollection,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxGroup,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-} from "@it3k/ui/components/combobox";
-import {
   Field,
   FieldDescription,
   FieldError,
@@ -34,14 +24,6 @@ import {
   FieldLabel,
 } from "@it3k/ui/components/field";
 import { Input } from "@it3k/ui/components/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@it3k/ui/components/select";
 import { Spinner } from "@it3k/ui/components/spinner";
 import { Textarea } from "@it3k/ui/components/textarea";
 import { useForm } from "@tanstack/react-form";
@@ -76,6 +58,8 @@ import type { MyProfile } from "@/lib/profile";
 import { isAccountChanged, isSignedOut } from "@/lib/leadership";
 import { useSignOutGuard } from "@/lib/sign-out-guard";
 import { FileLibrary } from "./file-library";
+import { IconSelect } from "./icon-select";
+import { InstitutionLogo } from "./institution-logo";
 import { useEndSession } from "./session-boundary";
 
 const PERSONAL = [
@@ -359,33 +343,21 @@ export function ParticipantForm({
                           icon={IdCard}
                           required
                         />
-                        <Select
+                        <IconSelect<(typeof PREFIXES)[number]>
+                          id="prefix"
+                          label="คำนำหน้า"
+                          placeholder="เลือกคำนำหน้า"
                           items={PREFIXES.map((value) => ({ value, label: value }))}
                           value={field.state.value || null}
-                          onValueChange={(value: (typeof PREFIXES)[number] | null) => {
+                          onChange={(value) => {
                             field.handleChange(value ?? "");
                             field.handleBlur();
                           }}
                           disabled={submitting}
-                        >
-                          <SelectTrigger
-                            id="prefix"
-                            aria-invalid={invalid}
-                            aria-required
-                            aria-describedby="prefix-requirement"
-                          >
-                            <SelectValue placeholder="เลือกคำนำหน้า" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              {PREFIXES.map((value) => (
-                                <SelectItem key={value} value={value}>
-                                  {value}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
+                          invalid={invalid}
+                          required
+                          describedBy="prefix-requirement"
+                        />
                         {invalid && <FieldError errors={field.state.meta.errors} />}
                       </Field>
                     );
@@ -433,54 +405,43 @@ export function ParticipantForm({
                           icon={GraduationCap}
                           required
                         />
-                        <Combobox<(typeof INSTITUTIONS)[number]>
-                          items={[...INSTITUTIONS]}
-                          value={selected}
-                          itemToStringLabel={(item) => item.name}
-                          itemToStringValue={(item) => item.id}
-                          onValueChange={(item) => {
-                            field.handleChange(item?.id ?? "");
+                        <IconSelect<(typeof INSTITUTIONS)[number]["id"]>
+                          id="institution"
+                          label="มหาวิทยาลัย/สถาบัน"
+                          placeholder="เลือกมหาวิทยาลัย/สถาบัน"
+                          items={INSTITUTIONS.map((item) => ({
+                            value: item.id,
+                            label: item.name,
+                            triggerLabel: item.name,
+                            icon: <InstitutionLogo institution={item} className="size-5" />,
+                            content: (
+                              <>
+                                <img
+                                  src={item.logo}
+                                  alt=""
+                                  className="size-8 shrink-0 object-contain"
+                                />
+                                <span className="whitespace-normal">{item.name}</span>
+                              </>
+                            ),
+                          }))}
+                          value={selected?.id ?? null}
+                          onChange={(id) => {
+                            field.handleChange(id ?? "");
                             field.handleBlur();
                           }}
+                          onBlur={field.handleBlur}
                           disabled={submitting || !!lockedInstitution}
-                        >
-                          <ComboboxInput
-                            id="institution"
-                            disabled={submitting || !!lockedInstitution}
-                            aria-invalid={invalid}
-                            aria-required
-                            aria-describedby="institution-requirement"
-                            placeholder="ค้นหามหาวิทยาลัย/สถาบัน"
-                            triggerLabel="เลือกมหาวิทยาลัย/สถาบัน"
-                            clearLabel="ล้างสถาบัน"
-                            onBlur={field.handleBlur}
-                          />
-                          {selected && (
-                            <span className="mt-2 flex items-center gap-2 text-sm">
-                              <img src={selected.logo} alt="" className="size-8 object-contain" />
-                              {selected.short}
-                            </span>
-                          )}
-                          <ComboboxContent>
-                            <ComboboxEmpty>ไม่พบสถาบัน</ComboboxEmpty>
-                            <ComboboxList>
-                              <ComboboxGroup>
-                                <ComboboxCollection>
-                                  {(item: (typeof INSTITUTIONS)[number]) => (
-                                    <ComboboxItem key={item.id} value={item}>
-                                      <img
-                                        src={item.logo}
-                                        alt=""
-                                        className="size-8 shrink-0 object-contain"
-                                      />
-                                      <span className="whitespace-normal">{item.name}</span>
-                                    </ComboboxItem>
-                                  )}
-                                </ComboboxCollection>
-                              </ComboboxGroup>
-                            </ComboboxList>
-                          </ComboboxContent>
-                        </Combobox>
+                          invalid={invalid}
+                          required
+                          describedBy="institution-requirement"
+                        />
+                        {selected && (
+                          <span className="flex items-center gap-2 text-sm">
+                            <img src={selected.logo} alt="" className="size-8 object-contain" />
+                            {selected.short}
+                          </span>
+                        )}
                         <FieldDescription>
                           {lockedInstitution
                             ? "เปลี่ยนสถาบันเองไม่ได้แล้ว หากไม่ถูกต้อง ติดต่อฝ่ายทะเบียน"

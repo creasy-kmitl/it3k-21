@@ -118,7 +118,7 @@ describe("/staff/matches", () => {
     const { view, list } = await setup([listItem()], true);
     expect(await view.findByRole("button", { name: /สร้างแมตช์/ })).toBeTruthy();
     expect(view.queryByRole("button", { name: /จัดตาราง/ })).toBeNull();
-    await choose(view.getByRole("combobox", { name: "ประเภท" }), "ฟุตบอล · ฟุตซอลหญิง");
+    await choose(view.getByRole("combobox", { name: "ประเภท" }), "ฟุตซอลหญิง");
     await waitFor(() => expect(list).toHaveBeenLastCalledWith({ divisionId: "d-futsal" }));
   });
 
@@ -205,7 +205,7 @@ describe("/staff/matches", () => {
     expect(
       await within(dialog).findByText("เลือกประเภท", { selector: "[data-slot=field-error]" }),
     ).toBeTruthy();
-    await choose(within(dialog).getByRole("combobox", { name: "ประเภท" }), "ฟุตบอล · ฟุตบอลชาย");
+    await choose(within(dialog).getByRole("combobox", { name: "ประเภท" }), "ฟุตบอลชาย");
     fireEvent.click(within(dialog).getByRole("button", { name: /สร้าง 8 แมตช์/ }));
     await waitFor(() =>
       expect(createBracket).toHaveBeenCalledWith({

@@ -34,13 +34,6 @@ import {
 } from "@it3k/ui/components/dialog";
 import { Input } from "@it3k/ui/components/input";
 import { Label } from "@it3k/ui/components/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@it3k/ui/components/select";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import {
   Table,
@@ -54,16 +47,29 @@ import { Textarea } from "@it3k/ui/components/textarea";
 import { cn } from "@it3k/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Eye, History, Mail, Search, Send, UserPlus, Users, X } from "lucide-react";
+import {
+  CalendarDays,
+  Eye,
+  History,
+  Mail,
+  Search,
+  Send,
+  Trophy,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { ErrorState } from "@/components/error-state";
+import { IconSelect, type IconSelectItem } from "@/components/icon-select";
 import { LoadingButton } from "@/components/loading-button";
 import { PageHeader } from "@/components/page-header";
 import { EMPTY_DOC, RichTextEditor } from "@/components/rich-text-editor";
 import { SegmentedControl } from "@/components/segmented-control";
+import { SportMark } from "@/components/sport-art";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useApis } from "@/lib/api-context";
 import {
@@ -333,11 +339,22 @@ function AudiencePicker({
 }) {
   const set = (patch: Partial<AudienceDraft>) => onChange({ ...value, ...patch });
   const sport = options.sports.find((item) => item.id === value.sportId);
-  const sportItems = [
-    { value: null, label: "ทุกกีฬา" },
-    ...options.sports.map((item) => ({ value: item.id, label: item.name })),
+  const sportItems: IconSelectItem<string>[] = [
+    { value: null, label: "ทุกกีฬา", icon: <Trophy aria-hidden className="text-muted-foreground" /> },
+    ...options.sports.map((item) => ({
+      value: item.id,
+      label: item.name,
+      icon: <SportMark icon={item.icon} seed={item.id} />,
+    })),
   ];
-  const eventItems = options.events.map((item) => ({ value: item.id, label: item.name }));
+  // Newest first from the server; upcoming ones are the likely audience.
+  const now = Date.now();
+  const eventItems: IconSelectItem<string>[] = options.events.map((item) => ({
+    value: item.id,
+    label: item.name,
+    icon: <CalendarDays aria-hidden className="text-muted-foreground" />,
+    group: Date.parse(item.startAt) >= now ? "กำลังจะมาถึง" : "ผ่านไปแล้ว",
+  }));
 
   const institutions =
     value.kind === "manual" ? null : (
@@ -372,22 +389,13 @@ function AudiencePicker({
       {value.kind === "athletes" && (
         <>
           <Row label="กีฬา">
-            <Select
+            <IconSelect
+              label="กีฬา"
               items={sportItems}
               value={value.sportId}
-              onValueChange={(next: string | null) => set({ sportId: next, divisionIds: [] })}
-            >
-              <SelectTrigger aria-label="กีฬา" className="sm:w-64">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {sportItems.map((item) => (
-                  <SelectItem key={item.value ?? "all"} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(next) => set({ sportId: next, divisionIds: [] })}
+              className="sm:w-64"
+            />
           </Row>
           {sport && sport.divisions.length > 0 && (
             <Row label="ประเภท">
@@ -420,22 +428,14 @@ function AudiencePicker({
       {value.kind === "ticket-holders" && (
         <Row label="กิจกรรม">
           {eventItems.length ? (
-            <Select
+            <IconSelect
+              label="กิจกรรม"
+              placeholder="เลือกกิจกรรม"
               items={eventItems}
               value={value.eventId}
-              onValueChange={(next: string | null) => set({ eventId: next })}
-            >
-              <SelectTrigger aria-label="กิจกรรม" className="sm:w-80">
-                <SelectValue placeholder="เลือกกิจกรรม" />
-              </SelectTrigger>
-              <SelectContent>
-                {eventItems.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(next) => set({ eventId: next })}
+              className="sm:w-80"
+            />
           ) : (
             <p className="text-sm text-muted-foreground">ยังไม่มีกิจกรรม</p>
           )}

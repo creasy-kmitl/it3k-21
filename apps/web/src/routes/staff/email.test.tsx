@@ -32,6 +32,7 @@ function audiences(): EmailAudiences {
       {
         id: "s-football",
         name: "ฟุตบอล",
+        icon: "football",
         divisions: [{ id: "d-football-male", name: "ฟุตบอลชาย" }],
       },
     ],

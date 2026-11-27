@@ -23,6 +23,7 @@ import {
 import { BracketBuilder } from "@/components/competition/bracket-builder";
 import { MatchCard } from "@/components/competition/match-card";
 import { EMPTY_SIDE, MatchForm, type MatchPreset } from "@/components/competition/match-form";
+import { divisionSelectItems } from "@/components/competition/division-items";
 import { MatchSelect } from "@/components/competition/match-select";
 import { MATCH_STATUS_DOT } from "@/components/competition/match-status-badge";
 import { StatusDot } from "@/components/icon-select";
@@ -202,10 +203,7 @@ export function MatchesPage({ onCreated }: { onCreated: (matchId: string) => voi
         <MatchSelect
           label="ประเภท"
           icon={<Layers aria-hidden className="text-muted-foreground" />}
-          items={[
-            { value: null, label: "ทุกประเภท" },
-            ...shownDivisions.map((d) => ({ value: d.id, label: `${d.sportName} · ${d.name}` })),
-          ]}
+          items={[{ value: null, label: "ทุกประเภท" }, ...divisionSelectItems(shownDivisions)]}
           value={filters.divisionId ?? null}
           onChange={(divisionId) => set({ divisionId: divisionId ?? undefined })}
         />

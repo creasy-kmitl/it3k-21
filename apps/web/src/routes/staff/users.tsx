@@ -13,27 +13,21 @@ import { Button } from "@it3k/ui/components/button";
 import { Checkbox } from "@it3k/ui/components/checkbox";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@it3k/ui/components/field";
 import { Input } from "@it3k/ui/components/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@it3k/ui/components/select";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Pencil, Search, UserCog, UserRoundCogIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { IconSelect, type IconSelectItem } from "@/components/icon-select";
+import { InstitutionLogo } from "@/components/institution-logo";
 import { InvitationsPanel } from "@/components/invitations-panel";
 import { LoadingButton } from "@/components/loading-button";
 import { type FilterControl, useFilters, useSearchText } from "@/hooks/use-filters";
 import type { LeadershipApi, LeadershipDepartment } from "@/lib/leadership";
 import { type Account, type Assignment, type UsersApi, useMe } from "@/lib/users";
 
-import { DepartmentBadge, DepartmentLabel } from "@/components/department-icon";
+import { DepartmentBadge, DepartmentIcon } from "@/components/department-icon";
 import { PageHeader } from "@/components/page-header";
 import { ROLE_BADGES, RoleBadge } from "@/components/role-badge";
 import { useApis } from "@/lib/api-context";
@@ -144,11 +138,12 @@ export function UsersPage({
   // the skeleton when moving to another page.
   const loading = accounts.isPending || (accounts.isPlaceholderData && accounts.data.page !== page);
 
-  const departmentItems = [
+  const departmentItems: IconSelectItem<string>[] = [
     { value: null, label: "ทุกฝ่าย" },
     ...(departments.data?.map((d) => ({
       value: d.id,
-      label: <DepartmentLabel department={d} />,
+      label: d.name,
+      icon: <DepartmentIcon department={d} />,
     })) ?? []),
   ];
 
@@ -163,22 +158,13 @@ export function UsersPage({
       {me.data?.canManageUsers && <InvitationsPanel departments={departments.data ?? []} />}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Select
+        <IconSelect
+          label="ฝ่าย"
           items={departmentItems}
           value={departmentId ?? null}
-          onValueChange={(value: string | null) => setDepartmentId(value ?? undefined)}
-        >
-          <SelectTrigger aria-label="ฝ่าย" className="sm:w-52">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {departmentItems.map((d) => (
-              <SelectItem key={d.value ?? "all"} value={d.value}>
-                {d.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          onChange={(value) => setDepartmentId(value ?? undefined)}
+          className="sm:w-52"
+        />
         <div className="relative flex-1">
           <Search
             className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
@@ -445,16 +431,24 @@ function EditAccountDialog({
     },
   });
 
-  const institutionItems = [
+  const institutionItems: IconSelectItem<string>[] = [
     { value: NO_INSTITUTION, label: "ไม่ระบุ" },
-    ...INSTITUTIONS.map((i) => ({ value: i.id, label: i.short })),
+    ...INSTITUTIONS.map((i) => ({
+      value: i.id,
+      label: i.short,
+      icon: <InstitutionLogo institution={i} />,
+    })),
   ];
-  const statusItems = STATUSES.filter(
+  const statusItems: IconSelectItem<Status>[] = STATUSES.filter(
     (value) => value === initialStatus || assignableKinds.includes(value),
-  ).map((value) => ({ value, label: ROLE_BADGES[value].label }));
-  const departmentItems = departments.map((d) => ({
+  ).map((value) => {
+    const Icon = ROLE_BADGES[value].icon;
+    return { value, label: ROLE_BADGES[value].label, icon: <Icon aria-hidden /> };
+  });
+  const departmentItems: IconSelectItem<string>[] = departments.map((d) => ({
     value: d.id,
-    label: <DepartmentLabel department={d} />,
+    label: d.name,
+    icon: <DepartmentIcon department={d} />,
   }));
 
   return (
@@ -469,46 +463,25 @@ function EditAccountDialog({
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="account-status">สถานะ</FieldLabel>
-            <Select
+            <IconSelect<Status>
+              id="account-status"
+              label="สถานะ"
               items={statusItems}
               value={status}
-              onValueChange={(value: Status | null) => value && setStatus(value)}
-            >
-              <SelectTrigger id="account-status" aria-label="สถานะ">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {statusItems.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+              onChange={(value) => value && setStatus(value)}
+            />
           </Field>
           {needsDepartment && (
             <Field>
               <FieldLabel htmlFor="account-department">ฝ่าย</FieldLabel>
-              <Select
+              <IconSelect
+                id="account-department"
+                label="ฝ่าย"
+                placeholder="เลือกฝ่าย"
                 items={departmentItems}
                 value={departmentId || null}
-                onValueChange={(value: string | null) => setDepartmentId(value ?? "")}
-              >
-                <SelectTrigger id="account-department" aria-label="ฝ่าย">
-                  <SelectValue placeholder="เลือกฝ่าย" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {departmentItems.map((d) => (
-                      <SelectItem key={d.value} value={d.value}>
-                        {d.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+                onChange={(value) => setDepartmentId(value ?? "")}
+              />
               {occupant.data && (
                 <FieldDescription>
                   จะแทนที่ {occupant.data.displayName} ซึ่งจะกลายเป็น Staff ของฝ่ายนี้
@@ -519,26 +492,15 @@ function EditAccountDialog({
           {account.canSetInstitution && (
             <Field>
               <FieldLabel htmlFor="account-institution">สถาบัน</FieldLabel>
-              <Select
+              <IconSelect
+                id="account-institution"
+                label="สถาบัน"
                 items={institutionItems}
                 value={institution ?? NO_INSTITUTION}
-                onValueChange={(value: string | null) =>
+                onChange={(value) =>
                   setInstitution(!value || value === NO_INSTITUTION ? null : (value as Institution))
                 }
-              >
-                <SelectTrigger id="account-institution" aria-label="สถาบัน">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {institutionItems.map((i) => (
-                      <SelectItem key={i.value} value={i.value}>
-                        {i.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              />
               <FieldDescription>ใช้กำหนดว่าฝ่ายทะเบียนเห็นนักกีฬาของสถาบันใด</FieldDescription>
             </Field>
           )}

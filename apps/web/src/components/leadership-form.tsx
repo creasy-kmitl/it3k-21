@@ -18,13 +18,6 @@ import {
   FieldSet,
 } from "@it3k/ui/components/field";
 import { Input } from "@it3k/ui/components/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@it3k/ui/components/select";
 import { Spinner } from "@it3k/ui/components/spinner";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -42,7 +35,9 @@ import {
   leadershipApi,
 } from "@/lib/leadership";
 
-import { DepartmentLabel } from "./department-icon";
+import { DepartmentIcon } from "./department-icon";
+import { IconSelect, type IconSelectItem } from "./icon-select";
+import { ROLE_BADGES } from "./role-badge";
 import { ROLE_LABELS } from "./leadership-list";
 
 export type FormMode =
@@ -62,7 +57,10 @@ const PLATFORMS: [PlatformOption, ...PlatformOption[]] = [
 ];
 const ROLES = ["head", "vicehead"] as const;
 type Role = (typeof ROLES)[number];
-const ROLE_ITEMS = ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] }));
+const ROLE_ITEMS = ROLES.map((role) => {
+  const Icon = ROLE_BADGES[role].icon;
+  return { value: role, label: ROLE_LABELS[role], icon: <Icon aria-hidden /> };
+});
 
 // Mirrors the server's rules so mistakes show up before a round trip; the
 // server still validates everything.
@@ -164,9 +162,12 @@ export default function LeadershipForm({ mode, api = leadershipApi, onDone, onCa
     staleTime: 5 * 60_000,
   });
 
-  const departmentItems =
-    departments.data?.map((d) => ({ value: d.id, label: <DepartmentLabel department={d} /> })) ??
-    [];
+  const departmentItems: IconSelectItem<string>[] =
+    departments.data?.map((d) => ({
+      value: d.id,
+      label: d.name,
+      icon: <DepartmentIcon department={d} />,
+    })) ?? [];
 
   const save = useMutation({
     mutationFn: (values: FormValues) =>
@@ -210,32 +211,21 @@ export default function LeadershipForm({ mode, api = leadershipApi, onDone, onCa
             {(field) => (
               <Field data-invalid={!field.state.meta.isValid}>
                 <FieldLabel htmlFor="leadership-department">ฝ่าย</FieldLabel>
-                <Select
+                <IconSelect
+                  id="leadership-department"
+                  label="ฝ่าย"
+                  placeholder="เลือกฝ่าย"
                   items={departmentItems}
                   disabled={selfOnly}
                   value={field.state.value || null}
-                  onValueChange={(value: string | null) => {
+                  invalid={!field.state.meta.isValid}
+                  onBlur={field.handleBlur}
+                  onChange={(value) => {
                     field.handleChange(value ?? "");
                     // An attached account must belong to the seat's department.
                     form.setFieldValue("account", null);
                   }}
-                >
-                  <SelectTrigger
-                    id="leadership-department"
-                    className="w-full"
-                    onBlur={field.handleBlur}
-                    aria-invalid={!field.state.meta.isValid}
-                  >
-                    <SelectValue placeholder="เลือกฝ่าย" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departmentItems.map((d) => (
-                      <SelectItem key={d.value} value={d.value}>
-                        {d.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
                 <FieldError errors={field.state.meta.errors} />
               </Field>
             )}
@@ -245,25 +235,16 @@ export default function LeadershipForm({ mode, api = leadershipApi, onDone, onCa
             {(field) => (
               <Field>
                 <FieldLabel htmlFor="leadership-role">ตำแหน่ง</FieldLabel>
-                <Select
+                <IconSelect<Role>
+                  id="leadership-role"
+                  label="ตำแหน่ง"
                   items={ROLE_ITEMS}
                   disabled={selfOnly}
                   value={field.state.value}
-                  onValueChange={(role: Role | null) => {
+                  onChange={(role) => {
                     if (role) field.handleChange(role);
                   }}
-                >
-                  <SelectTrigger id="leadership-role" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ROLE_ITEMS.map((r) => (
-                      <SelectItem key={r.value} value={r.value}>
-                        {r.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               </Field>
             )}
           </form.Field>
@@ -368,24 +349,15 @@ export default function LeadershipForm({ mode, api = leadershipApi, onDone, onCa
                         <div key={i} className="flex items-start gap-2">
                           <form.Field name={`socials[${i}].platform`}>
                             {(field) => (
-                              <Select
+                              <IconSelect<Platform>
+                                label={`แพลตฟอร์ม ${i + 1}`}
                                 items={PLATFORMS}
                                 value={field.state.value}
-                                onValueChange={(platform: Platform | null) => {
+                                onChange={(platform) => {
                                   if (platform) field.handleChange(platform);
                                 }}
-                              >
-                                <SelectTrigger aria-label={`แพลตฟอร์ม ${i + 1}`} className="w-32">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {PLATFORMS.map((p) => (
-                                    <SelectItem key={p.value} value={p.value}>
-                                      {p.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                className="w-32"
+                              />
                             )}
                           </form.Field>
                           <form.Field name={`socials[${i}].value`}>

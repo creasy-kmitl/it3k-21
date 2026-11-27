@@ -6,13 +6,6 @@ import {
   CollapsibleTrigger,
 } from "@it3k/ui/components/collapsible";
 import { Field, FieldDescription, FieldLabel } from "@it3k/ui/components/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@it3k/ui/components/select";
 import { cn } from "@it3k/ui/lib/utils";
 import {
   ChevronDown,
@@ -34,6 +27,7 @@ import { type ReactNode, useState } from "react";
 
 import { IconLabel } from "@/components/calendar/icon-label";
 import { HelpHint } from "@/components/help-hint";
+import { IconSelect } from "@/components/icon-select";
 import {
   DEFAULT_DESIGN,
   EXPORT_SIZES,
@@ -161,26 +155,20 @@ export function OptionSelect<T extends string>({
   return (
     <Field data-disabled={disabled}>
       <LabelRow htmlFor={id} label={label} hint={hint} />
-      <Select
-        // Labels are elements, so the trigger shows the chosen option's icon too.
-        items={options.map((option) => ({ value: option.value, label: labelOf(option) }))}
+      <IconSelect<T>
+        id={id}
+        label={label}
+        items={options.map((option) => ({
+          value: option.value,
+          label: option.label,
+          content: labelOf(option),
+        }))}
         value={value}
         disabled={disabled}
-        onValueChange={(next: T | null) => {
+        onChange={(next) => {
           if (next) onChange(next);
         }}
-      >
-        <SelectTrigger id={id} className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {labelOf(option)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      />
       {description && <FieldDescription>{description}</FieldDescription>}
     </Field>
   );

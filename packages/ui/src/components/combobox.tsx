@@ -30,6 +30,32 @@ function ComboboxTrigger({ className, children, ...props }: ComboboxPrimitive.Tr
   );
 }
 
+/**
+ * A trigger drawn like `SelectTrigger`, for a combobox whose search input sits
+ * inside the popup: a select that can be searched.
+ */
+function ComboboxSelectTrigger({
+  className,
+  size = "default",
+  children,
+  ...props
+}: ComboboxPrimitive.Trigger.Props & { size?: "sm" | "default" }) {
+  return (
+    <ComboboxPrimitive.Trigger
+      data-slot="combobox-select-trigger"
+      data-size={size}
+      className={cn(
+        "flex w-fit items-center justify-between gap-1.5 rounded-4xl border border-input bg-input/30 px-3 py-2 text-sm whitespace-nowrap transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <ChevronDownIcon className="pointer-events-none size-4 text-muted-foreground" />
+    </ComboboxPrimitive.Trigger>
+  );
+}
+
 function ComboboxClear({ className, ...props }: ComboboxPrimitive.Clear.Props) {
   return (
     <ComboboxPrimitive.Clear
@@ -271,6 +297,7 @@ export {
   ComboboxChip,
   ComboboxChipsInput,
   ComboboxTrigger,
+  ComboboxSelectTrigger,
   ComboboxValue,
   useComboboxAnchor,
 };

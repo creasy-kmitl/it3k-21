@@ -7,15 +7,10 @@ import {
   InputGroupInput,
   InputGroupText,
 } from "@it3k/ui/components/input-group";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@it3k/ui/components/select";
 import { AtSign, Gamepad2, type LucideIcon, Medal, Shirt, Trophy, Volume2 } from "lucide-react";
 import type { ComponentProps } from "react";
+
+import { IconSelect, type IconSelectItem } from "@/components/icon-select";
 
 export type Requirements = {
   requiresShirtNumber: boolean;
@@ -196,10 +191,11 @@ export function RegistrationFieldsEditor({
 }) {
   const set = <K extends keyof FieldsDraft>(key: K, value: FieldsDraft[K]) =>
     onChange({ ...draft, [key]: value });
-  const ranks = [
-    { value: "1", label: "มือ 1" },
-    { value: "2", label: "มือ 2" },
-  ] as const;
+  const ranks: IconSelectItem<"1" | "2">[] = (["1", "2"] as const).map((value) => ({
+    value,
+    label: `มือ ${value}`,
+    icon: <Medal aria-hidden className={value === "1" ? "text-amber-500" : "text-slate-400"} />,
+  }));
 
   return (
     <>
@@ -223,26 +219,14 @@ export function RegistrationFieldsEditor({
           <IconLabel htmlFor="registration-rank" icon={Trophy}>
             มือ
           </IconLabel>
-          <Select
+          <IconSelect<"1" | "2">
+            id="registration-rank"
+            label="มือ"
+            placeholder="เลือกมือ"
             items={ranks}
             value={draft.badmintonRank || null}
-            onValueChange={(value: "1" | "2" | null) => set("badmintonRank", value ?? "")}
-          >
-            <SelectTrigger id="registration-rank" aria-label="มือ">
-              <SelectValue placeholder="เลือกมือ" />
-            </SelectTrigger>
-            <SelectContent>
-              {ranks.map((rank) => (
-                <SelectItem key={rank.value} value={rank.value}>
-                  <Medal
-                    aria-hidden
-                    className={rank.value === "1" ? "text-amber-500" : "text-slate-400"}
-                  />
-                  {rank.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onChange={(value) => set("badmintonRank", value ?? "")}
+          />
           <FieldDescription>
             {issues.badmintonRank ?? "แต่ละสถาบันมีมือ 1 และมือ 2 ได้อย่างละคน"}
           </FieldDescription>

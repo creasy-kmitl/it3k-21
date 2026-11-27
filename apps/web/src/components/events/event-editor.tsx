@@ -21,16 +21,6 @@ import {
 import { Button } from "@it3k/ui/components/button";
 import { Checkbox } from "@it3k/ui/components/checkbox";
 import {
-  Combobox,
-  ComboboxCollection,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxGroup,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-} from "@it3k/ui/components/combobox";
-import {
   Field,
   FieldDescription,
   FieldError,
@@ -64,8 +54,8 @@ import type { z } from "zod";
 import { toast } from "sonner";
 
 import { DateTimePicker } from "@/components/calendar/date-time-picker";
-import { IconLabel } from "@/components/calendar/icon-label";
 import { ChoiceField, ConfirmDelete, FormLabel, FormLegend, TextField } from "@/components/form-dialog";
+import { IconSelect } from "@/components/icon-select";
 import { LoadingButton } from "@/components/loading-button";
 import { EMPTY_DOC, RichTextEditor } from "@/components/rich-text-editor";
 import { ImageUrlField } from "@/components/image-url-field";
@@ -76,7 +66,6 @@ import { fromDatetimeLocal, toDatetimeLocal } from "@/lib/bangkok-time";
 import { toastError } from "@/lib/errors";
 import type { EventDetail } from "@/lib/events";
 import { useMe } from "@/lib/users";
-import type { Venue } from "@/lib/venues";
 import { DivisionPicker } from "./division-picker";
 import { SlugField } from "./slug-field";
 import {
@@ -415,35 +404,23 @@ export function EventEditor({
             <FormLabel htmlFor="event-venue" icon={MapPin}>
               สถานที่
             </FormLabel>
-            <Combobox<Venue>
-              items={venueItems}
-              value={selectedVenue}
-              itemToStringLabel={(venue) => venue.name}
-              itemToStringValue={(venue) => venue.id}
-              onValueChange={(venue) => set("venueId", venue?.id ?? null)}
-            >
-              <ComboboxInput
-                id="event-venue"
-                placeholder={venues.isPending ? "กำลังโหลดสถานที่" : "ค้นหาสถานที่"}
-                triggerLabel="เลือกสถานที่"
-                clearLabel="ไม่ระบุสถานที่"
-                showClear={!!selectedVenue}
-              />
-              <ComboboxContent>
-                <ComboboxEmpty>ไม่พบสถานที่ เพิ่มได้ที่หน้าสถานที่</ComboboxEmpty>
-                <ComboboxList>
-                  <ComboboxGroup>
-                    <ComboboxCollection>
-                      {(venue: Venue) => (
-                        <ComboboxItem key={venue.id} value={venue}>
-                          <IconLabel icon={MapPin}>{venue.name}</IconLabel>
-                        </ComboboxItem>
-                      )}
-                    </ComboboxCollection>
-                  </ComboboxGroup>
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
+            <IconSelect
+              id="event-venue"
+              label="สถานที่"
+              placeholder={venues.isPending ? "กำลังโหลดสถานที่" : "เลือกสถานที่"}
+              searchPlaceholder="ค้นหาสถานที่"
+              emptyLabel="ไม่พบสถานที่ เพิ่มได้ที่หน้าสถานที่"
+              items={[
+                { value: null, label: "ไม่ระบุสถานที่" },
+                ...venueItems.map((venue) => ({
+                  value: venue.id,
+                  label: venue.name,
+                  icon: <MapPin aria-hidden className="text-muted-foreground" />,
+                })),
+              ]}
+              value={selectedVenue?.id ?? null}
+              onChange={(venueId) => set("venueId", venueId)}
+            />
           </Field>
         </Section>
 

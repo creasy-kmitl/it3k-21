@@ -226,7 +226,7 @@ export const createEmailRoutes = (deps: EmailDeps) =>
       const db = c.var.db;
       const [sports, divisions, events] = await Promise.all([
         db
-          .select({ id: sport.id, name: sport.name })
+          .select({ id: sport.id, name: sport.name, icon: sport.icon })
           .from(sport)
           .orderBy(asc(sport.sortOrder), asc(sport.name)),
         db
