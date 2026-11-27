@@ -50,28 +50,37 @@ export function staffNavGroups(me: NavAccess | undefined): NavMainGroup[] {
       items: [
         { title: "หน้าหลัก", to: "/staff/dashboard", icon: <LayoutDashboardIcon /> },
         { title: "ปฏิทิน", to: "/staff/calendar", icon: <CalendarDaysIcon /> },
-        { title: "หัวหน้าฝ่าย", to: "/staff/head", icon: <UsersIcon /> },
       ],
     },
     {
-      label: "การจัดการ",
+      // Who is who: the leader directory for everyone, plus the admin pages for departments and accounts.
+      label: "องค์กร",
       items: [
-        ...(me?.canManageUsers
-          ? [{ title: "ผู้ใช้", to: "/staff/users", icon: <UserCogIcon /> } as const]
-          : []),
+        { title: "หัวหน้าฝ่าย", to: "/staff/head", icon: <UsersIcon /> },
         ...(me?.canManageDepartments
           ? [{ title: "ฝ่าย", to: "/staff/departments", icon: <Building2Icon /> } as const]
           : []),
+        ...(me?.canManageUsers
+          ? [{ title: "ผู้ใช้", to: "/staff/users", icon: <UserCogIcon /> } as const]
+          : []),
       ],
     },
     {
+      // Events are not only sports, and venues host both events and matches.
+      label: "กิจกรรม",
+      items: inSports
+        ? [
+            { title: "กิจกรรม", to: "/staff/events", icon: <CalendarCheckIcon /> },
+            { title: "สถานที่", to: "/staff/venues", icon: <MapPinnedIcon /> },
+          ]
+        : [],
+    },
+    {
+      // In the order the work happens: sports, then who plays, then the matches.
       label: "กีฬา",
       items: [
         ...(inSports
-          ? ([
-              { title: "กิจกรรม", to: "/staff/events", icon: <CalendarCheckIcon /> },
-              { title: "ประเภทกีฬา", to: "/staff/sports", icon: <MedalIcon /> },
-            ] as const)
+          ? [{ title: "ประเภทกีฬา", to: "/staff/sports", icon: <MedalIcon /> } as const]
           : []),
         ...(can("athletes.read")
           ? [{ title: "นักกีฬา", to: "/staff/athletes", icon: <TrophyIcon /> } as const]
@@ -90,9 +99,6 @@ export function staffNavGroups(me: NavAccess | undefined): NavMainGroup[] {
                 icon: <ScanLineIcon />,
               } as const,
             ]
-          : []),
-        ...(inSports
-          ? [{ title: "สถานที่", to: "/staff/venues", icon: <MapPinnedIcon /> } as const]
           : []),
       ],
     },
