@@ -27,7 +27,15 @@ function renderForm() {
     <QueryClientProvider client={client}>
       <ApiProvider value={apis}>
         <MatchForm
-          divisions={[{ id: "d-football", name: "ฟุตบอลชาย", sportName: "ฟุตบอล" }]}
+          divisions={[
+            {
+              id: "d-football",
+              name: "ฟุตบอลชาย",
+              sportId: "s-football",
+              sportName: "ฟุตบอล",
+              sportIcon: "football",
+            },
+          ]}
           venues={[]}
           initial={null}
           divisionId="d-football"
@@ -45,9 +53,9 @@ describe("MatchForm knockout sides", () => {
     const { create } = renderForm();
     const from = await screen.findByRole("combobox", { name: "ฝั่ง 1 มาจาก" });
     await waitFor(() => expect((from as HTMLButtonElement).disabled).toBe(false));
-    await choose(from, "ผู้ชนะ M1 · รอบรองชนะเลิศ");
+    await choose(from, "ผู้ชนะ M1");
     expect(screen.queryByRole("textbox", { name: "ชื่อชั่วคราวฝั่ง 1" })).toBeNull();
-    await choose(screen.getByRole("combobox", { name: "ฝั่ง 2 มาจาก" }), "ผู้ชนะ M2 · รอบรองชนะเลิศ");
+    await choose(screen.getByRole("combobox", { name: "ฝั่ง 2 มาจาก" }), "ผู้ชนะ M2");
     fireEvent.click(screen.getByRole("button", { name: "บันทึก" }));
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(create.mock.calls[0]?.[0].participants).toEqual([

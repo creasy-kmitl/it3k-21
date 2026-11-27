@@ -8,13 +8,6 @@ import {
   EmptyTitle,
 } from "@it3k/ui/components/empty";
 import { Input } from "@it3k/ui/components/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@it3k/ui/components/select";
 import { Skeleton } from "@it3k/ui/components/skeleton";
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -39,10 +32,11 @@ import {
   leadershipApi,
 } from "@/lib/leadership";
 
-import { DepartmentIcon, DepartmentLabel } from "./department-icon";
+import { DepartmentIcon } from "./department-icon";
 import LeadershipList from "./leadership-list";
 import { PageHeader } from "./page-header";
 import { ErrorState } from "@/components/error-state";
+import { IconSelect, type IconSelectItem } from "@/components/icon-select";
 
 type Group = { departmentId: string; departmentName: string; seats: LeadershipSummary[] };
 
@@ -64,15 +58,12 @@ function groupByDepartment(seats: LeadershipSummary[]): Group[] {
   return groups;
 }
 
-const ALL_DEPARTMENTS = (
-  <span className="flex items-center gap-2">
-    <span
-      aria-hidden
-      className="inline-flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-3.5"
-    >
-      <LayoutGrid />
-    </span>
-    ทุกฝ่าย
+const ALL_DEPARTMENTS_ICON = (
+  <span
+    aria-hidden
+    className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-3.5"
+  >
+    <LayoutGrid />
   </span>
 );
 
@@ -114,9 +105,12 @@ export default function LeadershipDirectory({
     staleTime: 5 * 60_000,
   });
 
-  const departmentItems =
-    departments.data?.map((d) => ({ value: d.id, label: <DepartmentLabel department={d} /> })) ??
-    [];
+  const departmentItems: IconSelectItem<string>[] =
+    departments.data?.map((d) => ({
+      value: d.id,
+      label: d.name,
+      icon: <DepartmentIcon department={d} />,
+    })) ?? [];
   const departmentById = new Map(departments.data?.map((d) => [d.id, d]));
 
   // Only summaries are cached here; contact details are never part of a list.
@@ -148,23 +142,13 @@ export default function LeadershipDirectory({
       />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Select
-          items={[{ value: null, label: ALL_DEPARTMENTS }, ...departmentItems]}
+        <IconSelect
+          label="ฝ่าย"
+          items={[{ value: null, label: "ทุกฝ่าย", icon: ALL_DEPARTMENTS_ICON }, ...departmentItems]}
           value={departmentId ?? null}
-          onValueChange={(value: string | null) => setDepartmentId(value ?? undefined)}
-        >
-          <SelectTrigger aria-label="ฝ่าย" className="sm:w-52">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={null}>{ALL_DEPARTMENTS}</SelectItem>
-            {departmentItems.map((d) => (
-              <SelectItem key={d.value} value={d.value}>
-                {d.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          onChange={(value) => setDepartmentId(value ?? undefined)}
+          className="sm:w-52"
+        />
         <div className="relative flex-1">
           <Search
             className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"

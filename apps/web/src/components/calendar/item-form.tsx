@@ -15,13 +15,6 @@ import {
   FieldLabel,
 } from "@it3k/ui/components/field";
 import { Input } from "@it3k/ui/components/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@it3k/ui/components/select";
 import { Spinner } from "@it3k/ui/components/spinner";
 import { Textarea } from "@it3k/ui/components/textarea";
 import { cn } from "@it3k/ui/lib/utils";
@@ -32,6 +25,7 @@ import { type ReactNode, useState } from "react";
 import { z } from "zod";
 
 import { DepartmentLabel } from "@/components/department-icon";
+import { IconSelect } from "@/components/icon-select";
 import { useApis } from "@/lib/api-context";
 import { HOUR_MS, fromDatetimeLocal, toDatetimeLocal } from "@/lib/bangkok-time";
 import type { CalendarInput, CalendarItem, CalendarItemDetail } from "@/lib/calendar";
@@ -174,25 +168,21 @@ function OptionSelect({
   return (
     <Field data-invalid={invalid}>
       <LabelRow htmlFor={id} label={label} hint={hint} />
-      <Select
-        // Labels are elements, so the trigger shows the chosen option's icon too.
-        items={options.map((option) => ({ value: option.value, label: labelOf(option) }))}
+      <IconSelect
+        id={id}
+        label={label}
+        placeholder="เลือก"
+        invalid={invalid}
+        items={options.map((option) => ({
+          value: option.value,
+          label: option.label,
+          content: labelOf(option),
+        }))}
         value={value || null}
-        onValueChange={(next: string | null) => {
+        onChange={(next) => {
           if (next !== null) onChange(next);
         }}
-      >
-        <SelectTrigger id={id} className="w-full" aria-invalid={invalid}>
-          <SelectValue placeholder="เลือก" />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {labelOf(option)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      />
       {errors && <FieldError errors={errors as { message?: string }[]} />}
     </Field>
   );

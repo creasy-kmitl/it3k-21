@@ -12,13 +12,6 @@ import {
 import { Field, FieldLabel } from "@it3k/ui/components/field";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@it3k/ui/components/input-group";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@it3k/ui/components/select";
-import {
   CalendarCheck,
   ChevronDown,
   ChevronLeft,
@@ -31,6 +24,7 @@ import {
 } from "lucide-react";
 
 import { DepartmentLabel } from "@/components/department-icon";
+import { IconSelect, type IconSelectItem } from "@/components/icon-select";
 import { OPTION_ICONS, STATUS_ICONS, VIEW_ICONS } from "@/lib/calendar-icons";
 import { STATUS_LABELS } from "@/lib/calendar-labels";
 import type { LeadershipDepartment } from "@/lib/leadership";
@@ -249,14 +243,16 @@ export function CalendarFilters({
   search: string;
   onSearch: (text: string) => void;
 }) {
-  const statusItems = [
+  const statusItems: IconSelectItem<string>[] = [
     {
       value: ALL,
-      label: <IconLabel icon={OPTION_ICONS.all}>สถานะ: ทั้งหมด</IconLabel>,
+      label: "สถานะ: ทั้งหมด",
+      content: <IconLabel icon={OPTION_ICONS.all}>สถานะ: ทั้งหมด</IconLabel>,
     },
     ...CALENDAR_STATUSES.map((value) => ({
       value: value as string,
-      label: <IconLabel icon={STATUS_ICONS[value]}>{STATUS_LABELS[value]}</IconLabel>,
+      label: STATUS_LABELS[value],
+      content: <IconLabel icon={STATUS_ICONS[value]}>{STATUS_LABELS[value]}</IconLabel>,
     })),
   ];
   return (
@@ -273,26 +269,18 @@ export function CalendarFilters({
           onChange={(e) => onSearch(e.target.value)}
         />
       </InputGroup>
-      <Select
+      <IconSelect
+        id="filter-status"
+        label="สถานะ"
         items={statusItems}
         value={filters.status ?? ALL}
-        onValueChange={(next: string | null) =>
+        onChange={(next) =>
           onChange({
             status: next === null || next === ALL ? undefined : (next as CalendarStatus),
           })
         }
-      >
-        <SelectTrigger id="filter-status" aria-label="สถานะ" className="w-full sm:w-44">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {statusItems.map((item) => (
-            <SelectItem key={item.value} value={item.value}>
-              {item.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        className="w-full sm:w-44"
+      />
       <Field orientation="horizontal" className="w-auto">
         <Checkbox
           id="filter-mine"

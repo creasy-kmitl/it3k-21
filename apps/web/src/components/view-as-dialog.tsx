@@ -8,20 +8,14 @@ import {
   DialogTitle,
 } from "@it3k/ui/components/dialog";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@it3k/ui/components/field";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@it3k/ui/components/select";
 import { INSTITUTIONS, type Institution } from "@it3k/db/profile";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { EyeIcon } from "lucide-react";
 import { useState } from "react";
 
-import { DepartmentLabel } from "@/components/department-icon";
+import { DepartmentIcon } from "@/components/department-icon";
+import { IconSelect, type IconSelectItem } from "@/components/icon-select";
+import { InstitutionLogo } from "@/components/institution-logo";
 import { LoadingButton } from "@/components/loading-button";
 import { ROLE_BADGES } from "@/components/role-badge";
 import { useApis } from "@/lib/api-context";
@@ -69,14 +63,22 @@ export function ViewAsDialog({
     onError: (error) => toastError(error, "เริ่มจำลองมุมมองไม่สำเร็จ"),
   });
 
-  const kindItems = KINDS.map((value) => ({ value, label: ROLE_BADGES[value].label }));
-  const departmentItems = (departments.data ?? []).map((d) => ({
+  const kindItems: IconSelectItem<ViewAsKind>[] = KINDS.map((value) => {
+    const Icon = ROLE_BADGES[value].icon;
+    return { value, label: ROLE_BADGES[value].label, icon: <Icon aria-hidden /> };
+  });
+  const departmentItems: IconSelectItem<string>[] = (departments.data ?? []).map((d) => ({
     value: d.id,
-    label: <DepartmentLabel department={d} />,
+    label: d.name,
+    icon: <DepartmentIcon department={d} />,
   }));
-  const institutionItems = [
+  const institutionItems: IconSelectItem<string>[] = [
     { value: NO_INSTITUTION, label: "ไม่ระบุ" },
-    ...INSTITUTIONS.map((i) => ({ value: i.id, label: i.short })),
+    ...INSTITUTIONS.map((i) => ({
+      value: i.id,
+      label: i.short,
+      icon: <InstitutionLogo institution={i} />,
+    })),
   ];
 
   return (
@@ -99,70 +101,38 @@ export function ViewAsDialog({
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="view-as-kind">บทบาท</FieldLabel>
-              <Select
+              <IconSelect<ViewAsKind>
+                id="view-as-kind"
+                label="บทบาท"
                 items={kindItems}
                 value={kind}
-                onValueChange={(value: ViewAsKind | null) => value && setKind(value)}
-              >
-                <SelectTrigger id="view-as-kind" aria-label="บทบาท">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {kindItems.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+                onChange={(value) => value && setKind(value)}
+              />
             </Field>
             {needsDepartment && (
               <Field>
                 <FieldLabel htmlFor="view-as-department">ฝ่าย</FieldLabel>
-                <Select
+                <IconSelect
+                  id="view-as-department"
+                  label="ฝ่าย"
+                  placeholder="เลือกฝ่าย"
                   items={departmentItems}
                   value={departmentId || null}
-                  onValueChange={(value: string | null) => setDepartmentId(value ?? "")}
-                >
-                  <SelectTrigger id="view-as-department" aria-label="ฝ่าย">
-                    <SelectValue placeholder="เลือกฝ่าย" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {departmentItems.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+                  onChange={(value) => setDepartmentId(value ?? "")}
+                />
               </Field>
             )}
             <Field>
               <FieldLabel htmlFor="view-as-institution">สถาบัน</FieldLabel>
-              <Select
+              <IconSelect
+                id="view-as-institution"
+                label="สถาบัน"
                 items={institutionItems}
                 value={institution ?? NO_INSTITUTION}
-                onValueChange={(value: string | null) =>
+                onChange={(value) =>
                   setInstitution(!value || value === NO_INSTITUTION ? null : (value as Institution))
                 }
-              >
-                <SelectTrigger id="view-as-institution" aria-label="สถาบัน">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {institutionItems.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              />
               <FieldDescription>มีผลกับสิ่งที่ฝ่ายทะเบียนและนักกีฬาเห็นในระบบกีฬา</FieldDescription>
             </Field>
           </FieldGroup>

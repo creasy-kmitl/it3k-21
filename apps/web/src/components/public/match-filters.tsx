@@ -1,23 +1,19 @@
 import { MATCH_STATUSES, MATCH_STATUS_LABELS } from "@it3k/db/competition-rules";
 import { Button } from "@it3k/ui/components/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@it3k/ui/components/input-group";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@it3k/ui/components/select";
-import { Search, X } from "lucide-react";
+import type { SportIcon } from "@it3k/db/sport-rules";
+import { CalendarDays, MapPin, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { MATCH_STATUS_DOT } from "@/components/competition/match-status-badge";
+import { IconSelect, type IconSelectItem, StatusDot } from "@/components/icon-select";
+import { SportMark } from "@/components/sport-art";
 import { formatBangkok, fromDateKey } from "@/lib/bangkok-time";
 import type { FilterOptions, MatchFilters } from "@/lib/public-competition";
 
 const ALL = "all";
 
-type Option = { value: string; label: string };
+type Option = IconSelectItem<string> & { value: string };
 
 function FilterSelect({
   label,
@@ -34,24 +30,13 @@ function FilterSelect({
 }) {
   const items = [{ value: ALL, label: allLabel }, ...options];
   return (
-    <Select
+    <IconSelect
+      label={label}
       items={items}
       value={value ?? ALL}
-      onValueChange={(next: string | null) => onChange(!next || next === ALL ? undefined : next)}
-    >
-      <SelectTrigger aria-label={label} className="w-full min-w-0">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectGroup>
-          {items.map((item) => (
-            <SelectItem key={item.value} value={item.value}>
-              {item.label}
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
+      onChange={(next) => onChange(!next || next === ALL ? undefined : next)}
+      className="min-w-0"
+    />
   );
 }
 
@@ -87,9 +72,17 @@ export function MatchFiltersBar({
 
   const sports = options?.sports ?? [];
   const sport = sports.find((s) => s.id === value.sportId);
-  const divisions = (sport ? [sport] : sports).flatMap((s) =>
-    s.divisions.map((d) => ({ value: d.id, label: d.name })),
-  );
+  const divisions = (sport ? [sport] : sports).flatMap((s) => {
+    const mark = <SportMark icon={s.icon as SportIcon} seed={s.id} />;
+    return s.divisions.map((d) => ({
+      value: d.id,
+      label: d.name,
+      icon: mark,
+      group: s.name,
+      groupIcon: mark,
+      triggerLabel: sport ? d.name : `${s.name} · ${d.name}`,
+    }));
+  });
   const set = (patch: MatchFilters) => onChange({ ...value, ...patch });
   const active = Object.values(value).some((v) => v !== undefined && v !== "");
 
@@ -113,7 +106,11 @@ export function MatchFiltersBar({
         <FilterSelect
           label="กีฬา"
           allLabel="ทุกกีฬา"
-          options={sports.map((s) => ({ value: s.id, label: s.name }))}
+          options={sports.map((s) => ({
+            value: s.id,
+            label: s.name,
+            icon: <SportMark icon={s.icon as SportIcon} seed={s.id} />,
+          }))}
           value={value.sportId}
           onChange={(sportId) => set({ sportId, divisionId: undefined })}
         />
@@ -129,14 +126,22 @@ export function MatchFiltersBar({
             <FilterSelect
               label="วัน"
               allLabel="ทุกวัน"
-              options={(options?.days ?? []).map((day) => ({ value: day, label: dayLabel(day) }))}
+              options={(options?.days ?? []).map((day) => ({
+                value: day,
+                label: dayLabel(day),
+                icon: <CalendarDays aria-hidden className="text-muted-foreground" />,
+              }))}
               value={value.day}
               onChange={(day) => set({ day })}
             />
             <FilterSelect
               label="สนาม"
               allLabel="ทุกสนาม"
-              options={(options?.venues ?? []).map((v) => ({ value: v.id, label: v.name }))}
+              options={(options?.venues ?? []).map((v) => ({
+                value: v.id,
+                label: v.name,
+                icon: <MapPin aria-hidden className="text-muted-foreground" />,
+              }))}
               value={value.venueId}
               onChange={(venueId) => set({ venueId })}
             />
@@ -146,6 +151,7 @@ export function MatchFiltersBar({
               options={MATCH_STATUSES.map((status) => ({
                 value: status,
                 label: MATCH_STATUS_LABELS[status],
+                icon: <StatusDot className={MATCH_STATUS_DOT[status]} />,
               }))}
               value={value.status}
               onChange={(status) => set({ status: status as MatchFilters["status"] })}

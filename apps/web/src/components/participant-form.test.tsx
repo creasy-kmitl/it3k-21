@@ -115,15 +115,10 @@ test("registration validates required fields and optional health inputs exist", 
 test("saved institution wins over the Google email suggestion and stays editable", async () => {
   const view = await setup({ ...EMPTY_PROFILE, institution: "kmutt", firstName: "Saved" });
   expect(view.getByLabelText("ชื่อ")).toHaveProperty("value", "Saved");
-  expect(view.getByRole("combobox", { name: "มหาวิทยาลัย/สถาบัน" })).toHaveProperty(
-    "value",
-    INSTITUTIONS[1].name,
-  );
-  await choose(view.getByRole("button", { name: "เลือกมหาวิทยาลัย/สถาบัน" }), INSTITUTIONS[3].name);
-  expect(view.getByRole("combobox", { name: "มหาวิทยาลัย/สถาบัน" })).toHaveProperty(
-    "value",
-    INSTITUTIONS[3].name,
-  );
+  const select = view.getByRole("combobox", { name: "มหาวิทยาลัย/สถาบัน" });
+  expect(select.textContent).toContain(INSTITUTIONS[1].name);
+  await choose(select, INSTITUTIONS[3].name);
+  expect(select.textContent).toContain(INSTITUTIONS[3].name);
 });
 test("a locked institution is shown read-only and replaces the draft's", async () => {
   const view = await setup(
@@ -132,13 +127,9 @@ test("a locked institution is shown read-only and replaces the draft's", async (
     undefined,
     "kmutt",
   );
-  const input = view.getByRole("combobox", { name: "มหาวิทยาลัย/สถาบัน" });
-  expect(input).toHaveProperty("value", INSTITUTIONS[1].name);
-  expect(input).toHaveProperty("disabled", true);
-  expect(view.getByRole("button", { name: "เลือกมหาวิทยาลัย/สถาบัน" })).toHaveProperty(
-    "disabled",
-    true,
-  );
+  const select = view.getByRole("combobox", { name: "มหาวิทยาลัย/สถาบัน" });
+  expect(select.textContent).toContain(INSTITUTIONS[1].name);
+  expect(select).toHaveProperty("disabled", true);
   expect(view.getByText(/ติดต่อฝ่ายทะเบียน/)).toBeTruthy();
 });
 test("an incomplete edit is debounced and autosaved", async () => {

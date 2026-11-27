@@ -230,7 +230,7 @@ describe("EventEditor", () => {
 
     fireEvent.click(view.getByRole("checkbox", { name: "สจล." }));
     fireEvent.click(await view.findByRole("checkbox", { name: "กีฬาบาสเกตบอล" }));
-    await choose(view.getByRole("button", { name: "เลือกสถานที่" }), "โรงยิม 1");
+    await choose(view.getByRole("combobox", { name: "สถานที่" }), "โรงยิม 1");
     save(view);
     await waitFor(() => expect(view.saved).toHaveLength(1));
     expect(view.saved[0]?.[1]).toMatchObject({

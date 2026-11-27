@@ -14,6 +14,7 @@ import { SegmentedControl } from "@/components/segmented-control";
 import { useApis } from "@/lib/api-context";
 import { toastError } from "@/lib/errors";
 
+import { divisionSelectItems } from "./division-items";
 import type { MatchFormDivision } from "./match-form";
 import { MatchSelect } from "./match-select";
 
@@ -80,10 +81,11 @@ export function BracketBuilder({
         <MatchSelect
           id="bracket-division"
           label="ประเภท"
-          items={[
-            { value: null, label: "เลือกประเภท" },
-            ...divisions.map((d) => ({ value: d.id, label: `${d.sportName} · ${d.name}` })),
-          ]}
+          placeholder="เลือกประเภท"
+          searchPlaceholder="ค้นหากีฬาหรือประเภท"
+          icon={<Shapes aria-hidden className="text-muted-foreground" />}
+          invalid={missingDivision}
+          items={divisionSelectItems(divisions)}
           value={divisionId}
           onChange={(next) => {
             setDivisionId(next);

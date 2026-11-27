@@ -8,6 +8,7 @@ import {
   type SideSource,
   matchInput,
 } from "@it3k/db/competition-rules";
+import { INSTITUTIONS } from "@it3k/db/profile";
 import { Button } from "@it3k/ui/components/button";
 import { Checkbox } from "@it3k/ui/components/checkbox";
 import { Field, FieldError } from "@it3k/ui/components/field";
@@ -42,14 +43,16 @@ import {
   TextField,
   issuesOf,
 } from "@/components/form-dialog";
+import { InstitutionLogo } from "@/components/institution-logo";
 import { useApis } from "@/lib/api-context";
 import { fromDatetimeLocal, toDatetimeLocal } from "@/lib/bangkok-time";
 import type { MatchDetail } from "@/lib/competition-matches";
 import { toastError } from "@/lib/errors";
 
-import { MatchSelect } from "./match-select";
+import { type DivisionChoice, divisionSelectItems } from "./division-items";
+import { MatchSelect, type MatchSelectItem } from "./match-select";
 
-export type MatchFormDivision = { id: string; name: string; sportName: string };
+export type MatchFormDivision = DivisionChoice;
 export type MatchFormVenue = { id: string; name: string };
 
 type SideSourceDraft = { matchId: string; result: SideSource };
@@ -199,9 +202,18 @@ export function MatchForm({
     save.mutate(parsed.data);
   };
 
-  const teamItems = [
+  const teamItems: MatchSelectItem<string>[] = [
     { value: null, label: "ยังไม่รู้ทีม" },
-    ...teams.map((team) => ({ value: team.id, label: team.name })),
+    ...teams.map((team) => {
+      const institution = INSTITUTIONS.find((entry) => entry.id === team.institution);
+      return {
+        value: team.id,
+        label: team.name,
+        icon: <InstitutionLogo institution={institution} />,
+        group: institution?.short ?? team.institution,
+        groupIcon: <InstitutionLogo institution={institution} />,
+      };
+    }),
   ];
   const sourceItems = [
     {
@@ -212,7 +224,9 @@ export function MatchForm({
     ...sourceMatches.flatMap((m) =>
       (["winner", "loser"] as const).map((result) => ({
         value: sourceKey({ matchId: m.id, result }),
-        label: `${SIDE_SOURCE_LABELS[result]} ${matchName(m)} · ${m.stageName}`,
+        label: `${SIDE_SOURCE_LABELS[result]} ${matchName(m)}`,
+        group: m.stageName,
+        triggerLabel: `${SIDE_SOURCE_LABELS[result]} ${matchName(m)} · ${m.stageName}`,
         icon:
           result === "winner" ? (
             <Crown aria-hidden className="text-amber-500" />
@@ -243,10 +257,11 @@ export function MatchForm({
           id="match-division"
           label="ประเภท"
           disabled={initial !== null || !!preset}
-          items={[
-            { value: null, label: "เลือกประเภท" },
-            ...divisions.map((d) => ({ value: d.id, label: `${d.sportName} · ${d.name}` })),
-          ]}
+          placeholder="เลือกประเภท"
+          searchPlaceholder="ค้นหากีฬาหรือประเภท"
+          icon={<Shapes aria-hidden className="text-muted-foreground" />}
+          invalid={!!issues.divisionId}
+          items={divisionSelectItems(divisions)}
           value={divisionId}
           onChange={(next) => {
             setDivisionId(next);
@@ -349,7 +364,12 @@ export function MatchForm({
             label="สาย"
             items={[
               { value: null, label: "ไม่มีสาย" },
-              ...groups.map((g) => ({ value: g.id, label: `${g.stageName} · สาย ${g.name}` })),
+              ...groups.map((g) => ({
+                value: g.id,
+                label: `สาย ${g.name}`,
+                group: g.stageName,
+                triggerLabel: `${g.stageName} · สาย ${g.name}`,
+              })),
             ]}
             value={groupId}
             onChange={setGroupId}

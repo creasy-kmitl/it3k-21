@@ -26,20 +26,13 @@ import {
   FieldLegend,
 } from "@it3k/ui/components/field";
 import { Input } from "@it3k/ui/components/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@it3k/ui/components/select";
 import { Textarea } from "@it3k/ui/components/textarea";
 import { cn } from "@it3k/ui/lib/utils";
 import { type LucideIcon, Save } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import type { z } from "zod";
 
-import { IconLabel } from "./calendar/icon-label";
+import { IconSelect } from "./icon-select";
 import { LoadingButton } from "./loading-button";
 
 const LABEL_ICON = "items-center [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground";
@@ -264,30 +257,23 @@ export function ChoiceField<T extends string>({
   options: Choice<T>[];
   onChange: (value: T) => void;
 }) {
-  const labelOf = (option: Choice<T>) =>
-    option.content ?? <IconLabel icon={option.icon}>{option.label}</IconLabel>;
   return (
     <Field>
       <FormLabel htmlFor={id} icon={icon}>
         {label}
       </FormLabel>
-      <Select
-        // Labels are elements, so the closed select shows the chosen option's icon too.
-        items={options.map((option) => ({ value: option.value, label: labelOf(option) }))}
+      <IconSelect<T>
+        id={id}
+        label={label}
+        items={options.map((option) => ({
+          value: option.value,
+          label: option.label,
+          icon: option.icon && <option.icon aria-hidden />,
+          content: option.content,
+        }))}
         value={value}
-        onValueChange={(next: T | null) => next && onChange(next)}
-      >
-        <SelectTrigger id={id} aria-label={label} className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {labelOf(option)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        onChange={(next) => next && onChange(next)}
+      />
     </Field>
   );
 }
