@@ -150,7 +150,10 @@ export const SHOTS: Shot[] = [
     await page.waitForTimeout(800);
   } },
   { file: "tech-head/match-detail", as: "techHead", path: "/staff/matches/demo-match-sf2" },
-  { file: "tech-head/match-checkin", as: "techHead", path: "/staff/match-checkin" },
+  { file: "tech-head/match-checkin", as: "techHead", path: "/staff/match-checkin", act: async (page) => {
+    await page.getByText(/รอบรองชนะเลิศ · M2/).first().click();
+    await page.waitForTimeout(800);
+  } },
   { file: "tech-head/match-kiosk", as: "techHead", path: "/kiosk/matches/demo-venue-gym", css: "video { visibility: hidden; }" },
   { file: "public/match", path: "/matches/demo-match-sf1", mobile: true },
   { file: "public/live", path: "/live" },
@@ -158,7 +161,7 @@ export const SHOTS: Shot[] = [
   // ฝ่ายกีฬา
   { file: "sports-staff/sidebar", as: "sportsStaff", path: "/staff/dashboard", sidebar: true },
   { file: "sports-head/sidebar", as: "sportsHead", path: "/staff/dashboard", sidebar: true },
-  { file: "sports-staff/scoring", as: "sportsStaff", path: "/score/demo-match-sf2", mobile: true },
+  { file: "sports-staff/scoring", as: "sportsStaff", path: "/score/demo-match-sf2", mobile: true, desktop: false },
 
   // Admin
   { file: "admin/sidebar", as: "admin", path: "/staff/dashboard", sidebar: true },
